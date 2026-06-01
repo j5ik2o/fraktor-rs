@@ -284,13 +284,20 @@ impl MembershipCoordinator {
 
     let status = self.gossip.table().record(authority).map(|record| record.status);
     if let Some(status) = status
-      && status == NodeStatus::Joining
-      && let Some(delta) = self.gossip.table_mut().mark_up(authority).map_err(MembershipCoordinatorError::Membership)?
+      && matches!(status, NodeStatus::Joining | NodeStatus::WeaklyUp)
     {
-      if self.config.gossip_enabled {
-        outcome.gossip_outbound.extend(self.gossip.disseminate(&delta));
+      let next_status = if status == NodeStatus::Joining { NodeStatus::WeaklyUp } else { NodeStatus::Up };
+      let delta = if status == NodeStatus::Joining {
+        self.gossip.table_mut().mark_weakly_up(authority).map_err(MembershipCoordinatorError::Membership)?
+      } else {
+        self.gossip.table_mut().mark_up(authority).map_err(MembershipCoordinatorError::Membership)?
+      };
+      if let Some(delta) = delta {
+        if self.config.gossip_enabled {
+          outcome.gossip_outbound.extend(self.gossip.disseminate(&delta));
+        }
+        self.emit_status_change(authority, status, next_status, now, &mut outcome);
       }
-      self.emit_status_change(authority, status, NodeStatus::Up, now, &mut outcome);
     }
 
     let was_suspect = self.suspect_since.contains_key(&authority_key);
@@ -496,7 +503,7 @@ impl MembershipCoordinator {
     let status = record.status;
     self.update_suspect_tracking(record.authority.as_str(), status, now);
     match status {
-      | NodeStatus::Joining | NodeStatus::Up | NodeStatus::Suspect => {
+      | NodeStatus::Joining | NodeStatus::WeaklyUp | NodeStatus::Up | NodeStatus::Suspect => {
         if before.is_none() || matches!(before, Some(NodeStatus::Removed | NodeStatus::Dead)) {
           self.topology_accumulator.joined.insert(record.authority.clone());
         }

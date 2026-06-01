@@ -97,7 +97,7 @@ fn client_rejects_join_and_leave() {
 }
 
 #[test]
-fn join_then_heartbeat_promotes_to_up() {
+fn join_then_heartbeats_promote_through_weakly_up_to_up() {
   let table = MembershipTable::new(3);
   let config = base_config();
   let mut coordinator = MembershipCoordinator::new(config, local_cluster_config(), table, registry(1.0));
@@ -117,8 +117,42 @@ fn join_then_heartbeat_promotes_to_up() {
     outcome
       .member_events
       .iter()
+      .any(|event| matches!(event, ClusterEvent::MemberStatusChanged { to: NodeStatus::WeaklyUp, .. }))
+  );
+
+  let outcome = coordinator.handle_heartbeat("node-a", now(3)).unwrap();
+  assert!(
+    outcome
+      .member_events
+      .iter()
       .any(|event| matches!(event, ClusterEvent::MemberStatusChanged { to: NodeStatus::Up, .. }))
   );
+}
+
+#[test]
+fn weakly_up_does_not_trigger_downing_decision() {
+  let table = MembershipTable::new(3);
+  let config = base_config();
+  let mut coordinator = MembershipCoordinator::new(config, local_cluster_config(), table, registry(1.0));
+  coordinator.start_member().unwrap();
+
+  let _ =
+    coordinator.handle_join("node-1".to_string(), "node-a".to_string(), &joining_cluster_config(), now(1)).unwrap();
+  let outcome = coordinator.handle_heartbeat("node-a", now(2)).unwrap();
+
+  assert!(
+    outcome
+      .member_events
+      .iter()
+      .any(|event| { matches!(event, ClusterEvent::MemberStatusChanged { to: NodeStatus::WeaklyUp, .. }) })
+  );
+  assert!(
+    !outcome
+      .member_events
+      .iter()
+      .any(|event| matches!(event, ClusterEvent::MemberQuarantined { .. } | ClusterEvent::UnreachableMember { .. }))
+  );
+  assert!(coordinator.quarantine_snapshot().is_empty());
 }
 
 #[test]
@@ -132,10 +166,15 @@ fn current_cluster_state_is_emitted_only_when_state_changes() {
     coordinator.handle_join("node-1".to_string(), "node-a".to_string(), &joining_cluster_config(), now(1)).unwrap();
   assert!(join_outcome.member_events.iter().any(|event| matches!(event, ClusterEvent::CurrentClusterState { .. })));
 
-  let promote_outcome = coordinator.handle_heartbeat("node-a", now(2)).unwrap();
+  let weakly_up_outcome = coordinator.handle_heartbeat("node-a", now(2)).unwrap();
+  assert!(
+    weakly_up_outcome.member_events.iter().any(|event| matches!(event, ClusterEvent::CurrentClusterState { .. }))
+  );
+
+  let promote_outcome = coordinator.handle_heartbeat("node-a", now(3)).unwrap();
   assert!(promote_outcome.member_events.iter().any(|event| matches!(event, ClusterEvent::CurrentClusterState { .. })));
 
-  let steady_outcome = coordinator.handle_heartbeat("node-a", now(3)).unwrap();
+  let steady_outcome = coordinator.handle_heartbeat("node-a", now(4)).unwrap();
   assert!(steady_outcome.member_events.iter().all(|event| !matches!(event, ClusterEvent::CurrentClusterState { .. })));
 }
 
@@ -350,7 +389,9 @@ fn current_cluster_state_emits_oldest_leader_and_role_leaders() {
   let _ = coordinator.handle_join("node-1".to_string(), "node-a".to_string(), &joining_backend, now(1)).unwrap();
   let _ = coordinator.handle_join("node-2".to_string(), "node-b".to_string(), &joining_frontend, now(2)).unwrap();
   let _ = coordinator.handle_heartbeat("node-a", now(3)).unwrap();
-  let outcome = coordinator.handle_heartbeat("node-b", now(4)).unwrap();
+  let _ = coordinator.handle_heartbeat("node-a", now(4)).unwrap();
+  let _ = coordinator.handle_heartbeat("node-b", now(5)).unwrap();
+  let outcome = coordinator.handle_heartbeat("node-b", now(6)).unwrap();
 
   let state = outcome
     .member_events
@@ -382,8 +423,9 @@ fn current_cluster_state_keeps_roles_without_eligible_leader_as_none() {
 
   let _ = coordinator.handle_join("node-1".to_string(), "node-a".to_string(), &joining_backend, now(1)).unwrap();
   let _ = coordinator.handle_heartbeat("node-a", now(2)).unwrap();
+  let _ = coordinator.handle_heartbeat("node-a", now(3)).unwrap();
   let outcome =
-    coordinator.handle_join("node-2".to_string(), "node-b".to_string(), &joining_analytics, now(3)).unwrap();
+    coordinator.handle_join("node-2".to_string(), "node-b".to_string(), &joining_analytics, now(4)).unwrap();
 
   let state = outcome
     .member_events

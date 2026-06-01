@@ -78,3 +78,19 @@ fn to_record_preserves_shutdown_related_statuses() {
     assert_eq!(decoded.status, status);
   }
 }
+
+#[test]
+fn to_record_preserves_weakly_up_status() {
+  let record = NodeRecord::new(
+    String::from("node-1"),
+    String::from("n1:4050"),
+    NodeStatus::WeaklyUp,
+    MembershipVersion::new(4),
+    String::from("1.0.0"),
+    vec![String::from("role-a")],
+  );
+
+  let decoded = GossipWireNodeRecord::from_record(&record).to_record().expect("decode");
+
+  assert_eq!(decoded.status, NodeStatus::WeaklyUp);
+}

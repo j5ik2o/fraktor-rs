@@ -17,7 +17,7 @@
   - _Boundary: DataCenterMembership_
   - _Depends: 1_
 
-- [ ] 3. WeaklyUp status と transition rule を追加する
+- [x] 3. WeaklyUp status と transition rule を追加する
   - membership status に `WeaklyUp` 相当を追加し、`Joining -> WeaklyUp -> Up` を観測できるようにする。
   - `WeaklyUp` から leave/down/remove へ進む transition rule を定義する。
   - active member view で暫定参加を caller が判定できる helper を用意する。

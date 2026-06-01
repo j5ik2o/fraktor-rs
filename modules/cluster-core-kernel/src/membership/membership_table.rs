@@ -215,7 +215,40 @@ impl MembershipTable {
     Some(MembershipDelta::new(from, self.version, vec![record.clone()]))
   }
 
-  /// Marks the authority as reachable (Up) if currently Joining or Suspect.
+  /// Marks the authority as weakly up if currently joining.
+  ///
+  /// # Errors
+  ///
+  /// Returns `MembershipError::UnknownAuthority` if the authority is not found.
+  pub fn mark_weakly_up(&mut self, authority: &str) -> Result<Option<MembershipDelta>, MembershipError> {
+    let Some(key) = self.entry_key_for_authority(authority) else {
+      return Err(MembershipError::UnknownAuthority { authority: authority.to_string() });
+    };
+    let Some(record) = self.entries.get_mut(&key) else {
+      return Err(MembershipError::UnknownAuthority { authority: authority.to_string() });
+    };
+
+    match record.status {
+      | NodeStatus::WeaklyUp => return Ok(None),
+      | NodeStatus::Joining => {},
+      | _ => {
+        return Err(MembershipError::InvalidTransition {
+          authority: authority.to_string(),
+          from:      record.status,
+          to:        NodeStatus::WeaklyUp,
+        });
+      },
+    }
+
+    let from = self.version;
+    self.version = self.version.next();
+    record.status = NodeStatus::WeaklyUp;
+    record.version = self.version;
+
+    Ok(Some(MembershipDelta::new(from, self.version, vec![record.clone()])))
+  }
+
+  /// Marks the authority as reachable (Up) if currently weakly up or suspect.
   ///
   /// # Errors
   ///
@@ -230,7 +263,7 @@ impl MembershipTable {
 
     match record.status {
       | NodeStatus::Up => return Ok(None),
-      | NodeStatus::Joining | NodeStatus::Suspect => {},
+      | NodeStatus::WeaklyUp | NodeStatus::Suspect => {},
       | _ => {
         return Err(MembershipError::InvalidTransition {
           authority: authority.to_string(),
@@ -263,7 +296,7 @@ impl MembershipTable {
 
     match record.status {
       | NodeStatus::Suspect => return Ok(None),
-      | NodeStatus::Up | NodeStatus::Joining => {},
+      | NodeStatus::Up | NodeStatus::WeaklyUp | NodeStatus::Joining => {},
       | _ => {
         return Err(MembershipError::InvalidTransition {
           authority: authority.to_string(),
@@ -296,7 +329,7 @@ impl MembershipTable {
 
     match record.status {
       | NodeStatus::Dead => return Ok(None),
-      | NodeStatus::Suspect => {},
+      | NodeStatus::Suspect | NodeStatus::WeaklyUp => {},
       | _ => {
         return Err(MembershipError::InvalidTransition {
           authority: authority.to_string(),

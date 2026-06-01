@@ -166,6 +166,59 @@ fn heartbeat_miss_marks_suspect_after_threshold() {
 }
 
 #[test]
+fn joining_member_transitions_through_weakly_up_before_up() {
+  let mut table = MembershipTable::new(3);
+  table
+    .try_join("node-1".to_string(), "n1:4050".to_string(), "1.0.0".to_string(), vec!["backend".to_string()])
+    .expect("join succeeds");
+
+  let weakly_up_delta = table.mark_weakly_up("n1:4050").expect("weakly up succeeds").expect("delta");
+  assert_eq!(weakly_up_delta.entries[0].status, NodeStatus::WeaklyUp);
+  assert!(weakly_up_delta.entries[0].status.is_provisional());
+
+  let up_delta = table.mark_up("n1:4050").expect("mark up succeeds").expect("delta");
+  assert_eq!(up_delta.entries[0].status, NodeStatus::Up);
+}
+
+#[test]
+fn mark_up_from_joining_is_rejected_until_weakly_up() {
+  let mut table = MembershipTable::new(3);
+  table
+    .try_join("node-1".to_string(), "n1:4050".to_string(), "1.0.0".to_string(), vec!["backend".to_string()])
+    .expect("join succeeds");
+
+  let err = table.mark_up("n1:4050").expect_err("joining cannot skip weakly up");
+
+  assert_eq!(err, MembershipError::InvalidTransition {
+    authority: "n1:4050".to_string(),
+    from:      NodeStatus::Joining,
+    to:        NodeStatus::Up,
+  });
+}
+
+#[test]
+fn weakly_up_can_leave_or_be_marked_dead() {
+  let mut table = MembershipTable::new(3);
+  table
+    .try_join("node-1".to_string(), "n1:4050".to_string(), "1.0.0".to_string(), vec!["backend".to_string()])
+    .expect("join succeeds");
+  table.mark_weakly_up("n1:4050").expect("weakly up succeeds");
+
+  let exiting_delta = table.mark_left("n1:4050").expect("weakly up can leave");
+  assert_eq!(exiting_delta.entries[0].status, NodeStatus::Exiting);
+  let removed_delta = table.mark_left("n1:4050").expect("weakly up leave can complete removal");
+  assert_eq!(removed_delta.entries[0].status, NodeStatus::Removed);
+
+  let mut table = MembershipTable::new(3);
+  table
+    .try_join("node-2".to_string(), "n2:4050".to_string(), "1.0.0".to_string(), vec!["backend".to_string()])
+    .expect("join succeeds");
+  table.mark_weakly_up("n2:4050").expect("weakly up succeeds");
+  let dead_delta = table.mark_dead("n2:4050").expect("weakly up can be downed").expect("delta");
+  assert_eq!(dead_delta.entries[0].status, NodeStatus::Dead);
+}
+
+#[test]
 fn heartbeat_miss_is_ignored_for_exiting_member() {
   let mut table = MembershipTable::new(1);
   table
@@ -271,6 +324,7 @@ fn status_update_does_not_change_age_ordering() {
     .try_join("node-2".to_string(), "n2:4050".to_string(), "1.0.0".to_string(), vec!["backend".to_string()])
     .expect("second join succeeds");
 
+  let _ = table.mark_weakly_up("n1:4050").expect("mark weakly up succeeds");
   let _ = table.mark_up("n1:4050").expect("mark up succeeds");
 
   let older = table.record("n1:4050").expect("older record");
