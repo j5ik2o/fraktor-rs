@@ -43,7 +43,7 @@
   - _Boundary: IndirectConnectionEvidence_
   - _Depends: 4_
 
-- [ ] 6. membership coordinator と snapshots の統合を検証する
+- [x] 6. membership coordinator と snapshots の統合を検証する
   - failure detector や heartbeat receipt からの reachability 変化が matrix と status transition の両方に反映されるようにする。
   - membership snapshot と current cluster state が identity、data center、WeaklyUp、reachability snapshot を同時に保持することを確認する。
   - downstream specs が参照できる public surface を `membership` module から最小限公開する。

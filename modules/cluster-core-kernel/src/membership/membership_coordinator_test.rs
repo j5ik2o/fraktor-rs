@@ -11,6 +11,7 @@ use crate::{
   membership::{
     MembershipCoordinatorConfig, MembershipCoordinatorError, MembershipCoordinatorState, MembershipDelta,
     MembershipError, MembershipEvent, MembershipTable, MembershipVersion, NodeRecord, NodeStatus, QuarantineEvent,
+    ReachabilityStatus,
   },
   pub_sub::PubSubConfig,
 };
@@ -65,6 +66,10 @@ fn local_cluster_config() -> ClusterExtensionConfig {
 
 fn joining_cluster_config() -> ClusterExtensionConfig {
   ClusterExtensionConfig::new().with_app_version("1.1.0").with_roles(vec![String::from("frontend")])
+}
+
+fn local_cluster_config_with_address() -> ClusterExtensionConfig {
+  local_cluster_config().with_advertised_address("local:2552")
 }
 
 #[test]
@@ -499,6 +504,38 @@ fn suspect_and_heartbeat_emit_unreachable_and_reachable_events() {
     event,
     ClusterEvent::ReachableMember { authority, .. } if authority == "node-a"
   )));
+}
+
+#[test]
+fn reachability_snapshot_tracks_failure_detector_and_heartbeat_receipt() {
+  let table = MembershipTable::new(3);
+  let mut config = base_config();
+  config.suspect_timeout = Duration::from_secs(30);
+  let mut coordinator = MembershipCoordinator::new(config, local_cluster_config_with_address(), table, registry(1.0));
+  coordinator.start_member().unwrap();
+
+  let _ =
+    coordinator.handle_join("node-1".to_string(), "node-a".to_string(), &joining_cluster_config(), now(1)).unwrap();
+  let _ = coordinator.handle_heartbeat("node-a", now(2)).unwrap();
+  let _ = coordinator.handle_heartbeat("node-a", now(3)).unwrap();
+
+  let suspect_outcome = coordinator.poll(now(5)).unwrap();
+  let subject = coordinator.snapshot().entries[0].unique_address.clone();
+  let state = suspect_outcome
+    .member_events
+    .iter()
+    .find_map(
+      |event| {
+        if let ClusterEvent::CurrentClusterState { state, .. } = event { Some(state.clone()) } else { None }
+      },
+    )
+    .expect("current cluster state");
+  assert_eq!(coordinator.snapshot().reachability.aggregate_status(&subject), ReachabilityStatus::Unreachable);
+  assert_eq!(state.reachability.aggregate_status(&subject), ReachabilityStatus::Unreachable);
+
+  let _ = coordinator.handle_heartbeat("node-a", now(6)).unwrap();
+
+  assert_eq!(coordinator.snapshot().reachability.aggregate_status(&subject), ReachabilityStatus::Reachable);
 }
 
 #[test]

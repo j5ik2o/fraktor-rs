@@ -56,10 +56,7 @@ impl ReachabilityMatrix {
   /// Returns an immutable snapshot of matrix records and observer row versions.
   #[must_use]
   pub fn snapshot(&self) -> ReachabilitySnapshot {
-    ReachabilitySnapshot {
-      records:           self.records.values().cloned().collect::<Vec<_>>(),
-      observer_versions: self.observer_versions.clone(),
-    }
+    ReachabilitySnapshot::new(self.records.values().cloned().collect::<Vec<_>>(), self.observer_versions.clone())
   }
 
   /// Returns indirect connectivity evidence for a partially reachable subject.
