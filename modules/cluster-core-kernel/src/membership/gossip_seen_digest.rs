@@ -1,6 +1,13 @@
 //! Peer seen-version digest for gossip convergence.
 
-use alloc::{collections::BTreeMap, vec::Vec};
+#[cfg(test)]
+#[path = "gossip_seen_digest_test.rs"]
+mod tests;
+
+use alloc::{
+  collections::{BTreeMap, btree_map::Entry},
+  vec::Vec,
+};
 
 use fraktor_remote_core_rs::address::UniqueAddress;
 
@@ -23,12 +30,19 @@ impl GossipSeenDigest {
   ///
   /// Returns true when the digest changed.
   pub fn mark_seen(&mut self, peer: UniqueAddress, version: MembershipVersion) -> bool {
-    let entry = self.seen_versions.entry(peer).or_insert(MembershipVersion::zero());
-    if *entry >= version {
-      return false;
+    match self.seen_versions.entry(peer) {
+      | Entry::Vacant(entry) => {
+        entry.insert(version);
+        true
+      },
+      | Entry::Occupied(mut entry) => {
+        if *entry.get() >= version {
+          return false;
+        }
+        entry.insert(version);
+        true
+      },
     }
-    *entry = version;
-    true
   }
 
   /// Returns the observed version for a peer.

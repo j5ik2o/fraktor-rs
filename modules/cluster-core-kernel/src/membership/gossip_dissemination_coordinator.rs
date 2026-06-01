@@ -79,8 +79,8 @@ impl GossipDisseminationCoordinator {
 
   /// Projects the acknowledged authorities to confirmed member identities.
   #[must_use]
-  pub fn seen_digest(&self) -> GossipSeenDigest {
-    self.seen_digest.clone()
+  pub const fn seen_digest(&self) -> &GossipSeenDigest {
+    &self.seen_digest
   }
 
   /// Replaces peer list and refreshes peer versions.

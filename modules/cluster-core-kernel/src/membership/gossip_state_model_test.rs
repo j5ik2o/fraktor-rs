@@ -1,10 +1,11 @@
-use alloc::{string::ToString, vec, vec::Vec};
+use alloc::{collections::BTreeMap, string::ToString, vec, vec::Vec};
 
 use fraktor_remote_core_rs::address::{Address, UniqueAddress};
 
 use crate::membership::{
   DataCenter, GossipSeenDigest, GossipStateModel, GossipStateSnapshot, GossipTombstone, GossipTombstoneSet,
-  MembershipSnapshot, MembershipVersion, NodeRecord, NodeStatus, ReachabilityMatrix, ReachabilityStatus,
+  MembershipSnapshot, MembershipVersion, NodeRecord, NodeStatus, ReachabilityMatrix, ReachabilityRecord,
+  ReachabilitySnapshot, ReachabilityStatus,
 };
 
 fn unique_address(host: &str, uid: u64) -> UniqueAddress {
@@ -239,6 +240,47 @@ fn full_state_merge_prunes_stale_reachability_record_from_newer_reachable_row() 
   assert!(model.snapshot().membership.reachability.records.is_empty());
   assert_eq!(model.snapshot().membership.reachability.aggregate_status(&subject), ReachabilityStatus::Reachable);
   assert_eq!(model.snapshot().membership.reachability.observer_versions.get(&observer), Some(&2));
+}
+
+#[test]
+fn full_state_merge_ignores_remote_reachability_record_older_than_local_row() {
+  let observer = unique_address("node-a", 10);
+  let subject = unique_address("node-b", 11);
+  let mut local_observer_versions = BTreeMap::new();
+  local_observer_versions.insert(observer.clone(), 5);
+  let local = GossipStateSnapshot::new(
+    MembershipSnapshot::new_with_reachability(
+      MembershipVersion::new(5),
+      vec![record(observer.clone(), NodeStatus::Up, 1), record(subject.clone(), NodeStatus::Up, 1)],
+      ReachabilitySnapshot::new(Vec::new(), local_observer_versions),
+    ),
+    GossipTombstoneSet::new(),
+  );
+  let mut remote_observer_versions = BTreeMap::new();
+  remote_observer_versions.insert(observer.clone(), 4);
+  let remote = GossipStateSnapshot::new(
+    MembershipSnapshot::new_with_reachability(
+      MembershipVersion::new(4),
+      vec![record(observer.clone(), NodeStatus::Up, 1), record(subject.clone(), NodeStatus::Up, 1)],
+      ReachabilitySnapshot::new(
+        vec![ReachabilityRecord {
+          observer: observer.clone(),
+          subject:  subject.clone(),
+          status:   ReachabilityStatus::Unreachable,
+          version:  4,
+        }],
+        remote_observer_versions,
+      ),
+    ),
+    GossipTombstoneSet::new(),
+  );
+  let mut model = GossipStateModel::new(local);
+
+  model.merge(remote);
+
+  assert!(model.snapshot().membership.reachability.records.is_empty());
+  assert_eq!(model.snapshot().membership.reachability.aggregate_status(&subject), ReachabilityStatus::Reachable);
+  assert_eq!(model.snapshot().membership.reachability.observer_versions.get(&observer), Some(&5));
 }
 
 #[test]

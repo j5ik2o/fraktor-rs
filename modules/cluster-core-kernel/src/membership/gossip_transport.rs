@@ -24,8 +24,7 @@ pub trait GossipTransport {
   /// # Errors
   ///
   /// Returns an error if transport failed to validate or send the envelope.
-  fn send_envelope(&mut self, envelope: GossipEnvelope, now_tick: u64) -> Result<(), GossipTransportError> {
-    let _ = (envelope, now_tick);
+  fn send_envelope(&mut self, _envelope: GossipEnvelope, _now_tick: u64) -> Result<(), GossipTransportError> {
     Err(GossipTransportError::SendFailed { reason: "envelope handoff is unsupported".to_string() })
   }
 

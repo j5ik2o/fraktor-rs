@@ -209,6 +209,9 @@ fn merge_reachability(left: &ReachabilitySnapshot, right: &ReachabilitySnapshot)
   }
 
   for record in right.records.iter().cloned() {
+    if left.observer_versions.get(&record.observer).is_some_and(|local_version| *local_version > record.version) {
+      continue;
+    }
     match records.get(&(record.observer.clone(), record.subject.clone())) {
       | Some(existing) if existing.version >= record.version => {},
       | _ => {
