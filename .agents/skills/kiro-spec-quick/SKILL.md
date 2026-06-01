@@ -65,6 +65,7 @@ Execute these 4 phases in order:
 
 3. **Check Uniqueness**:
    - Use Glob to check `.kiro/specs/*/`
+   - If step 1 selected an existing `.kiro/specs/{feature-name}/` directory, uniqueness is already satisfied; resume that directory in place and do not append `-2`, `-3`, etc.
    - If directory exists with only `brief.md` (no `spec.json`), use that directory (discovery created it)
    - Otherwise if feature name exists, append `-2`, `-3`, etc.
 
@@ -92,6 +93,7 @@ Execute these 4 phases in order:
    - .kiro/specs/{feature-name}/spec.json
    - .kiro/specs/{feature-name}/requirements.md
    ```
+   If `spec.json` or `requirements.md` already exists in the selected directory, preserve existing files and write only missing initialization outputs. If both files already exist, skip initialization writes and continue the later phases against the selected directory.
 
 6. **Output Progress**: "Phase 1/4 complete: Spec initialized at .kiro/specs/{feature-name}/"
 

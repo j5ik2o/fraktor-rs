@@ -81,7 +81,7 @@ After all parallel research completes, synthesize implementation brief before st
 If multi-agent capability is available, for each task (one at a time):
 
 **a) Dispatch implementer**:
-- Initialize `review_rejection_count = 0` for this task ID when the task is selected. Keep the counter keyed to the current task ID only; do not carry it into the next task.
+- Initialize `review_rejection_count = 0` only when starting a different task ID. On retries, re-dispatches, and debug loops for the same task ID, preserve the existing counter. Do not carry the counter into the next task.
 - Read `templates/implementer-prompt.md` from this skill's directory
 - Construct a prompt by combining the template with task-specific context:
   - Task description and boundary scope
@@ -115,23 +115,12 @@ If multi-agent capability is available, for each task (one at a time):
 - Parse reviewer verdict only from the exact `## Review Verdict` block and `- VERDICT:` field.
 - If `VERDICT` is missing, ambiguous, or replaced with prose, re-dispatch the reviewer once requesting the exact structured verdict only. If the second response is still unparseable, dispatch the debug subagent with root cause `HANDOFF_PARSE_FAILURE`. Do NOT mark the task complete, commit, or continue to the next task without a parseable `APPROVED | REJECTED` value.
 - **APPROVED** → before marking the task `[x]` or making any success claim, apply `kiro-verify-completion` using fresh evidence from the current code state.
-  - If completion verification returns `VERIFIED`, mark the task `[x]` in tasks.md.
-  - If it returns `NOT_VERIFIED`, do not mark complete; increment this task's `review_rejection_count` with the verification findings and follow the same retry/debug thresholds as `REJECTED`.
+  - If completion verification returns `VERIFIED`, mark the task `[x]` in tasks.md and proceed to record learnings and commit.
+  - If it returns `NOT_VERIFIED`, do not mark complete; increment this task's `review_rejection_count` with the verification findings. If `review_rejection_count <= 2`, re-dispatch the implementer with those findings and skip record/commit. If `review_rejection_count >= 3`, jump directly to the debug subagent and skip record/commit.
   - If it returns `MANUAL_VERIFY_REQUIRED`, stop without marking complete and report the missing verification step.
-- **REJECTED** → increment this task's `review_rejection_count`
-- If `review_rejection_count <= 2` → re-dispatch implementer with review feedback
-- If `review_rejection_count >= 3` → dispatch debug subagent (see section below)
+- **REJECTED** → increment this task's `review_rejection_count`. If `review_rejection_count <= 2`, re-dispatch the implementer with review feedback and skip record/commit. If `review_rejection_count >= 3`, jump directly to the debug subagent and skip record/commit.
 
-**e) Record learnings**:
-- If this task revealed cross-cutting insights, append a one-line note to the `## Implementation Notes` section at the bottom of tasks.md before committing so the note is included with the task completion commit.
-
-**f) Commit** (parent-only, selective staging):
-- Stage only the files actually changed for this task, plus tasks.md
-- **NEVER** use `git add -A` or `git add .`
-- Use `git add <file1> <file2> ...` with explicit file paths
-- Commit message format: `feat(<feature-name>): <task description>`
-
-**g) Debug subagent** (triggered by BLOCKED, NEEDS_CONTEXT unresolved, HANDOFF_PARSE_FAILURE, NOT_VERIFIED after retries, or REJECTED after 2 remediation rounds):
+**e) Debug subagent** (triggered by BLOCKED, NEEDS_CONTEXT unresolved, HANDOFF_PARSE_FAILURE, NOT_VERIFIED after retries, or REJECTED after 2 remediation rounds):
 
 The debug subagent runs in a **fresh context** — it receives only the error information, not the failed implementation history. This avoids the context pollution that causes infinite retry loops.
 
@@ -155,6 +144,16 @@ The debug subagent runs in a **fresh context** — it receives only the error in
   - If the new implementer also fails → repeat debug cycle (max 2 debug rounds total). After 2 failed debug rounds → append `_Blocked: debug attempted twice, still failing — <ROOT_CAUSE>_` to tasks.md, isolate failed-task dirty changes using the same rule as `BLOCK_TASK`, then skip only if the worktree is clean or contains only unrelated pre-existing changes
 - **Max 2 debug rounds per task**. Each round: fresh debug subagent → fresh implementer. If still failing after 2 rounds, the task is blocked.
 - Record debug findings in `## Implementation Notes` (this helps subsequent tasks avoid the same issue)
+
+**f) Record learnings**:
+- Run this step only after the task is verified and marked `[x]`. If this task revealed cross-cutting insights, append a one-line note to the `## Implementation Notes` section at the bottom of tasks.md before committing so the note is included with the task completion commit.
+
+**g) Commit** (parent-only, selective staging):
+- Run this step only after successful verification, task completion marking, and learning-note recording.
+- Stage only the files actually changed for this task, plus tasks.md
+- **NEVER** use `git add -A` or `git add .`
+- Use `git add <file1> <file2> ...` with explicit file paths
+- Commit message format: `feat(<feature-name>): <task description>`
 
 **`(P)` markers**: Tasks marked `(P)` in tasks.md indicate they have no inter-dependencies and could theoretically run in parallel. However, kiro-impl processes them sequentially (one at a time) to avoid git conflicts and simplify review. The `(P)` marker is informational for task planning, not an execution directive.
 

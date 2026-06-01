@@ -14,7 +14,7 @@ Resolve or generate a unique feature name from the project description ($ARGUMEN
 1. **Resolve Feature Name**: If $ARGUMENTS names an existing `.kiro/specs/{feature-name}/` directory, use that directory name. Otherwise generate the feature name from the project description.
 2. **Check for Brief**: After resolving the feature name, read `.kiro/specs/{feature-name}/brief.md` if it exists. If no brief exists at the resolved name but a brief-only spec directory clearly matches the request, switch to that directory instead of creating a duplicate spec directory. If multiple brief-only directories could match, ask the user to choose before continuing. The brief contains problem, approach, scope, and constraints from the discovery session. Use this to pre-fill the project description and skip clarification questions that the brief already answers.
 3. **Clarify Intent**: The Project Description in requirements.md must contain three elements: (a) who has the problem, (b) current situation, (c) what should change. If a brief.md exists and covers these, skip to step 4. Otherwise, ask the user to clarify before proceeding. Ask as many questions as needed; do not fill in gaps with your own assumptions.
-4. **Check Uniqueness**: Verify `.kiro/specs/` for naming conflicts. If the directory already exists with only `brief.md` (no `spec.json`), use that directory (discovery created it).
+4. **Check Uniqueness**: Verify `.kiro/specs/` for naming conflicts. If step 1 selected an existing `.kiro/specs/{feature-name}/` directory, use it in place and do not generate a suffixed sibling. If the directory already exists with only `brief.md` (no `spec.json`), use that directory (discovery created it).
 5. **Create Directory**: `.kiro/specs/[feature-name]/` (skip if already exists from discovery)
 6. **Initialize Files Using Templates**:
    - Read `.kiro/settings/templates/specs/init.json`
@@ -24,10 +24,13 @@ Resolve or generate a unique feature name from the project description ($ARGUMEN
      - `{{TIMESTAMP}}` → current ISO 8601 timestamp
      - `{{PROJECT_DESCRIPTION}}` → from brief.md if available, otherwise $ARGUMENTS
      - `ja` → language code (detect from user's input language, default to `en`)
-   - Write `spec.json` and `requirements.md` to spec directory
+   - Write only missing initialization files to the spec directory
+   - If `spec.json` or `requirements.md` already exists, preserve the existing file and do not overwrite it with a template stub
+   - If both `spec.json` and `requirements.md` already exist, stop and report that the spec is already initialized; point to the next appropriate phase instead of rewriting files
 
 ## Important Constraints
 - Do NOT generate requirements, design, or tasks. This skill only creates spec.json and requirements.md.
+- Do NOT overwrite an existing initialized spec. Existing `spec.json` and `requirements.md` are source of truth for resume flows.
 </instructions>
 
 ## Output Description

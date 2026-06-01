@@ -133,6 +133,7 @@ Before writing `tasks.md`, run one lightweight independent sanity review of the 
   - Ask the user: "Tasks generated. Approve and proceed to implementation?"
   - If the user approves:
     - Set `approvals.tasks.approved: true` in spec.json
+    - Set `ready_for_implementation: true` in spec.json
     - Respond: "Tasks approved. Start implementation with `$kiro-impl $1`"
   - If the user wants changes:
     - Keep `approvals.tasks.approved: false`
