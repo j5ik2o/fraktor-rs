@@ -280,6 +280,48 @@ fn apply_incoming_marks_endpoint_form_peer_authority_as_seen() {
 }
 
 #[test]
+fn apply_incoming_keeps_newer_incarnation_endpoint_seen_mapping_after_supersede() {
+  let local = unique_address("node-a", 10);
+  let older_peer = unique_address("node-b", 11);
+  let newer_peer = unique_address("node-b", 12);
+  let mut table = MembershipTable::new(3);
+  table
+    .try_join_with_identity("node-a".to_string(), local.clone(), DataCenter::new("dc-a"), "1.0.0".to_string(), vec![
+      "member".to_string(),
+    ])
+    .expect("local joins");
+  table
+    .try_join_with_identity(
+      "node-b".to_string(),
+      older_peer.clone(),
+      DataCenter::new("dc-a"),
+      "1.0.0".to_string(),
+      vec!["member".to_string()],
+    )
+    .expect("older peer joins");
+  table.drain_events();
+  let current = table.version();
+  let mut coordinator = GossipDisseminationCoordinator::new(table, Some(local.address().to_string()), vec![
+    GossipTransportHandoff::endpoint_for_identity(&newer_peer),
+  ]);
+  let newer_record = NodeRecord::new_with_identity(
+    newer_peer.clone(),
+    DataCenter::new("dc-a"),
+    "node-b".to_string(),
+    NodeStatus::Up,
+    current.next(),
+    "1.0.0".to_string(),
+    vec!["member".to_string()],
+  );
+  let incoming_delta = MembershipDelta::new(current, current.next(), vec![newer_record]);
+
+  coordinator.apply_incoming(&incoming_delta, GossipTransportHandoff::endpoint_for_identity(&newer_peer).as_str());
+
+  assert_eq!(coordinator.seen_digest().observed_version(&newer_peer), Some(current.next()));
+  assert_eq!(coordinator.seen_digest().observed_version(&older_peer), None);
+}
+
+#[test]
 fn disseminate_marks_self_as_seen_in_single_node_cluster() {
   let mut table = MembershipTable::new(3);
   let delta = table

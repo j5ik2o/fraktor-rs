@@ -172,10 +172,10 @@ impl GossipDisseminationCoordinator {
     }
 
     let superseded = self.table.apply_delta(delta.clone());
-    self.index_delta_identities(delta);
     for record in &superseded {
       index_seen_identity(&mut self.seen_identities, record);
     }
+    self.index_delta_identities(delta);
     self.peer_versions.insert(peer.to_string(), delta.to);
     self.inflight_version = delta.to;
     self.vector_clock.observe(peer, delta.to.value());
