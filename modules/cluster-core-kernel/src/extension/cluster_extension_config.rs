@@ -18,6 +18,52 @@ const PUBSUB_CONFIGURATION_MISMATCH_REASON: &str = "pubsub configuration mismatc
 const DOWNING_PROVIDER_KEY_MISMATCH_REASON: &str = "downing provider compatibility key mismatch";
 const SBR_SETTINGS_MISMATCH_REASON: &str = "split brain resolver settings mismatch";
 const SPLIT_BRAIN_RESOLVER_PROVIDER_KEY: &str = "split-brain-resolver";
+const PUBSUB_SUBSCRIBER_TIMEOUT_KEY: &str = "fraktor.cluster.pubsub.subscriber-timeout";
+const PUBSUB_SUSPENDED_TTL_KEY: &str = "fraktor.cluster.pubsub.suspended-ttl";
+const DOWNING_PROVIDER_KEY: &str = "fraktor.cluster.downing-provider.provider-key";
+const SBR_STABLE_AFTER_KEY: &str = "fraktor.cluster.downing-provider.split-brain-resolver.stable-after";
+const SBR_ACTIVE_STRATEGY_KEY: &str = "fraktor.cluster.downing-provider.split-brain-resolver.active-strategy";
+const SBR_DOWN_ALL_WHEN_UNSTABLE_KEY: &str =
+  "fraktor.cluster.downing-provider.split-brain-resolver.down-all-when-unstable";
+const REQUIRED_JOIN_COMPATIBILITY_KEYS: &[&str] =
+  &[PUBSUB_SUBSCRIBER_TIMEOUT_KEY, PUBSUB_SUSPENDED_TTL_KEY, DOWNING_PROVIDER_KEY];
+const CONDITIONAL_JOIN_COMPATIBILITY_KEYS: &[&str] =
+  &[SBR_STABLE_AFTER_KEY, SBR_ACTIVE_STRATEGY_KEY, SBR_DOWN_ALL_WHEN_UNSTABLE_KEY];
+const SENSITIVE_JOIN_COMPATIBILITY_KEYS: &[&str] = &[];
+
+struct JoinCompatibilityCheck {
+  key:           ClusterCompatibilityKey,
+  reason:        &'static str,
+  is_compatible: fn(&ClusterExtensionConfig, &ClusterExtensionConfig) -> bool,
+}
+
+impl JoinCompatibilityCheck {
+  const fn new(
+    key: ClusterCompatibilityKey,
+    reason: &'static str,
+    is_compatible: fn(&ClusterExtensionConfig, &ClusterExtensionConfig) -> bool,
+  ) -> Self {
+    Self { key, reason, is_compatible }
+  }
+}
+
+const JOIN_COMPATIBILITY_CHECKS: &[JoinCompatibilityCheck] = &[
+  JoinCompatibilityCheck::new(
+    ClusterCompatibilityKeyCatalog::PUBSUB,
+    PUBSUB_CONFIGURATION_MISMATCH_REASON,
+    pubsub_configs_are_compatible,
+  ),
+  JoinCompatibilityCheck::new(
+    ClusterCompatibilityKeyCatalog::DOWNING_PROVIDER,
+    DOWNING_PROVIDER_KEY_MISMATCH_REASON,
+    downing_provider_keys_are_compatible,
+  ),
+  JoinCompatibilityCheck::new(
+    ClusterCompatibilityKeyCatalog::SPLIT_BRAIN_RESOLVER_SETTINGS,
+    SBR_SETTINGS_MISMATCH_REASON,
+    split_brain_resolver_settings_are_compatible,
+  ),
+];
 
 /// Configuration applied when installing the cluster extension.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -142,6 +188,42 @@ impl ClusterExtensionConfig {
   pub const fn downing_provider_compatibility(&self) -> &DowningProviderCompatibility {
     &self.downing_provider
   }
+
+  /// Returns non-sensitive configuration keys that must always match before accepting a join.
+  #[must_use]
+  pub const fn required_join_compatibility_keys() -> &'static [&'static str] {
+    REQUIRED_JOIN_COMPATIBILITY_KEYS
+  }
+
+  /// Returns non-sensitive configuration keys that must match only when their provider is active.
+  #[must_use]
+  pub const fn conditional_join_compatibility_keys() -> &'static [&'static str] {
+    CONDITIONAL_JOIN_COMPATIBILITY_KEYS
+  }
+
+  /// Returns configuration keys excluded from advertised join compatibility metadata.
+  #[must_use]
+  pub const fn sensitive_join_compatibility_keys() -> &'static [&'static str] {
+    SENSITIVE_JOIN_COMPATIBILITY_KEYS
+  }
+
+  /// Returns whether the key participates in unconditional join compatibility checks.
+  #[must_use]
+  pub fn is_required_join_compatibility_key(key: &str) -> bool {
+    REQUIRED_JOIN_COMPATIBILITY_KEYS.contains(&key)
+  }
+
+  /// Returns whether the key participates in provider-conditional join compatibility checks.
+  #[must_use]
+  pub fn is_conditional_join_compatibility_key(key: &str) -> bool {
+    CONDITIONAL_JOIN_COMPATIBILITY_KEYS.contains(&key)
+  }
+
+  /// Returns whether the key must not be advertised in join compatibility metadata.
+  #[must_use]
+  pub fn is_sensitive_join_compatibility_key(key: &str) -> bool {
+    SENSITIVE_JOIN_COMPATIBILITY_KEYS.contains(&key)
+  }
 }
 
 impl Default for ClusterExtensionConfig {
@@ -154,26 +236,10 @@ impl JoinConfigCompatChecker for ClusterExtensionConfig {
   fn check_join_compatibility(&self, joining: &ClusterExtensionConfig) -> ConfigValidation {
     let mut reason = String::new();
 
-    if self.pubsub_config != joining.pubsub_config {
-      append_mismatch_reason(&mut reason, ClusterCompatibilityKeyCatalog::PUBSUB, PUBSUB_CONFIGURATION_MISMATCH_REASON);
-    }
-    if self.downing_provider.provider_key() != joining.downing_provider.provider_key() {
-      append_mismatch_reason(
-        &mut reason,
-        ClusterCompatibilityKeyCatalog::DOWNING_PROVIDER,
-        DOWNING_PROVIDER_KEY_MISMATCH_REASON,
-      );
-    }
-    if self.downing_provider.provider_key() == joining.downing_provider.provider_key()
-      && self.downing_provider.provider_key() == SPLIT_BRAIN_RESOLVER_PROVIDER_KEY
-      && self.downing_provider.split_brain_resolver_settings()
-        != joining.downing_provider.split_brain_resolver_settings()
-    {
-      append_mismatch_reason(
-        &mut reason,
-        ClusterCompatibilityKeyCatalog::SPLIT_BRAIN_RESOLVER_SETTINGS,
-        SBR_SETTINGS_MISMATCH_REASON,
-      );
+    for check in JOIN_COMPATIBILITY_CHECKS {
+      if !(check.is_compatible)(self, joining) {
+        append_mismatch_reason(&mut reason, check.key, check.reason);
+      }
     }
 
     if reason.is_empty() { ConfigValidation::Compatible } else { ConfigValidation::Incompatible { reason } }
@@ -187,6 +253,24 @@ fn append_mismatch_reason(reason: &mut String, key: ClusterCompatibilityKey, det
   reason.push_str(key.name());
   reason.push_str(" mismatch: ");
   reason.push_str(detail);
+}
+
+fn pubsub_configs_are_compatible(local: &ClusterExtensionConfig, joining: &ClusterExtensionConfig) -> bool {
+  local.pubsub_config == joining.pubsub_config
+}
+
+fn downing_provider_keys_are_compatible(local: &ClusterExtensionConfig, joining: &ClusterExtensionConfig) -> bool {
+  local.downing_provider.provider_key() == joining.downing_provider.provider_key()
+}
+
+fn split_brain_resolver_settings_are_compatible(
+  local: &ClusterExtensionConfig,
+  joining: &ClusterExtensionConfig,
+) -> bool {
+  local.downing_provider.provider_key() != SPLIT_BRAIN_RESOLVER_PROVIDER_KEY
+    || joining.downing_provider.provider_key() != SPLIT_BRAIN_RESOLVER_PROVIDER_KEY
+    || local.downing_provider.split_brain_resolver_settings()
+      == joining.downing_provider.split_brain_resolver_settings()
 }
 
 fn normalize_roles(mut roles: Vec<String>) -> Vec<String> {
