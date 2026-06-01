@@ -166,7 +166,10 @@ impl MembershipTable {
 
     self.events.push(MembershipEvent::Joined { node_id, authority: record.authority.clone() });
 
-    Ok(MembershipDelta::new(from, self.version, vec![record]))
+    let mut entries = vec![record.clone()];
+    entries.extend(self.supersede_active_incarnations(record.authority.as_str(), entry_key(&record).as_str()));
+
+    Ok(MembershipDelta::new(from, self.version, entries))
   }
 
   /// Marks the authority as leaving (`Exiting`) and then removed.
@@ -376,6 +379,9 @@ impl MembershipTable {
 
     for record in delta.entries {
       let key = entry_key(&record);
+      if record.status.is_active() {
+        self.supersede_active_incarnations(record.authority.as_str(), key.as_str());
+      }
       self.heartbeat_miss_counters.insert(key.clone(), 0);
       self.entries.insert(key, record);
     }
@@ -396,13 +402,7 @@ impl MembershipTable {
   /// Gets a record by authority.
   #[must_use]
   pub fn record(&self, authority: &str) -> Option<&NodeRecord> {
-    self.entries.get(authority).or_else(|| {
-      self
-        .entries
-        .values()
-        .filter(|record| record.authority == authority)
-        .max_by(|left, right| left.join_version.cmp(&right.join_version))
-    })
+    self.entries.get(authority).or_else(|| self.record_for_authority(authority))
   }
 
   /// Drains buffered events.
@@ -418,9 +418,51 @@ impl MembershipTable {
     self
       .entries
       .iter()
-      .filter(|(_, record)| record.authority == authority)
+      .filter(|(_, record)| record.authority == authority && record.status.is_active())
       .max_by(|(_, left), (_, right)| left.join_version.cmp(&right.join_version))
+      .or_else(|| {
+        self
+          .entries
+          .iter()
+          .filter(|(_, record)| record.authority == authority)
+          .max_by(|(_, left), (_, right)| left.join_version.cmp(&right.join_version))
+      })
       .map(|(key, _)| key.clone())
+  }
+
+  fn record_for_authority(&self, authority: &str) -> Option<&NodeRecord> {
+    self
+      .entries
+      .values()
+      .filter(|record| record.authority == authority && record.status.is_active())
+      .max_by(|left, right| left.join_version.cmp(&right.join_version))
+      .or_else(|| {
+        self
+          .entries
+          .values()
+          .filter(|record| record.authority == authority)
+          .max_by(|left, right| left.join_version.cmp(&right.join_version))
+      })
+  }
+
+  fn supersede_active_incarnations(&mut self, authority: &str, replacing_key: &str) -> Vec<NodeRecord> {
+    let keys = self
+      .entries
+      .iter()
+      .filter(|(key, record)| {
+        key.as_str() != replacing_key && record.authority == authority && record.status.is_active()
+      })
+      .map(|(key, _)| key.clone())
+      .collect::<Vec<_>>();
+    let mut superseded = Vec::new();
+    for key in keys {
+      if let Some(record) = self.entries.get_mut(&key) {
+        record.status = NodeStatus::Dead;
+        record.version = self.version;
+        superseded.push(record.clone());
+      }
+    }
+    superseded
   }
 }
 

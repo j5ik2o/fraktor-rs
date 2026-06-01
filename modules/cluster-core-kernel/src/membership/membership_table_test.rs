@@ -94,8 +94,11 @@ fn join_with_identity_keeps_same_address_different_uid_as_distinct_incarnation()
 
   let snapshot = table.snapshot();
   assert_eq!(snapshot.entries.len(), 2);
-  assert!(snapshot.entries.iter().any(|record| record.unique_address == first));
-  assert!(snapshot.entries.iter().any(|record| record.unique_address == second));
+  assert!(snapshot.entries.iter().any(|record| record.unique_address == first && record.status == NodeStatus::Dead));
+  assert!(
+    snapshot.entries.iter().any(|record| record.unique_address == second && record.status == NodeStatus::Joining)
+  );
+  assert_eq!(table.record("cluster@n1:4050").expect("record should resolve latest active").unique_address, second);
 }
 
 #[test]
@@ -177,6 +180,38 @@ fn join_after_gossip_delta_rejects_same_authority_conflict() {
     requested_node_id: "node-2".to_string(),
   });
   assert_eq!(receiver.snapshot().entries.len(), 1);
+}
+
+#[test]
+fn gossip_delta_supersedes_previous_active_incarnation() {
+  let mut table = MembershipTable::new(3);
+  let address = Address::new("cluster", "n1", 4050);
+  let first = UniqueAddress::new(address.clone(), 10);
+  let second = UniqueAddress::new(address, 11);
+  table
+    .try_join_with_identity("node-1".to_string(), first.clone(), DataCenter::new("dc-east"), "1.0.0".to_string(), vec![
+      "backend".to_string(),
+    ])
+    .expect("first incarnation joins");
+  table.mark_weakly_up("cluster@n1:4050").expect("weakly up").expect("delta");
+  table.mark_up("cluster@n1:4050").expect("up").expect("delta");
+
+  let version = table.version();
+  let record = crate::membership::NodeRecord::new_with_identity(
+    second.clone(),
+    DataCenter::new("dc-east"),
+    "node-1".to_string(),
+    NodeStatus::Joining,
+    version.next(),
+    "1.0.1".to_string(),
+    vec!["backend".to_string()],
+  );
+  table.apply_delta(MembershipDelta::new(version, version.next(), vec![record]));
+
+  let snapshot = table.snapshot();
+  assert_eq!(snapshot.entries.len(), 2);
+  assert!(snapshot.entries.iter().any(|record| record.unique_address == first && record.status == NodeStatus::Dead));
+  assert_eq!(table.record("cluster@n1:4050").expect("record should resolve active incarnation").unique_address, second);
 }
 
 #[test]

@@ -558,7 +558,7 @@ fn reachability_snapshot_tracks_suspect_without_advertised_address() {
 }
 
 #[test]
-fn gossip_delta_status_change_uses_matching_unique_address_previous_state() {
+fn gossip_delta_new_incarnation_removes_previous_active_from_current_state() {
   let mut table = MembershipTable::new(3);
   let address = Address::new("cluster", "node-a", 2552);
   let first = fraktor_remote_core_rs::address::UniqueAddress::new(address.clone(), 10);
@@ -574,34 +574,34 @@ fn gossip_delta_status_change_uses_matching_unique_address_previous_state() {
     .expect("first incarnation joins");
   table.mark_weakly_up("cluster@node-a:2552").expect("first weakly up").expect("delta");
   table.mark_up("cluster@node-a:2552").expect("first up").expect("delta");
-  table
-    .try_join_with_identity(
-      "node-1".to_string(),
-      second,
-      crate::membership::DataCenter::default(),
-      "1.0.1".to_string(),
-      vec![],
-    )
-    .expect("second incarnation joins");
-  table.mark_suspect("cluster@node-a:2552").expect("second suspect").expect("delta");
-
   let version = table.version();
-  let mut first_record =
-    table.snapshot().entries.into_iter().find(|record| record.unique_address == first).expect("first record");
-  first_record.status = NodeStatus::Suspect;
-  first_record.version = version.next();
-  let delta = MembershipDelta::new(version, version.next(), vec![first_record]);
+  let second_record = NodeRecord::new_with_identity(
+    second.clone(),
+    crate::membership::DataCenter::default(),
+    "node-1".to_string(),
+    NodeStatus::Joining,
+    version.next(),
+    "1.0.1".to_string(),
+    vec![],
+  );
+  let delta = MembershipDelta::new(version, version.next(), vec![second_record]);
 
   let mut coordinator = MembershipCoordinator::new(base_config(), local_cluster_config(), table, registry(1.0));
   coordinator.start_member().unwrap();
 
   let outcome = coordinator.handle_gossip_delta("peer", &delta, now(6)).unwrap();
+  let state = outcome
+    .member_events
+    .iter()
+    .find_map(
+      |event| {
+        if let ClusterEvent::CurrentClusterState { state, .. } = event { Some(state.clone()) } else { None }
+      },
+    )
+    .expect("current cluster state");
 
-  assert!(outcome.member_events.iter().any(|event| matches!(
-    event,
-    ClusterEvent::MemberStatusChanged { authority, from: NodeStatus::Up, to: NodeStatus::Suspect, .. }
-      if authority == "cluster@node-a:2552"
-  )));
+  assert!(!state.members.iter().any(|record| record.unique_address == first));
+  assert!(state.members.iter().any(|record| record.unique_address == second));
 }
 
 #[test]
