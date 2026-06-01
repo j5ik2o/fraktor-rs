@@ -77,9 +77,11 @@ If multi-agent is not available, execute features in the wave sequentially.
 
 **After all sub-agents in the wave complete**:
 1. Verify each feature has: spec.json, requirements.md, design.md, tasks.md
-2. If any feature failed, report the error and continue with features that succeeded
-3. Display wave completion: "Wave N complete: [features]. Files verified."
-4. Proceed to next wave
+2. Mark a feature as succeeded only when all required files exist and the sub-agent reported completion.
+3. If any feature failed, report the failed feature and error, then recompute remaining waves using only completed roadmap specs and succeeded features from earlier waves as satisfied dependencies.
+4. If any downstream feature depends on a failed feature, do not dispatch that downstream feature. Report it as blocked and stop before the next wave so the roadmap or failed upstream spec can be repaired.
+5. Display wave completion: "Wave N complete: [features]. Files verified."
+6. Proceed to the next wave only when every dependency for every feature in that wave is backed by a completed roadmap item or a succeeded earlier-wave feature.
 
 ## Step 4: Cross-Spec Review
 
