@@ -1,0 +1,77 @@
+# 実装計画
+
+- [ ] 1. Downing/SBR 評価入力の土台を作る
+- [ ] 1.1 decision context と member evidence を定義する
+  - membership snapshot、reachability evidence、evaluation time、explicit down input を同じ評価入力として表現する。
+  - `WeaklyUp`、unreachable、terminated、data center を失わず evaluator に渡せる状態にする。
+  - evidence 不足時に defer reason を生成できることを unit test で確認する。
+  - _Requirements: 1.1, 1.2, 1.3, 1.4_
+  - _Boundary: DowningDecisionContext_
+- [ ] 1.2 既存 downing input から decision context への接続を追加する
+  - explicit down は membership snapshot を要求しない入力として扱う。
+  - failure observation は upstream reachability evidence がある場合に richer context へ変換できるようにする。
+  - 既存 `NoopDowningProvider` の振る舞いが変わらないことを regression test で確認する。
+  - _Requirements: 1.2, 1.3, 1.5_
+  - _Boundary: DowningDecisionContext_
+
+- [ ] 2. Split Brain Resolver strategy evaluation を実装する
+- [ ] 2.1 strategy decision と trace vocabulary を定義する (P)
+  - keep/down/defer/all-down、対象 partition、tie-break、stable-after、down-all timeout の reason を表現する。
+  - simple `DowningDecision` へ変換できる trace 付き decision として検証する。
+  - strategy decision の unit test が各 reason を観測できる状態にする。
+  - _Requirements: 2.1, 2.3, 2.4, 2.5_
+  - _Boundary: DowningStrategyDecision_
+- [ ] 2.2 SBR evaluator の core strategy を実装する
+  - `KeepMajority`、`StaticQuorum`、`KeepOldest`、`DownAll` の evaluation を settings と context から返す。
+  - stable-after 未達、evidence 不足、majority tie は member state を変更せず defer にする。
+  - evaluator tests で strategy ごとの keep/down/defer と trace が確認できる状態にする。
+  - _Requirements: 1.2, 2.1, 2.2, 2.3, 2.4, 2.5_
+  - _Boundary: SplitBrainResolver_
+  - _Depends: 1.1, 2.1_
+
+- [ ] 3. Lease-based majority contract を追加する
+- [ ] 3.1 lease majority port と outcome vocabulary を定義する (P)
+  - acquired、denied、unavailable、unknown、backend missing を区別する。
+  - core trait が backend の network I/O、retry、host clock ownership を要求しないことを型境界で確認する。
+  - outcome ごとの decision trace mapping を unit test で確認する。
+  - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.5_
+  - _Boundary: LeaseMajorityPort_
+- [ ] 3.2 `LeaseMajority` strategy を SBR evaluator に接続する
+  - lease acquired の場合だけ majority partition を keep decision にする。
+  - denied、unavailable、unknown、backend missing の場合は observable reason を持つ defer/failure にする。
+  - lease majority tests で member state を変更せず decision だけが返ることを確認する。
+  - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.5_
+  - _Boundary: SplitBrainResolver, LeaseMajorityPort_
+  - _Depends: 2.2, 3.1_
+
+- [ ] 4. Provider-facing SBR integration を接続する
+- [ ] 4.1 core provider hook と compatibility metadata を追加する
+  - provider key、SBR settings、strategy identity を compatibility metadata として公開する。
+  - `DowningProvider` hook が SBR evaluator を呼び、trace 付き decision を simple decision または error に変換する。
+  - metadata mismatch と decision failure が `ClusterProviderError` として観測できることを test で確認する。
+  - _Requirements: 4.1, 4.2, 4.4, 4.5_
+  - _Boundary: SplitBrainResolverProviderHook_
+  - _Depends: 2.2, 3.2_
+- [ ] 4.2 std provider lifecycle と lease backend binding を追加する
+  - std provider が lifecycle start 時に SBR hook と lease backend adapter を構成する。
+  - stop/drop 時に pending lease operation と provider-owned state が残らないことを test で確認する。
+  - std 側が strategy semantics を再実装せず core hook へ委譲していることを review 可能な構造にする。
+  - _Requirements: 3.5, 4.2, 4.3, 4.5_
+  - _Boundary: StdSplitBrainResolverProvider_
+  - _Depends: 4.1_
+
+- [ ] 5. 境界と gap evidence を検証する
+- [ ] 5.1 downstream scope を吸収していないことを確認する
+  - gossip heartbeat、discovery provider、pubsub mediator、serialization contract の実装をこの変更に含めない。
+  - upstream membership reachability の型名や semantics が変わった場合に SBR spec の revalidation が必要であることを確認する。
+  - boundary review で変更対象が downing/SBR と std provider binding に収まっている状態にする。
+  - _Requirements: 1.5, 5.1, 5.2, 5.3, 5.4_
+  - _Boundary: ScopeGuard_
+  - _Depends: 4.2_
+- [ ] 5.2 downing/SBR follow-up の evidence を更新して targeted verification を通す
+  - gap analysis の更新を downing/SBR decision model、SplitBrainResolver、DowningStrategy、lease-based majority、provider-facing SBR integration に限定する。
+  - 対象 crate の unit tests と必要な no-std / dylint check が通る状態にする。
+  - generated evidence と test result から active follow-up の完了範囲が追跡できる状態にする。
+  - _Requirements: 5.4, 5.5_
+  - _Boundary: GapAnalysisUpdate_
+  - _Depends: 5.1_

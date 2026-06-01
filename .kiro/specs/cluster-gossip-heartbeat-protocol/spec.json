@@ -1,0 +1,22 @@
+{
+  "feature_name": "cluster-gossip-heartbeat-protocol",
+  "created_at": "2026-05-31T16:57:05Z",
+  "updated_at": "2026-05-31T16:57:05Z",
+  "language": "ja",
+  "phase": "tasks-generated",
+  "approvals": {
+    "requirements": {
+      "generated": true,
+      "approved": true
+    },
+    "design": {
+      "generated": true,
+      "approved": true
+    },
+    "tasks": {
+      "generated": true,
+      "approved": true
+    }
+  },
+  "ready_for_implementation": true
+}

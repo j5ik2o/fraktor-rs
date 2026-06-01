@@ -4,15 +4,14 @@
 #[path = "cluster_extension_config_test.rs"]
 mod tests;
 
-use alloc::{
-  string::{String, ToString},
-  vec::Vec,
-};
+use alloc::{string::String, vec::Vec};
 use core::time::Duration;
 
 use crate::{
-  ClusterTopology, ConfigValidation, JoinConfigCompatChecker, downing_provider::DowningProviderCompatibility,
+  ClusterTopology, ConfigValidation, JoinConfigCompatChecker,
+  downing_provider::DowningProviderCompatibility,
   pub_sub::PubSubConfig,
+  topology::{ClusterCompatibilityKey, ClusterCompatibilityKeyCatalog},
 };
 
 const PUBSUB_CONFIGURATION_MISMATCH_REASON: &str = "pubsub configuration mismatch";
@@ -33,31 +32,37 @@ const CONDITIONAL_JOIN_COMPATIBILITY_KEYS: &[&str] =
 const SENSITIVE_JOIN_COMPATIBILITY_KEYS: &[&str] = &[];
 
 struct JoinCompatibilityCheck {
+  key:           ClusterCompatibilityKey,
   reason:        &'static str,
   is_compatible: fn(&ClusterExtensionConfig, &ClusterExtensionConfig) -> bool,
 }
 
 impl JoinCompatibilityCheck {
   const fn new(
+    key: ClusterCompatibilityKey,
     reason: &'static str,
     is_compatible: fn(&ClusterExtensionConfig, &ClusterExtensionConfig) -> bool,
   ) -> Self {
-    Self { reason, is_compatible }
-  }
-
-  fn check(&self, local: &ClusterExtensionConfig, joining: &ClusterExtensionConfig) -> ConfigValidation {
-    if (self.is_compatible)(local, joining) {
-      ConfigValidation::Compatible
-    } else {
-      ConfigValidation::Incompatible { reason: self.reason.to_string() }
-    }
+    Self { key, reason, is_compatible }
   }
 }
 
 const JOIN_COMPATIBILITY_CHECKS: &[JoinCompatibilityCheck] = &[
-  JoinCompatibilityCheck::new(PUBSUB_CONFIGURATION_MISMATCH_REASON, pubsub_configs_are_compatible),
-  JoinCompatibilityCheck::new(DOWNING_PROVIDER_KEY_MISMATCH_REASON, downing_provider_keys_are_compatible),
-  JoinCompatibilityCheck::new(SBR_SETTINGS_MISMATCH_REASON, split_brain_resolver_settings_are_compatible),
+  JoinCompatibilityCheck::new(
+    ClusterCompatibilityKeyCatalog::PUBSUB,
+    PUBSUB_CONFIGURATION_MISMATCH_REASON,
+    pubsub_configs_are_compatible,
+  ),
+  JoinCompatibilityCheck::new(
+    ClusterCompatibilityKeyCatalog::DOWNING_PROVIDER,
+    DOWNING_PROVIDER_KEY_MISMATCH_REASON,
+    downing_provider_keys_are_compatible,
+  ),
+  JoinCompatibilityCheck::new(
+    ClusterCompatibilityKeyCatalog::SPLIT_BRAIN_RESOLVER_SETTINGS,
+    SBR_SETTINGS_MISMATCH_REASON,
+    split_brain_resolver_settings_are_compatible,
+  ),
 ];
 
 /// Configuration applied when installing the cluster extension.
@@ -229,14 +234,25 @@ impl Default for ClusterExtensionConfig {
 
 impl JoinConfigCompatChecker for ClusterExtensionConfig {
   fn check_join_compatibility(&self, joining: &ClusterExtensionConfig) -> ConfigValidation {
+    let mut reason = String::new();
+
     for check in JOIN_COMPATIBILITY_CHECKS {
-      let validation = check.check(self, joining);
-      if let ConfigValidation::Incompatible { .. } = validation {
-        return validation;
+      if !(check.is_compatible)(self, joining) {
+        append_mismatch_reason(&mut reason, check.key, check.reason);
       }
     }
-    ConfigValidation::Compatible
+
+    if reason.is_empty() { ConfigValidation::Compatible } else { ConfigValidation::Incompatible { reason } }
   }
+}
+
+fn append_mismatch_reason(reason: &mut String, key: ClusterCompatibilityKey, detail: &str) {
+  if !reason.is_empty() {
+    reason.push_str("; ");
+  }
+  reason.push_str(key.name());
+  reason.push_str(" mismatch: ");
+  reason.push_str(detail);
 }
 
 fn pubsub_configs_are_compatible(local: &ClusterExtensionConfig, joining: &ClusterExtensionConfig) -> bool {

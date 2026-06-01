@@ -1,5 +1,12 @@
 # AGENTS.md
 
+- すべて日本語でやりとりすること
+
+## Review exclusion settings
+
+- 人間の明示的な許可なしに `.coderabbit.yml` / `.coderabbit.yaml` を変更しないこと。
+- `.coderabbit.yml` / `.coderabbit.yaml` の `reviews.path_filters` に書かれた対象はレビューしたり変更しないこと。
+
 Behavioral guidelines to reduce common LLM coding mistakes. Merge with project-specific instructions as needed.
 
 **Tradeoff:** These guidelines bias toward caution over speed. For trivial tasks, use judgment.
@@ -64,8 +71,8 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 
 Read these rules before implementing:
 
-.agents/rules/**/*.md 
+.agents/rules/**/*.md
 
 ---
 
-**These guidelines are working if:** fewer unnecessary changes in diffs, fewer rewrites due to overcomplication, and clarifying questions come before implementation rather than after mistakes.
+ref @CC-SDD-CODEX.md

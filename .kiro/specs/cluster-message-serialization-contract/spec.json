@@ -1,0 +1,22 @@
+{
+  "feature_name": "cluster-message-serialization-contract",
+  "created_at": "2026-05-31T17:13:05Z",
+  "updated_at": "2026-05-31T17:13:05Z",
+  "language": "ja",
+  "phase": "tasks-generated",
+  "approvals": {
+    "requirements": {
+      "generated": true,
+      "approved": true
+    },
+    "design": {
+      "generated": true,
+      "approved": true
+    },
+    "tasks": {
+      "generated": true,
+      "approved": true
+    }
+  },
+  "ready_for_implementation": true
+}
