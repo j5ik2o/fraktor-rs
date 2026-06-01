@@ -26,7 +26,7 @@
   - _Boundary: WeaklyUpStatus_
   - _Depends: 1_
 
-- [ ] 4. Reachability matrix を membership core に追加する
+- [x] 4. Reachability matrix を membership core に追加する
   - observer / subject / status / version を持つ reachability record を保持できるようにする。
   - unreachable、reachable、terminated update と observer version の進行を実装する。
   - reachable が default 状態の場合は不要 record が残らず、terminated が unreachable より強い aggregate status になることを確認する。
