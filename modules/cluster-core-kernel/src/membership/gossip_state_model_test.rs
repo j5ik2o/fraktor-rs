@@ -93,6 +93,45 @@ fn full_state_merge_uses_stable_tie_breaker_for_equal_version_status_conflict() 
 }
 
 #[test]
+fn full_state_merge_prefers_ready_for_shutdown_over_preparing() {
+  let identity = unique_address("node-a", 10);
+  let preparing = state(2, vec![record(identity.clone(), NodeStatus::PreparingForShutdown, 2)]);
+  let ready = state(2, vec![record(identity.clone(), NodeStatus::ReadyForShutdown, 2)]);
+
+  let mut preparing_first = GossipStateModel::new(preparing.clone());
+  let preparing_outcome = preparing_first.merge(ready.clone());
+
+  let mut ready_first = GossipStateModel::new(ready);
+  let ready_outcome = ready_first.merge(preparing);
+
+  assert_eq!(preparing_first.snapshot(), ready_first.snapshot());
+  assert_eq!(preparing_first.snapshot().membership.entries[0].status, NodeStatus::ReadyForShutdown);
+  assert_eq!(preparing_outcome.conflicts[0].retained.status, NodeStatus::ReadyForShutdown);
+  assert_eq!(ready_outcome.conflicts[0].retained.status, NodeStatus::ReadyForShutdown);
+}
+
+#[test]
+fn full_state_merge_supersedes_older_active_incarnation_for_same_authority() {
+  let older = unique_address("node-a", 10);
+  let newer = unique_address("node-a", 11);
+  let local = state(2, vec![record(older.clone(), NodeStatus::Up, 2)]);
+  let remote = state(3, vec![record(newer.clone(), NodeStatus::Up, 3)]);
+
+  let mut model = GossipStateModel::new(local);
+  let outcome = model.merge(remote);
+
+  let entries = &model.snapshot().membership.entries;
+  assert_eq!(entries.len(), 2);
+  assert!(entries.iter().any(|record| record.unique_address == newer && record.status == NodeStatus::Up));
+  assert!(entries.iter().any(|record| record.unique_address == older && record.status == NodeStatus::Dead));
+  assert_eq!(outcome.stale_records_suppressed.len(), 1);
+  assert_eq!(
+    model.snapshot().tombstones.get(&older).expect("older incarnation should be tombstoned").version,
+    MembershipVersion::new(3)
+  );
+}
+
+#[test]
 fn tombstone_suppresses_stale_active_reappearance() {
   let identity = unique_address("node-a", 10);
   let local = state(3, vec![record(identity.clone(), NodeStatus::Removed, 3)]);

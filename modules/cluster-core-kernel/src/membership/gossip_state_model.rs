@@ -66,6 +66,34 @@ impl GossipStateModel {
         outcome.stale_records_suppressed.push(remote_record);
         continue;
       }
+      if remote_record.status.is_active() {
+        if records.values().any(|record| {
+          record.unique_address != remote_record.unique_address
+            && record.authority == remote_record.authority
+            && record.status.is_active()
+            && record.join_version > remote_record.join_version
+        }) {
+          outcome.stale_records_suppressed.push(remote_record);
+          continue;
+        }
+        let superseded_keys = records
+          .iter()
+          .filter(|(_, record)| {
+            record.unique_address != remote_record.unique_address
+              && record.authority == remote_record.authority
+              && record.status.is_active()
+              && record.join_version < remote_record.join_version
+          })
+          .map(|(key, _)| key.clone())
+          .collect::<Vec<_>>();
+        for key in superseded_keys {
+          if let Some(record) = records.get_mut(&key) {
+            record.status = NodeStatus::Dead;
+            record.version = remote_record.version;
+            outcome.stale_records_suppressed.push(record.clone());
+          }
+        }
+      }
 
       match records.get(&remote_record.unique_address).cloned() {
         | Some(local_record) => {
@@ -165,8 +193,8 @@ const fn status_rank(status: NodeStatus) -> u8 {
     | NodeStatus::Removed => 8,
     | NodeStatus::Exiting => 7,
     | NodeStatus::Leaving => 6,
-    | NodeStatus::PreparingForShutdown => 5,
-    | NodeStatus::ReadyForShutdown => 4,
+    | NodeStatus::ReadyForShutdown => 5,
+    | NodeStatus::PreparingForShutdown => 4,
     | NodeStatus::Suspect => 3,
     | NodeStatus::Up => 2,
     | NodeStatus::WeaklyUp => 1,

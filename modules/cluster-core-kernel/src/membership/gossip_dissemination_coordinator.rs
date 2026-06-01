@@ -7,8 +7,8 @@ use alloc::{
 };
 
 use super::{
-  GossipEvent, GossipOutbound, GossipSeenDigest, GossipState, MembershipDelta, MembershipTable, MembershipVersion,
-  NodeRecord, VectorClock,
+  GossipEvent, GossipOutbound, GossipSeenDigest, GossipState, GossipTransportHandoff, MembershipDelta, MembershipTable,
+  MembershipVersion, NodeRecord, VectorClock,
 };
 
 #[cfg(test)]
@@ -210,10 +210,21 @@ impl GossipDisseminationCoordinator {
     let Some(authority) = authority else {
       return;
     };
-    let Some(record) = self.table.record(authority.as_str()) else {
+    if let Some(record) = self.table.record(authority.as_str()) {
+      self.seen_digest.mark_seen(record.unique_address.clone(), version);
       return;
-    };
-    self.seen_digest.mark_seen(record.unique_address.clone(), version);
+    }
+
+    if let Some(identity) = self
+      .table
+      .snapshot()
+      .entries
+      .into_iter()
+      .find(|record| GossipTransportHandoff::endpoint_for_identity(&record.unique_address) == authority)
+      .map(|record| record.unique_address)
+    {
+      self.seen_digest.mark_seen(identity, version);
+    }
   }
 }
 

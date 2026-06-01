@@ -3,8 +3,8 @@ use alloc::{string::ToString, vec::Vec};
 use fraktor_remote_core_rs::address::{Address, UniqueAddress};
 
 use crate::membership::{
-  DataCenter, GossipDisseminationCoordinator, GossipEvent, GossipOutbound, GossipState, MembershipDelta,
-  MembershipTable, MembershipVersion, NodeRecord, NodeStatus,
+  DataCenter, GossipDisseminationCoordinator, GossipEvent, GossipOutbound, GossipState, GossipTransportHandoff,
+  MembershipDelta, MembershipTable, MembershipVersion, NodeRecord, NodeStatus,
 };
 
 fn unique_address(host: &str, uid: u64) -> UniqueAddress {
@@ -251,6 +251,32 @@ fn seen_digest_does_not_promote_old_seen_peer_to_new_incoming_version() {
   assert_eq!(digest.observed_version(&peer_b), Some(version.next()));
   assert_eq!(digest.observed_version(&peer_c), Some(version.next().next()));
   assert!(!digest.has_seen_all(&[local, peer_b, peer_c], version.next().next()));
+}
+
+#[test]
+fn apply_incoming_marks_endpoint_form_peer_authority_as_seen() {
+  let local = unique_address("node-a", 10);
+  let peer = unique_address("node-b", 11);
+  let mut table = MembershipTable::new(3);
+  table
+    .try_join_with_identity("node-a".to_string(), local.clone(), DataCenter::new("dc-a"), "1.0.0".to_string(), vec![
+      "member".to_string(),
+    ])
+    .expect("local joins");
+  table
+    .try_join_with_identity("node-b".to_string(), peer.clone(), DataCenter::new("dc-a"), "1.0.0".to_string(), vec![
+      "member".to_string(),
+    ])
+    .expect("peer joins");
+  table.drain_events();
+  let current = table.version();
+  let mut coordinator =
+    GossipDisseminationCoordinator::new(table, Some(local.address().to_string()), vec![peer.address().to_string()]);
+  let incoming_delta = MembershipDelta::new(current, current.next(), Vec::new());
+
+  coordinator.apply_incoming(&incoming_delta, GossipTransportHandoff::endpoint_for_identity(&peer).as_str());
+
+  assert_eq!(coordinator.seen_digest().observed_version(&peer), Some(current.next()));
 }
 
 #[test]
