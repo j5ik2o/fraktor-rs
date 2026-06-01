@@ -44,7 +44,7 @@
   - _Boundary: CrossDcHeartbeat_
   - _Depends: 4_
 
-- [ ] 6. std transport handoff を envelope-aware にする
+- [x] 6. std transport handoff を envelope-aware にする
   - std transport handoff が payload kind、from/to identity、peer mapping を保持するようにする。
   - unknown payload kind、invalid identity、unknown peer が transport failure として観測できる。
   - `TokioGossipTransport` が endpoint mapping と envelope roundtrip を保持し、core merge semantics を所有しない。
