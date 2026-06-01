@@ -1,6 +1,6 @@
 # 実装計画
 
-- [ ] 1. member identity と data center の土台を追加する
+- [x] 1. member identity と data center の土台を追加する
   - membership record が address + uid の identity を保持し、同じ address の別 uid を別 incarnation として扱えるようにする。
   - default data center と explicit data center を区別できる membership primitive を追加する。
   - cluster core が remote identity primitive を使っても `no_std` 境界を維持できることを確認する。

@@ -42,4 +42,9 @@ pub enum MembershipError {
     /// Human-readable incompatibility reason.
     reason: String,
   },
+  /// Join rejected because the unique address still carries the unconfirmed UID sentinel.
+  UnconfirmedIdentity {
+    /// Unique address string that still has an unconfirmed UID.
+    unique_address: String,
+  },
 }

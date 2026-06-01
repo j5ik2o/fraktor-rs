@@ -1,6 +1,7 @@
 //! Membership management, gossip dissemination, and node lifecycle.
 
 mod current_cluster_state;
+mod data_center;
 mod gossip_dissemination_coordinator;
 mod gossip_event;
 mod gossip_outbound;
@@ -30,6 +31,7 @@ mod quarantine_table;
 mod vector_clock;
 
 pub use current_cluster_state::CurrentClusterState;
+pub use data_center::DataCenter;
 pub use gossip_dissemination_coordinator::GossipDisseminationCoordinator;
 pub use gossip_event::GossipEvent;
 pub use gossip_outbound::GossipOutbound;

@@ -1,6 +1,7 @@
 use alloc::{string::String, vec};
 
-use fraktor_cluster_core_kernel_rs::membership::{MembershipVersion, NodeRecord, NodeStatus};
+use fraktor_cluster_core_kernel_rs::membership::{DataCenter, MembershipVersion, NodeRecord, NodeStatus};
+use fraktor_remote_core_rs::address::{Address, UniqueAddress};
 
 use super::GossipWireNodeRecord;
 
@@ -25,16 +26,41 @@ fn to_record_preserves_app_version_roles_and_exiting_status() {
 #[test]
 fn to_record_returns_none_for_unknown_status_code() {
   let wire = GossipWireNodeRecord {
-    node_id:      String::from("node-1"),
-    authority:    String::from("n1:4050"),
-    status:       99,
-    version:      1,
-    join_version: 1,
-    app_version:  String::from("1.0.0"),
-    roles:        vec![String::from("role-a")],
+    node_id:       String::from("node-1"),
+    authority:     String::from("n1:4050"),
+    unique_system: String::from("cluster"),
+    unique_host:   String::from("n1"),
+    unique_port:   4050,
+    unique_uid:    42,
+    data_center:   String::from("dc-east"),
+    status:        99,
+    version:       1,
+    join_version:  1,
+    app_version:   String::from("1.0.0"),
+    roles:         vec![String::from("role-a")],
   };
 
   assert!(wire.to_record().is_none());
+}
+
+#[test]
+fn to_record_preserves_unique_address_and_data_center() {
+  let identity = UniqueAddress::new(Address::new("cluster", "n1", 4050), 42);
+  let data_center = DataCenter::new("dc-east");
+  let record = NodeRecord::new_with_identity(
+    identity.clone(),
+    data_center.clone(),
+    String::from("node-1"),
+    NodeStatus::Up,
+    MembershipVersion::new(4),
+    String::from("1.0.0"),
+    vec![String::from("role-a")],
+  );
+
+  let decoded = GossipWireNodeRecord::from_record(&record).to_record().expect("decode");
+
+  assert_eq!(decoded.unique_address, identity);
+  assert_eq!(decoded.data_center, data_center);
 }
 
 #[test]

@@ -7,8 +7,11 @@ use alloc::{
   vec::Vec,
 };
 
+use fraktor_remote_core_rs::address::UniqueAddress;
+
 use super::{
-  MembershipDelta, MembershipError, MembershipEvent, MembershipSnapshot, MembershipVersion, NodeRecord, NodeStatus,
+  DataCenter, MembershipDelta, MembershipError, MembershipEvent, MembershipSnapshot, MembershipVersion, NodeRecord,
+  NodeStatus,
 };
 
 #[cfg(test)]
@@ -93,13 +96,70 @@ impl MembershipTable {
     Ok(MembershipDelta::new(from, self.version, vec![record]))
   }
 
+  /// Attempts to join the cluster with a confirmed unique address and data center.
+  ///
+  /// # Errors
+  ///
+  /// Returns `MembershipError::UnconfirmedIdentity` when the unique address UID is `0`.
+  pub fn try_join_with_identity(
+    &mut self,
+    node_id: String,
+    unique_address: UniqueAddress,
+    data_center: DataCenter,
+    app_version: String,
+    roles: Vec<String>,
+  ) -> Result<MembershipDelta, MembershipError> {
+    if unique_address.uid() == 0 {
+      return Err(MembershipError::UnconfirmedIdentity { unique_address: unique_address.to_string() });
+    }
+
+    let key = unique_address.to_string();
+    if let Some(existing) = self.entries.get_mut(&key) {
+      if matches!(existing.status, NodeStatus::Removed | NodeStatus::Dead) {
+        let from = self.version;
+        self.version = self.version.next();
+        existing.status = NodeStatus::Joining;
+        existing.version = self.version;
+        existing.join_version = self.version;
+        existing.data_center = data_center;
+        existing.app_version = app_version;
+        existing.roles = roles;
+        return Ok(MembershipDelta::new(from, self.version, vec![existing.clone()]));
+      }
+
+      return Ok(MembershipDelta::new(self.version, self.version, vec![existing.clone()]));
+    }
+
+    let from = self.version;
+    self.version = self.version.next();
+
+    let record = NodeRecord::new_with_identity(
+      unique_address,
+      data_center,
+      node_id.clone(),
+      NodeStatus::Joining,
+      self.version,
+      app_version,
+      roles,
+    );
+    self.heartbeat_miss_counters.insert(key.clone(), 0);
+    self.entries.insert(key, record.clone());
+
+    self.events.push(MembershipEvent::Joined { node_id, authority: record.authority.clone() });
+
+    Ok(MembershipDelta::new(from, self.version, vec![record]))
+  }
+
   /// Marks the authority as leaving (`Exiting`) and then removed.
   ///
   /// # Errors
   ///
   /// Returns `MembershipError::UnknownAuthority` if the authority is not found in the table.
   pub fn mark_left(&mut self, authority: &str) -> Result<MembershipDelta, MembershipError> {
-    let Some(record) = self.entries.get_mut(authority) else {
+    let Some(key) = self.entry_key_for_authority(authority) else {
+      return Err(MembershipError::UnknownAuthority { authority: authority.to_string() });
+    };
+    let Some(record) = self.entries.get_mut(&key) else {
       return Err(MembershipError::UnknownAuthority { authority: authority.to_string() });
     };
 
@@ -128,13 +188,14 @@ impl MembershipTable {
 
   /// Increments heartbeat misses; returns a delta when it becomes suspect.
   pub fn mark_heartbeat_miss(&mut self, authority: &str) -> Option<MembershipDelta> {
-    let record = self.entries.get_mut(authority)?;
+    let key = self.entry_key_for_authority(authority)?;
+    let record = self.entries.get_mut(&key)?;
 
     if !record.status.is_active() {
       return None;
     }
 
-    let counter = self.heartbeat_miss_counters.entry(authority.to_string()).or_insert(0);
+    let counter = self.heartbeat_miss_counters.entry(key).or_insert(0);
     *counter += 1;
 
     if *counter < self.max_heartbeat_misses {
@@ -160,7 +221,10 @@ impl MembershipTable {
   ///
   /// Returns `MembershipError::UnknownAuthority` if the authority is not found.
   pub fn mark_up(&mut self, authority: &str) -> Result<Option<MembershipDelta>, MembershipError> {
-    let Some(record) = self.entries.get_mut(authority) else {
+    let Some(key) = self.entry_key_for_authority(authority) else {
+      return Err(MembershipError::UnknownAuthority { authority: authority.to_string() });
+    };
+    let Some(record) = self.entries.get_mut(&key) else {
       return Err(MembershipError::UnknownAuthority { authority: authority.to_string() });
     };
 
@@ -190,7 +254,10 @@ impl MembershipTable {
   ///
   /// Returns `MembershipError::UnknownAuthority` if the authority is not found.
   pub fn mark_suspect(&mut self, authority: &str) -> Result<Option<MembershipDelta>, MembershipError> {
-    let Some(record) = self.entries.get_mut(authority) else {
+    let Some(key) = self.entry_key_for_authority(authority) else {
+      return Err(MembershipError::UnknownAuthority { authority: authority.to_string() });
+    };
+    let Some(record) = self.entries.get_mut(&key) else {
       return Err(MembershipError::UnknownAuthority { authority: authority.to_string() });
     };
 
@@ -220,7 +287,10 @@ impl MembershipTable {
   ///
   /// Returns `MembershipError::UnknownAuthority` if the authority is not found.
   pub fn mark_dead(&mut self, authority: &str) -> Result<Option<MembershipDelta>, MembershipError> {
-    let Some(record) = self.entries.get_mut(authority) else {
+    let Some(key) = self.entry_key_for_authority(authority) else {
+      return Err(MembershipError::UnknownAuthority { authority: authority.to_string() });
+    };
+    let Some(record) = self.entries.get_mut(&key) else {
       return Err(MembershipError::UnknownAuthority { authority: authority.to_string() });
     };
 
@@ -253,8 +323,9 @@ impl MembershipTable {
     self.version = delta.to;
 
     for record in delta.entries {
-      self.heartbeat_miss_counters.insert(record.authority.clone(), 0);
-      self.entries.insert(record.authority.clone(), record);
+      let key = entry_key(&record);
+      self.heartbeat_miss_counters.insert(key.clone(), 0);
+      self.entries.insert(key, record);
     }
   }
 
@@ -273,11 +344,34 @@ impl MembershipTable {
   /// Gets a record by authority.
   #[must_use]
   pub fn record(&self, authority: &str) -> Option<&NodeRecord> {
-    self.entries.get(authority)
+    self.entries.get(authority).or_else(|| {
+      self
+        .entries
+        .values()
+        .filter(|record| record.authority == authority)
+        .max_by(|left, right| left.join_version.cmp(&right.join_version))
+    })
   }
 
   /// Drains buffered events.
   pub fn drain_events(&mut self) -> Vec<MembershipEvent> {
     core::mem::take(&mut self.events)
   }
+
+  fn entry_key_for_authority(&self, authority: &str) -> Option<String> {
+    if self.entries.contains_key(authority) {
+      return Some(authority.to_string());
+    }
+
+    self
+      .entries
+      .iter()
+      .filter(|(_, record)| record.authority == authority)
+      .max_by(|(_, left), (_, right)| left.join_version.cmp(&right.join_version))
+      .map(|(key, _)| key.clone())
+  }
+}
+
+fn entry_key(record: &NodeRecord) -> String {
+  record.unique_address.to_string()
 }

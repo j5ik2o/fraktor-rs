@@ -1,7 +1,9 @@
 use alloc::{string::ToString, vec};
 
+use fraktor_remote_core_rs::address::{Address, UniqueAddress};
+
 use super::MembershipTable;
-use crate::membership::{MembershipError, MembershipEvent, MembershipVersion, NodeStatus};
+use crate::membership::{DataCenter, MembershipError, MembershipEvent, MembershipVersion, NodeStatus};
 
 #[test]
 fn join_registers_joining_and_snapshots_latest_table() {
@@ -64,6 +66,51 @@ fn joining_with_conflicting_authority_is_rejected() {
     existing_node_id:  "node-1".to_string(),
     requested_node_id: "node-2".to_string(),
   }],);
+}
+
+#[test]
+fn join_with_identity_keeps_same_address_different_uid_as_distinct_incarnation() {
+  let mut table = MembershipTable::new(3);
+  let address = Address::new("cluster", "n1", 4050);
+  let first = UniqueAddress::new(address.clone(), 10);
+  let second = UniqueAddress::new(address, 11);
+
+  table
+    .try_join_with_identity("node-1".to_string(), first.clone(), DataCenter::new("dc-east"), "1.0.0".to_string(), vec![
+      "backend".to_string(),
+    ])
+    .expect("first incarnation joins");
+  let delta = table
+    .try_join_with_identity(
+      "node-1".to_string(),
+      second.clone(),
+      DataCenter::new("dc-east"),
+      "1.0.1".to_string(),
+      vec!["backend".to_string()],
+    )
+    .expect("second incarnation joins");
+
+  assert_eq!(delta.entries[0].unique_address, second);
+
+  let snapshot = table.snapshot();
+  assert_eq!(snapshot.entries.len(), 2);
+  assert!(snapshot.entries.iter().any(|record| record.unique_address == first));
+  assert!(snapshot.entries.iter().any(|record| record.unique_address == second));
+}
+
+#[test]
+fn join_with_identity_rejects_unconfirmed_uid() {
+  let mut table = MembershipTable::new(3);
+  let identity = UniqueAddress::new(Address::new("cluster", "n1", 4050), 0);
+
+  let err = table
+    .try_join_with_identity("node-1".to_string(), identity.clone(), DataCenter::default(), "1.0.0".to_string(), vec![
+      "backend".to_string(),
+    ])
+    .expect_err("unconfirmed uid must be rejected");
+
+  assert_eq!(err, MembershipError::UnconfirmedIdentity { unique_address: identity.to_string() });
+  assert!(table.snapshot().entries.is_empty());
 }
 
 #[test]
