@@ -35,7 +35,7 @@
   - _Boundary: HeartbeatProtocolState_
   - _Depends: 1_
 
-- [ ] 5. Cross-DC heartbeat evidence を追加する
+- [x] 5. Cross-DC heartbeat evidence を追加する
   - membership snapshot の data center を使い、same data center と cross-DC target を区別できるようにする。
   - cross-DC heartbeat request / response が local heartbeat と区別できる kind と data center pair を保持する。
   - membership 更新により cross-DC target の追加、削除、維持が観測できる。

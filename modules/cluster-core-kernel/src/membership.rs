@@ -1,5 +1,11 @@
 //! Membership management, gossip dissemination, and node lifecycle.
 
+mod cross_dc_heartbeat;
+mod cross_dc_heartbeat_evidence;
+mod cross_dc_heartbeat_request;
+mod cross_dc_heartbeat_response;
+mod cross_dc_heartbeat_target;
+mod cross_dc_heartbeat_target_change;
 mod current_cluster_state;
 mod data_center;
 mod gossip_dissemination_coordinator;
@@ -52,6 +58,12 @@ mod reachability_snapshot;
 mod reachability_status;
 mod vector_clock;
 
+pub use cross_dc_heartbeat::CrossDcHeartbeat;
+pub use cross_dc_heartbeat_evidence::CrossDcHeartbeatEvidence;
+pub use cross_dc_heartbeat_request::CrossDcHeartbeatRequest;
+pub use cross_dc_heartbeat_response::CrossDcHeartbeatResponse;
+pub use cross_dc_heartbeat_target::CrossDcHeartbeatTarget;
+pub use cross_dc_heartbeat_target_change::CrossDcHeartbeatTargetChange;
 pub use current_cluster_state::CurrentClusterState;
 pub use data_center::DataCenter;
 pub use gossip_dissemination_coordinator::GossipDisseminationCoordinator;
