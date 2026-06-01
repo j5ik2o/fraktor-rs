@@ -4,15 +4,14 @@
 #[path = "cluster_extension_config_test.rs"]
 mod tests;
 
-use alloc::{
-  string::{String, ToString},
-  vec::Vec,
-};
+use alloc::{string::String, vec::Vec};
 use core::time::Duration;
 
 use crate::{
-  ClusterTopology, ConfigValidation, JoinConfigCompatChecker, downing_provider::DowningProviderCompatibility,
+  ClusterTopology, ConfigValidation, JoinConfigCompatChecker,
+  downing_provider::DowningProviderCompatibility,
   pub_sub::PubSubConfig,
+  topology::{ClusterCompatibilityKey, ClusterCompatibilityKeyCatalog},
 };
 
 const PUBSUB_CONFIGURATION_MISMATCH_REASON: &str = "pubsub configuration mismatch";
@@ -153,20 +152,41 @@ impl Default for ClusterExtensionConfig {
 
 impl JoinConfigCompatChecker for ClusterExtensionConfig {
   fn check_join_compatibility(&self, joining: &ClusterExtensionConfig) -> ConfigValidation {
+    let mut reason = String::new();
+
     if self.pubsub_config != joining.pubsub_config {
-      return ConfigValidation::Incompatible { reason: PUBSUB_CONFIGURATION_MISMATCH_REASON.to_string() };
+      append_mismatch_reason(&mut reason, ClusterCompatibilityKeyCatalog::PUBSUB, PUBSUB_CONFIGURATION_MISMATCH_REASON);
     }
     if self.downing_provider.provider_key() != joining.downing_provider.provider_key() {
-      return ConfigValidation::Incompatible { reason: DOWNING_PROVIDER_KEY_MISMATCH_REASON.to_string() };
+      append_mismatch_reason(
+        &mut reason,
+        ClusterCompatibilityKeyCatalog::DOWNING_PROVIDER,
+        DOWNING_PROVIDER_KEY_MISMATCH_REASON,
+      );
     }
-    if self.downing_provider.provider_key() == SPLIT_BRAIN_RESOLVER_PROVIDER_KEY
+    if self.downing_provider.provider_key() == joining.downing_provider.provider_key()
+      && self.downing_provider.provider_key() == SPLIT_BRAIN_RESOLVER_PROVIDER_KEY
       && self.downing_provider.split_brain_resolver_settings()
         != joining.downing_provider.split_brain_resolver_settings()
     {
-      return ConfigValidation::Incompatible { reason: SBR_SETTINGS_MISMATCH_REASON.to_string() };
+      append_mismatch_reason(
+        &mut reason,
+        ClusterCompatibilityKeyCatalog::SPLIT_BRAIN_RESOLVER_SETTINGS,
+        SBR_SETTINGS_MISMATCH_REASON,
+      );
     }
-    ConfigValidation::Compatible
+
+    if reason.is_empty() { ConfigValidation::Compatible } else { ConfigValidation::Incompatible { reason } }
   }
+}
+
+fn append_mismatch_reason(reason: &mut String, key: ClusterCompatibilityKey, detail: &str) {
+  if !reason.is_empty() {
+    reason.push_str("; ");
+  }
+  reason.push_str(key.name());
+  reason.push_str(" mismatch: ");
+  reason.push_str(detail);
 }
 
 fn normalize_roles(mut roles: Vec<String>) -> Vec<String> {

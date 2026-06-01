@@ -310,7 +310,7 @@ fn join_rejects_incompatible_cluster_config() {
   assert!(matches!(
     err,
     MembershipCoordinatorError::Membership(MembershipError::IncompatibleConfig { reason })
-    if reason == "pubsub configuration mismatch"
+    if reason == "cluster.pubsub mismatch: pubsub configuration mismatch"
   ));
 }
 

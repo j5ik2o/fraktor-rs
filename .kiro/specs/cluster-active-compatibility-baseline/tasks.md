@@ -7,7 +7,7 @@
   - _Requirements: 1.1, 1.3, 1.5_
   - _Boundary: ClusterCompatibilityKeyCatalog_
 
-- [ ] 2. checker composition と config validation を拡張する
+- [x] 2. checker composition と config validation を拡張する
   - `ClusterExtensionConfig` の join compatibility が catalog の required/excluded key semantics に従うようにする。
   - 複数 checker の incompatible reason が失われない形で合成されることを unit test で確認する。
   - sensitive/local-only key を変えても compatibility result が変わらないことを観測できる。
