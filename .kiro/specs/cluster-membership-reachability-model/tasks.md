@@ -34,7 +34,7 @@
   - _Requirements: 4.1, 4.2, 4.3, 4.4, 4.5_
   - _Boundary: ReachabilityMatrix_
 
-- [ ] 5. indirect connection evidence を downing input 境界へ渡せるようにする
+- [x] 5. indirect connection evidence を downing input 境界へ渡せるようにする
   - partial connectivity を direct observation と indirect observation に分けて表現する。
   - subject と observer 自身の aggregate reachability を使い、indirect connection evidence を生成できるようにする。
   - evidence が存在しない場合は direct reachability evidence だけで表現する。

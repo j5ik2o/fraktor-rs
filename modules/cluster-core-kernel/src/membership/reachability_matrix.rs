@@ -8,7 +8,7 @@ use alloc::{collections::BTreeMap, vec::Vec};
 
 use fraktor_remote_core_rs::address::UniqueAddress;
 
-use super::{ReachabilityRecord, ReachabilitySnapshot, ReachabilityStatus};
+use super::{IndirectConnectionEvidence, ReachabilityRecord, ReachabilitySnapshot, ReachabilityStatus};
 
 /// Observer-subject reachability matrix.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -60,6 +60,52 @@ impl ReachabilityMatrix {
       records:           self.records.values().cloned().collect::<Vec<_>>(),
       observer_versions: self.observer_versions.clone(),
     }
+  }
+
+  /// Returns indirect connectivity evidence for a partially reachable subject.
+  #[must_use]
+  pub fn indirect_evidence_for(&self, subject: &UniqueAddress) -> Option<IndirectConnectionEvidence> {
+    let mut direct_observations = Vec::new();
+    let mut indirect_observations = Vec::new();
+
+    for (observer, version) in self.observer_versions.iter() {
+      let key = (observer.clone(), subject.clone());
+      if let Some(record) = self.records.get(&key) {
+        if record.status != ReachabilityStatus::Reachable {
+          direct_observations.push(record.clone());
+        }
+      } else {
+        indirect_observations.push(ReachabilityRecord {
+          observer: observer.clone(),
+          subject:  subject.clone(),
+          status:   ReachabilityStatus::Reachable,
+          version:  *version,
+        });
+      }
+    }
+
+    if direct_observations.is_empty() || indirect_observations.is_empty() {
+      return None;
+    }
+
+    let mut observer_aggregate_statuses = Vec::new();
+    for observation in direct_observations.iter().chain(indirect_observations.iter()) {
+      let observer = observation.observer.clone();
+      let version = self.observer_versions.get(&observer).copied().unwrap_or(0);
+      observer_aggregate_statuses.push(ReachabilityRecord {
+        observer: observer.clone(),
+        subject: observer.clone(),
+        status: self.aggregate_status(&observer),
+        version,
+      });
+    }
+
+    Some(IndirectConnectionEvidence {
+      subject: subject.clone(),
+      direct_observations,
+      indirect_observations,
+      observer_aggregate_statuses,
+    })
   }
 
   fn update(&mut self, observer: UniqueAddress, subject: UniqueAddress, status: ReachabilityStatus) {
