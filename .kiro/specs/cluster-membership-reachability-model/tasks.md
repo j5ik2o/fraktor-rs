@@ -52,7 +52,7 @@
   - _Boundary: NodeIdentityRecord, DataCenterMembership, WeaklyUpStatus, ReachabilityMatrix, IndirectConnectionEvidence_
   - _Depends: 2, 3, 5_
 
-- [ ] 7. gap analysis evidence と scope guard を更新する
+- [x] 7. gap analysis evidence と scope guard を更新する
   - active medium の5項目について、実装済みまたは core contract 化済みの evidence を `docs/gap-analysis/cluster-gap-analysis.md` に反映する。
   - gossip/heartbeat、SBR/downing strategy、discovery、pubsub、serialization、Deferred Pekko concepts をこの task で完了扱いにしない。
   - targeted tests と no_std check の結果で membership/reachability model の境界が成立することを確認する。
