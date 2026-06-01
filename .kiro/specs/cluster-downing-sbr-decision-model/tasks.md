@@ -1,7 +1,7 @@
 # 実装計画
 
 - [ ] 1. Downing/SBR 評価入力の土台を作る
-- [ ] 1.1 decision context と member evidence を定義する
+- [x] 1.1 decision context と member evidence を定義する
   - membership snapshot、reachability evidence、evaluation time、explicit down input を同じ評価入力として表現する。
   - `WeaklyUp`、unreachable、terminated、data center を失わず evaluator に渡せる状態にする。
   - evidence 不足時に defer reason を生成できることを unit test で確認する。
