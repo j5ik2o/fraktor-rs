@@ -370,21 +370,26 @@ impl MembershipTable {
   }
 
   /// Applies a received membership delta.
-  pub fn apply_delta(&mut self, delta: MembershipDelta) {
+  ///
+  /// Returns records that were locally superseded while applying active incoming records.
+  pub fn apply_delta(&mut self, delta: MembershipDelta) -> Vec<NodeRecord> {
     if delta.to <= self.version {
-      return;
+      return Vec::new();
     }
 
     self.version = delta.to;
+    let mut superseded = Vec::new();
 
     for record in delta.entries {
       let key = entry_key(&record);
       if record.status.is_active() {
-        self.supersede_active_incarnations(record.authority.as_str(), key.as_str());
+        superseded.extend(self.supersede_active_incarnations(record.authority.as_str(), key.as_str()));
       }
       self.heartbeat_miss_counters.insert(key.clone(), 0);
       self.entries.insert(key, record);
     }
+
+    superseded
   }
 
   /// Returns a snapshot for handshake.

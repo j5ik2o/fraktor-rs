@@ -332,18 +332,27 @@ impl MembershipCoordinator {
 
     let snapshot = self.gossip.table().snapshot();
     let mut previous = BTreeMap::new();
+    let mut incoming_keys = BTreeSet::new();
     for record in delta.entries.iter() {
+      incoming_keys.insert(record.unique_address.to_string());
       previous.insert(
         record.unique_address.to_string(),
         snapshot.entries.iter().find(|entry| entry.unique_address == record.unique_address).map(|entry| entry.status),
       );
     }
+    for record in snapshot.entries.iter() {
+      previous.entry(record.unique_address.to_string()).or_insert(Some(record.status));
+    }
 
-    self.gossip.apply_incoming(delta, peer);
+    let superseded = self.gossip.apply_incoming(delta, peer);
     self.refresh_peers();
 
     let mut outcome = MembershipCoordinatorOutcome::default();
     for record in delta.entries.iter() {
+      let before = previous.get(&record.unique_address.to_string()).copied().flatten();
+      self.register_membership_change(record, before, now, &mut outcome);
+    }
+    for record in superseded.iter().filter(|record| !incoming_keys.contains(&record.unique_address.to_string())) {
       let before = previous.get(&record.unique_address.to_string()).copied().flatten();
       self.register_membership_change(record, before, now, &mut outcome);
     }

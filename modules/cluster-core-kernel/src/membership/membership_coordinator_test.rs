@@ -602,6 +602,16 @@ fn gossip_delta_new_incarnation_removes_previous_active_from_current_state() {
 
   assert!(!state.members.iter().any(|record| record.unique_address == first));
   assert!(state.members.iter().any(|record| record.unique_address == second));
+  assert!(outcome.member_events.iter().any(|event| matches!(
+    event,
+    ClusterEvent::MemberStatusChanged { authority, from: NodeStatus::Up, to: NodeStatus::Dead, .. }
+      if authority == "cluster@node-a:2552"
+  )));
+  assert!(outcome.member_events.iter().any(|event| matches!(
+    event,
+    ClusterEvent::MemberQuarantined { authority, reason, .. }
+      if authority == "cluster@node-a:2552" && reason == "gossip-dead"
+  )));
 }
 
 #[test]
