@@ -79,6 +79,7 @@ Run these checks and use the result as primary signal.
 
 ### 4. Boundary Respect
 - Compare changed files against the task `_Boundary:_` scope.
+- If `_Boundary:_` uses design component names rather than paths, map those components to owned files through `design.md` File Structure Plan / component-to-file ownership before judging path spillover.
 - Reject if the change spills outside the approved boundary without explicit justification.
 - Reject if the implementation introduces hidden cross-boundary coordination inside what should be a local task.
 

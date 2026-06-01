@@ -143,7 +143,7 @@ Next: Review generated specs, then start implementation with $kiro-impl <feature
 
 ## Critical Constraints
 - **Controller stays lightweight**: Only read roadmap.md and brief.md existence checks in main context. All spec generation happens in sub-agents.
-- **Wave ordering is strict**: Never start a wave until all features in previous waves are complete.
+- **Wave dependency order is strict**: Never start a feature until its dependencies are satisfied by completed roadmap specs or succeeded earlier-wave features. If an earlier feature fails, later waves may run only the runnable subset that does not depend on the failed or missing spec.
 - **Parallel within waves**: All features in the same wave should be dispatched in parallel if multi-agent is available.
 - **No partial waves**: If a feature in a wave fails, still complete the other features in that wave before reporting.
 - **Skip completed specs**: Features with `[x]` in roadmap.md or existing tasks.md are skipped.

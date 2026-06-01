@@ -45,7 +45,9 @@ Evaluate each item. If ANY item fails, the verdict is REJECTED.
 - If matches found that aren't environment variable references → REJECTED.
 
 **4. Boundary Respect**
-- Run: `git diff --name-only` and compare against the task's `_Boundary:_` scope.
+- Run: `git diff --name-only`.
+- If the task's `_Boundary:_` uses design component names, map those components to owned files using `design.md` File Structure Plan / component-to-file ownership before comparing paths.
+- If `_Boundary:_` already lists file paths or directories, compare changed paths directly against that scope.
 - If files outside boundary are changed → REJECTED.
 
 **5. RED Phase Evidence**
