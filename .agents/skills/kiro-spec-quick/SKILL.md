@@ -11,16 +11,17 @@ description: Quick spec generation with interactive or automatic mode
 **If `--auto` flag is present in `$ARGUMENTS`, you are in AUTOMATIC MODE.**
 
 In Automatic Mode:
-- Execute ALL 4 phases in a continuous loop without stopping
+- Execute all incomplete phases in a continuous loop without stopping for routine "Next Step" prompts
+- If a phase requires human clarification, reports ambiguity, or cannot satisfy its review gate without user input, stop and report the blocker instead of fabricating content
 - Display progress after each phase (e.g., "Phase 1/4 complete: spec initialized")
 - IGNORE any "Next Step" messages from Phase 2-4 (they are for standalone usage)
 - After Phase 4, run the final sanity review before exiting
-- Stop ONLY after the sanity review completes or if error occurs
+- Stop ONLY after the sanity review completes, a human-clarification blocker appears, or an error occurs
 
 ---
 
 ## Core Task
-Execute 4 spec phases sequentially. In automatic mode, execute all phases without stopping. In interactive mode, prompt user for approval between phases.
+Execute 4 spec phases sequentially. In automatic mode, execute all incomplete phases without stopping for routine phase prompts. In interactive mode, prompt user for approval between phases.
 
 Before claiming quick generation is complete, run one lightweight sanity review over the generated requirements, design, and tasks. If multi-agent is available, use a fresh sub-agent. Otherwise run the sanity review inline.
 
@@ -107,7 +108,9 @@ Execute these 4 phases in order:
 
 #### Phase 2: Generate Requirements
 
-Invoke `$kiro-spec-requirements {feature-name}`.
+If spec.json already has `approvals.requirements.generated = true` and `approved = true`, skip this phase and preserve the existing `requirements.md`.
+
+Otherwise invoke `$kiro-spec-requirements {feature-name}`. If it requests clarification or reports ambiguity, stop and report that blocker; do not continue to design generation with guessed requirements.
 
 Wait for completion. IGNORE any "Next Step" message (it is for standalone usage).
 
@@ -123,7 +126,9 @@ Wait for completion. IGNORE any "Next Step" message (it is for standalone usage)
 
 #### Phase 3: Generate Design
 
-Invoke `$kiro-spec-design {feature-name} -y`. The `-y` flag auto-approves requirements.
+If spec.json already has `approvals.design.generated = true` and `approved = true`, skip this phase and preserve the existing `design.md`.
+
+Otherwise invoke `$kiro-spec-design {feature-name} -y`. The `-y` flag auto-approves requirements.
 
 Wait for completion. IGNORE any "Next Step" message.
 
@@ -139,7 +144,9 @@ Wait for completion. IGNORE any "Next Step" message.
 
 #### Phase 4: Generate Tasks
 
-Invoke `$kiro-spec-tasks {feature-name} -y`. The `-y` flag auto-approves requirements, design, and tasks.
+If spec.json already has `approvals.tasks.generated = true`, `approvals.tasks.approved = true`, and `ready_for_implementation = true`, skip this phase and preserve the existing `tasks.md`.
+
+Otherwise invoke `$kiro-spec-tasks {feature-name} -y`. The `-y` flag auto-approves requirements, design, and tasks.
 
 Wait for completion.
 

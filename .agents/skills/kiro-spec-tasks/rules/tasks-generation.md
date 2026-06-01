@@ -44,7 +44,7 @@ Focus on capabilities and outcomes, not code structure.
 
 ### 3. Task Ordering Principle
 
-**Order implies dependency**: Task N implicitly depends on all tasks before it. This is the primary dependency mechanism.
+**Order implies dependency**: Task N implicitly depends on all required tasks before it. This is the primary dependency mechanism used by `$kiro-impl`.
 
 **Tasks must follow this phase order**:
 1. **Foundation**: Environment setup, test infrastructure, shared utilities, database schema, configuration
@@ -52,7 +52,7 @@ Focus on capabilities and outcomes, not code structure.
 3. **Integration**: Wiring components together, cross-boundary connections
 4. **Validation**: E2E tests, edge cases, regression checks
 
-**Rationale**: Foundation work unblocks everything else. Placing setup tasks early prevents downstream blocking. Core tasks can often run in parallel because foundation is already complete.
+**Rationale**: Foundation work unblocks everything else. Placing setup tasks early prevents downstream blocking. Core tasks marked `(P)` are parallel-capable metadata for executors that explicitly support parallel task scheduling; `$kiro-impl` still processes tasks sequentially in document order.
 
 ### 4. Task Integration & Progression
 
@@ -68,16 +68,16 @@ Focus on capabilities and outcomes, not code structure.
 
 ### 5. Dependency Declaration
 
-**Default**: Sequential ordering handles most dependencies (task N depends on tasks before it).
+**Default**: Sequential ordering handles most dependencies (task N depends on required tasks before it).
 
 **Explicit declaration required when**:
 - A task depends on a specific task in a different major-task group (cross-boundary)
 - The dependency is non-obvious from ordering alone
-- A task can skip ahead of its position (declared via `(P)`) but still needs specific prior work
+- A task marked `(P)` still needs specific prior work that is not already guaranteed by earlier required tasks
 
 **Format**: `_Depends: 1.2, 2.3_` — placed alongside `_Requirements:_` in task detail sections.
 
-**Do not over-annotate**: If a task simply depends on the task directly before it, ordering alone is sufficient.
+**Do not over-annotate**: If a task simply depends on earlier required tasks in document order, ordering alone is sufficient. `(P)` does not waive document-order execution for `$kiro-impl`; it only records parallel capability for compatible executors.
 
 ### 6. Boundary Scope
 
