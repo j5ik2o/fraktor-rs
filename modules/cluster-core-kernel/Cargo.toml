@@ -17,6 +17,7 @@ default = []
 
 [dependencies]
 fraktor-actor-core-kernel-rs = { workspace = true }
+fraktor-remote-core-rs = { workspace = true }
 fraktor-utils-core-rs = { workspace = true }
 serde = { workspace = true }
 postcard = { workspace = true }
@@ -27,6 +28,5 @@ workspace = true
 
 [dev-dependencies]
 fraktor-actor-adaptor-std-rs = { workspace = true, features = ["test-support"] }
-fraktor-remote-core-rs = { workspace = true }
 fraktor-utils-core-rs = { workspace = true, features = ["debug-locks"] }
 critical-section = { workspace = true, features = ["std"] }

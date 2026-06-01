@@ -1,7 +1,11 @@
 use alloc::{string::ToString, vec};
 
+use fraktor_remote_core_rs::address::{Address, UniqueAddress};
+
 use super::MembershipTable;
-use crate::membership::{MembershipError, MembershipEvent, MembershipVersion, NodeStatus};
+use crate::membership::{
+  DataCenter, MembershipDelta, MembershipError, MembershipEvent, MembershipVersion, NodeRecord, NodeStatus,
+};
 
 #[test]
 fn join_registers_joining_and_snapshots_latest_table() {
@@ -67,6 +71,152 @@ fn joining_with_conflicting_authority_is_rejected() {
 }
 
 #[test]
+fn join_with_identity_keeps_same_address_different_uid_as_distinct_incarnation() {
+  let mut table = MembershipTable::new(3);
+  let address = Address::new("cluster", "n1", 4050);
+  let first = UniqueAddress::new(address.clone(), 10);
+  let second = UniqueAddress::new(address, 11);
+
+  table
+    .try_join_with_identity("node-1".to_string(), first.clone(), DataCenter::new("dc-east"), "1.0.0".to_string(), vec![
+      "backend".to_string(),
+    ])
+    .expect("first incarnation joins");
+  let delta = table
+    .try_join_with_identity(
+      "node-1".to_string(),
+      second.clone(),
+      DataCenter::new("dc-east"),
+      "1.0.1".to_string(),
+      vec!["backend".to_string()],
+    )
+    .expect("second incarnation joins");
+
+  assert_eq!(delta.entries[0].unique_address, second);
+
+  let snapshot = table.snapshot();
+  assert_eq!(snapshot.entries.len(), 2);
+  assert!(snapshot.entries.iter().any(|record| record.unique_address == first && record.status == NodeStatus::Dead));
+  assert!(
+    snapshot.entries.iter().any(|record| record.unique_address == second && record.status == NodeStatus::Joining)
+  );
+  assert_eq!(table.record("cluster@n1:4050").expect("record should resolve latest active").unique_address, second);
+}
+
+#[test]
+fn join_with_identity_rejects_unconfirmed_uid() {
+  let mut table = MembershipTable::new(3);
+  let identity = UniqueAddress::new(Address::new("cluster", "n1", 4050), 0);
+
+  let err = table
+    .try_join_with_identity("node-1".to_string(), identity.clone(), DataCenter::default(), "1.0.0".to_string(), vec![
+      "backend".to_string(),
+    ])
+    .expect_err("unconfirmed uid must be rejected");
+
+  assert_eq!(err, MembershipError::UnconfirmedIdentity { unique_address: identity.to_string() });
+  assert!(table.snapshot().entries.is_empty());
+}
+
+#[test]
+fn join_with_identity_rejects_same_unique_address_node_conflict() {
+  let mut table = MembershipTable::new(3);
+  let identity = UniqueAddress::new(Address::new("cluster", "n1", 4050), 10);
+  table
+    .try_join_with_identity(
+      "node-1".to_string(),
+      identity.clone(),
+      DataCenter::new("dc-east"),
+      "1.0.0".to_string(),
+      vec!["backend".to_string()],
+    )
+    .expect("first identity join succeeds");
+
+  let err = table
+    .try_join_with_identity("node-2".to_string(), identity, DataCenter::new("dc-east"), "1.0.0".to_string(), vec![
+      "backend".to_string(),
+    ])
+    .expect_err("same identity must keep node ownership");
+
+  assert_eq!(err, MembershipError::AuthorityConflict {
+    authority:         "cluster@n1:4050".to_string(),
+    existing_node_id:  "node-1".to_string(),
+    requested_node_id: "node-2".to_string(),
+  });
+  assert_eq!(table.snapshot().entries.len(), 1);
+}
+
+#[test]
+fn plain_join_and_gossip_delta_share_unique_address_key() {
+  let mut table = MembershipTable::new(3);
+  let delta = table
+    .try_join("node-1".to_string(), "n1:4050".to_string(), "1.0.0".to_string(), vec!["backend".to_string()])
+    .expect("join succeeds");
+  let mut record = delta.entries[0].clone();
+  record.status = NodeStatus::WeaklyUp;
+  record.version = MembershipVersion::new(2);
+
+  table.apply_delta(MembershipDelta::new(MembershipVersion::new(1), MembershipVersion::new(2), vec![record]));
+
+  let snapshot = table.snapshot();
+  assert_eq!(snapshot.entries.len(), 1);
+  assert_eq!(table.record("n1:4050").expect("record should exist").status, NodeStatus::WeaklyUp);
+}
+
+#[test]
+fn join_after_gossip_delta_rejects_same_authority_conflict() {
+  let mut origin = MembershipTable::new(3);
+  let delta = origin
+    .try_join("node-1".to_string(), "n1:4050".to_string(), "1.0.0".to_string(), vec!["backend".to_string()])
+    .expect("join succeeds");
+  let mut receiver = MembershipTable::new(3);
+  receiver.apply_delta(delta);
+
+  let err = receiver
+    .try_join("node-2".to_string(), "n1:4050".to_string(), "1.0.0".to_string(), vec!["backend".to_string()])
+    .expect_err("same authority should still conflict after gossip");
+
+  assert_eq!(err, MembershipError::AuthorityConflict {
+    authority:         "n1:4050".to_string(),
+    existing_node_id:  "node-1".to_string(),
+    requested_node_id: "node-2".to_string(),
+  });
+  assert_eq!(receiver.snapshot().entries.len(), 1);
+}
+
+#[test]
+fn gossip_delta_supersedes_previous_active_incarnation() {
+  let mut table = MembershipTable::new(3);
+  let address = Address::new("cluster", "n1", 4050);
+  let first = UniqueAddress::new(address.clone(), 10);
+  let second = UniqueAddress::new(address, 11);
+  table
+    .try_join_with_identity("node-1".to_string(), first.clone(), DataCenter::new("dc-east"), "1.0.0".to_string(), vec![
+      "backend".to_string(),
+    ])
+    .expect("first incarnation joins");
+  table.mark_weakly_up("cluster@n1:4050").expect("weakly up").expect("delta");
+  table.mark_up("cluster@n1:4050").expect("up").expect("delta");
+
+  let version = table.version();
+  let record = NodeRecord::new_with_identity(
+    second.clone(),
+    DataCenter::new("dc-east"),
+    "node-1".to_string(),
+    NodeStatus::Joining,
+    version.next(),
+    "1.0.1".to_string(),
+    vec!["backend".to_string()],
+  );
+  table.apply_delta(MembershipDelta::new(version, version.next(), vec![record]));
+
+  let snapshot = table.snapshot();
+  assert_eq!(snapshot.entries.len(), 2);
+  assert!(snapshot.entries.iter().any(|record| record.unique_address == first && record.status == NodeStatus::Dead));
+  assert_eq!(table.record("cluster@n1:4050").expect("record should resolve active incarnation").unique_address, second);
+}
+
+#[test]
 fn leaving_transitions_from_exiting_to_removed_and_updates_version() {
   let mut table = MembershipTable::new(3);
   table
@@ -116,6 +266,59 @@ fn heartbeat_miss_marks_suspect_after_threshold() {
     node_id:   "node-1".to_string(),
     authority: "n1:4050".to_string(),
   }],);
+}
+
+#[test]
+fn joining_member_transitions_through_weakly_up_before_up() {
+  let mut table = MembershipTable::new(3);
+  table
+    .try_join("node-1".to_string(), "n1:4050".to_string(), "1.0.0".to_string(), vec!["backend".to_string()])
+    .expect("join succeeds");
+
+  let weakly_up_delta = table.mark_weakly_up("n1:4050").expect("weakly up succeeds").expect("delta");
+  assert_eq!(weakly_up_delta.entries[0].status, NodeStatus::WeaklyUp);
+  assert!(weakly_up_delta.entries[0].status.is_provisional());
+
+  let up_delta = table.mark_up("n1:4050").expect("mark up succeeds").expect("delta");
+  assert_eq!(up_delta.entries[0].status, NodeStatus::Up);
+}
+
+#[test]
+fn mark_up_from_joining_is_rejected_until_weakly_up() {
+  let mut table = MembershipTable::new(3);
+  table
+    .try_join("node-1".to_string(), "n1:4050".to_string(), "1.0.0".to_string(), vec!["backend".to_string()])
+    .expect("join succeeds");
+
+  let err = table.mark_up("n1:4050").expect_err("joining cannot skip weakly up");
+
+  assert_eq!(err, MembershipError::InvalidTransition {
+    authority: "n1:4050".to_string(),
+    from:      NodeStatus::Joining,
+    to:        NodeStatus::Up,
+  });
+}
+
+#[test]
+fn weakly_up_can_leave_or_be_marked_dead() {
+  let mut table = MembershipTable::new(3);
+  table
+    .try_join("node-1".to_string(), "n1:4050".to_string(), "1.0.0".to_string(), vec!["backend".to_string()])
+    .expect("join succeeds");
+  table.mark_weakly_up("n1:4050").expect("weakly up succeeds");
+
+  let exiting_delta = table.mark_left("n1:4050").expect("weakly up can leave");
+  assert_eq!(exiting_delta.entries[0].status, NodeStatus::Exiting);
+  let removed_delta = table.mark_left("n1:4050").expect("weakly up leave can complete removal");
+  assert_eq!(removed_delta.entries[0].status, NodeStatus::Removed);
+
+  let mut table = MembershipTable::new(3);
+  table
+    .try_join("node-2".to_string(), "n2:4050".to_string(), "1.0.0".to_string(), vec!["backend".to_string()])
+    .expect("join succeeds");
+  table.mark_weakly_up("n2:4050").expect("weakly up succeeds");
+  let dead_delta = table.mark_dead("n2:4050").expect("weakly up can be downed").expect("delta");
+  assert_eq!(dead_delta.entries[0].status, NodeStatus::Dead);
 }
 
 #[test]
@@ -189,6 +392,32 @@ fn rejoin_from_dead_updates_metadata() {
 }
 
 #[test]
+fn rejoin_with_identity_updates_data_center() {
+  let mut table = MembershipTable::new(3);
+  let identity = UniqueAddress::new(Address::new("cluster", "n1", 4050), 10);
+  table
+    .try_join_with_identity(
+      "node-1".to_string(),
+      identity.clone(),
+      DataCenter::new("dc-east"),
+      "1.0.0".to_string(),
+      vec!["backend".to_string()],
+    )
+    .expect("join succeeds");
+  table.mark_suspect("cluster@n1:4050").expect("mark suspect should succeed");
+  table.mark_dead("cluster@n1:4050").expect("mark dead should succeed");
+
+  let delta = table
+    .try_join_with_identity("node-1".to_string(), identity, DataCenter::new("dc-west"), "2.0.0".to_string(), vec![
+      "backend".to_string(),
+    ])
+    .expect("rejoin succeeds");
+
+  assert_eq!(delta.entries[0].data_center, DataCenter::new("dc-west"));
+  assert_eq!(table.record("cluster@n1:4050").expect("record should exist").data_center, DataCenter::new("dc-west"));
+}
+
+#[test]
 fn status_update_does_not_change_age_ordering() {
   let mut table = MembershipTable::new(3);
   table
@@ -198,6 +427,7 @@ fn status_update_does_not_change_age_ordering() {
     .try_join("node-2".to_string(), "n2:4050".to_string(), "1.0.0".to_string(), vec!["backend".to_string()])
     .expect("second join succeeds");
 
+  let _ = table.mark_weakly_up("n1:4050").expect("mark weakly up succeeds");
   let _ = table.mark_up("n1:4050").expect("mark up succeeds");
 
   let older = table.record("n1:4050").expect("older record");

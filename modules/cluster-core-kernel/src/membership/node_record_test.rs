@@ -1,7 +1,9 @@
 use alloc::{string::String, vec};
 
+use fraktor_remote_core_rs::address::{Address, UniqueAddress};
+
 use super::NodeRecord;
-use crate::membership::{MembershipVersion, NodeStatus};
+use crate::membership::{DataCenter, MembershipVersion, NodeStatus};
 
 #[test]
 fn node_record_new_keeps_app_version_and_roles() {
@@ -18,6 +20,26 @@ fn node_record_new_keeps_app_version_and_roles() {
   assert_eq!(record.app_version, "1.2.3");
   assert_eq!(record.roles, roles);
   assert_eq!(record.join_version, MembershipVersion::new(10));
+}
+
+#[test]
+fn node_record_with_identity_keeps_unique_address_and_data_center() {
+  let identity = UniqueAddress::new(Address::new("cluster", "n1", 4050), 42);
+  let data_center = DataCenter::new("dc-east");
+
+  let record = NodeRecord::new_with_identity(
+    identity.clone(),
+    data_center.clone(),
+    String::from("node-1"),
+    NodeStatus::Up,
+    MembershipVersion::new(10),
+    String::from("1.2.3"),
+    vec![String::from("backend")],
+  );
+
+  assert_eq!(record.unique_address, identity);
+  assert_eq!(record.authority, "cluster@n1:4050");
+  assert_eq!(record.data_center, data_center);
 }
 
 #[test]

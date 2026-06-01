@@ -1,7 +1,10 @@
 use alloc::{boxed::Box, string::String};
 use core::time::Duration;
 
-use fraktor_remote_core_rs::{address::Address, failure_detector::PhiAccrualFailureDetector};
+use fraktor_remote_core_rs::{
+  address::{Address, UniqueAddress},
+  failure_detector::PhiAccrualFailureDetector,
+};
 use fraktor_utils_core_rs::time::TimerInstant;
 
 use super::MembershipCoordinator;
@@ -9,8 +12,9 @@ use crate::{
   ClusterEvent, ClusterExtensionConfig,
   failure_detector::{DefaultFailureDetectorRegistry, FailureDetector},
   membership::{
-    MembershipCoordinatorConfig, MembershipCoordinatorError, MembershipCoordinatorState, MembershipDelta,
+    DataCenter, MembershipCoordinatorConfig, MembershipCoordinatorError, MembershipCoordinatorState, MembershipDelta,
     MembershipError, MembershipEvent, MembershipTable, MembershipVersion, NodeRecord, NodeStatus, QuarantineEvent,
+    ReachabilityStatus,
   },
   pub_sub::PubSubConfig,
 };
@@ -67,6 +71,10 @@ fn joining_cluster_config() -> ClusterExtensionConfig {
   ClusterExtensionConfig::new().with_app_version("1.1.0").with_roles(vec![String::from("frontend")])
 }
 
+fn local_cluster_config_with_address() -> ClusterExtensionConfig {
+  local_cluster_config().with_advertised_address("local:2552")
+}
+
 #[test]
 fn stopped_rejects_inputs() {
   let table = MembershipTable::new(3);
@@ -97,7 +105,7 @@ fn client_rejects_join_and_leave() {
 }
 
 #[test]
-fn join_then_heartbeat_promotes_to_up() {
+fn join_then_heartbeats_promote_through_weakly_up_to_up() {
   let table = MembershipTable::new(3);
   let config = base_config();
   let mut coordinator = MembershipCoordinator::new(config, local_cluster_config(), table, registry(1.0));
@@ -117,8 +125,42 @@ fn join_then_heartbeat_promotes_to_up() {
     outcome
       .member_events
       .iter()
+      .any(|event| matches!(event, ClusterEvent::MemberStatusChanged { to: NodeStatus::WeaklyUp, .. }))
+  );
+
+  let outcome = coordinator.handle_heartbeat("node-a", now(3)).unwrap();
+  assert!(
+    outcome
+      .member_events
+      .iter()
       .any(|event| matches!(event, ClusterEvent::MemberStatusChanged { to: NodeStatus::Up, .. }))
   );
+}
+
+#[test]
+fn weakly_up_does_not_trigger_downing_decision() {
+  let table = MembershipTable::new(3);
+  let config = base_config();
+  let mut coordinator = MembershipCoordinator::new(config, local_cluster_config(), table, registry(1.0));
+  coordinator.start_member().unwrap();
+
+  let _ =
+    coordinator.handle_join("node-1".to_string(), "node-a".to_string(), &joining_cluster_config(), now(1)).unwrap();
+  let outcome = coordinator.handle_heartbeat("node-a", now(2)).unwrap();
+
+  assert!(
+    outcome
+      .member_events
+      .iter()
+      .any(|event| { matches!(event, ClusterEvent::MemberStatusChanged { to: NodeStatus::WeaklyUp, .. }) })
+  );
+  assert!(
+    !outcome
+      .member_events
+      .iter()
+      .any(|event| matches!(event, ClusterEvent::MemberQuarantined { .. } | ClusterEvent::UnreachableMember { .. }))
+  );
+  assert!(coordinator.quarantine_snapshot().is_empty());
 }
 
 #[test]
@@ -132,10 +174,15 @@ fn current_cluster_state_is_emitted_only_when_state_changes() {
     coordinator.handle_join("node-1".to_string(), "node-a".to_string(), &joining_cluster_config(), now(1)).unwrap();
   assert!(join_outcome.member_events.iter().any(|event| matches!(event, ClusterEvent::CurrentClusterState { .. })));
 
-  let promote_outcome = coordinator.handle_heartbeat("node-a", now(2)).unwrap();
+  let weakly_up_outcome = coordinator.handle_heartbeat("node-a", now(2)).unwrap();
+  assert!(
+    weakly_up_outcome.member_events.iter().any(|event| matches!(event, ClusterEvent::CurrentClusterState { .. }))
+  );
+
+  let promote_outcome = coordinator.handle_heartbeat("node-a", now(3)).unwrap();
   assert!(promote_outcome.member_events.iter().any(|event| matches!(event, ClusterEvent::CurrentClusterState { .. })));
 
-  let steady_outcome = coordinator.handle_heartbeat("node-a", now(3)).unwrap();
+  let steady_outcome = coordinator.handle_heartbeat("node-a", now(4)).unwrap();
   assert!(steady_outcome.member_events.iter().all(|event| !matches!(event, ClusterEvent::CurrentClusterState { .. })));
 }
 
@@ -350,7 +397,9 @@ fn current_cluster_state_emits_oldest_leader_and_role_leaders() {
   let _ = coordinator.handle_join("node-1".to_string(), "node-a".to_string(), &joining_backend, now(1)).unwrap();
   let _ = coordinator.handle_join("node-2".to_string(), "node-b".to_string(), &joining_frontend, now(2)).unwrap();
   let _ = coordinator.handle_heartbeat("node-a", now(3)).unwrap();
-  let outcome = coordinator.handle_heartbeat("node-b", now(4)).unwrap();
+  let _ = coordinator.handle_heartbeat("node-a", now(4)).unwrap();
+  let _ = coordinator.handle_heartbeat("node-b", now(5)).unwrap();
+  let outcome = coordinator.handle_heartbeat("node-b", now(6)).unwrap();
 
   let state = outcome
     .member_events
@@ -382,8 +431,9 @@ fn current_cluster_state_keeps_roles_without_eligible_leader_as_none() {
 
   let _ = coordinator.handle_join("node-1".to_string(), "node-a".to_string(), &joining_backend, now(1)).unwrap();
   let _ = coordinator.handle_heartbeat("node-a", now(2)).unwrap();
+  let _ = coordinator.handle_heartbeat("node-a", now(3)).unwrap();
   let outcome =
-    coordinator.handle_join("node-2".to_string(), "node-b".to_string(), &joining_analytics, now(3)).unwrap();
+    coordinator.handle_join("node-2".to_string(), "node-b".to_string(), &joining_analytics, now(4)).unwrap();
 
   let state = outcome
     .member_events
@@ -456,6 +506,108 @@ fn suspect_and_heartbeat_emit_unreachable_and_reachable_events() {
   assert!(reachable_outcome.member_events.iter().any(|event| matches!(
     event,
     ClusterEvent::ReachableMember { authority, .. } if authority == "node-a"
+  )));
+}
+
+#[test]
+fn reachability_snapshot_tracks_failure_detector_and_heartbeat_receipt() {
+  let table = MembershipTable::new(3);
+  let mut config = base_config();
+  config.suspect_timeout = Duration::from_secs(30);
+  let mut coordinator = MembershipCoordinator::new(config, local_cluster_config_with_address(), table, registry(1.0));
+  coordinator.start_member().unwrap();
+
+  let _ =
+    coordinator.handle_join("node-1".to_string(), "node-a".to_string(), &joining_cluster_config(), now(1)).unwrap();
+  let _ = coordinator.handle_heartbeat("node-a", now(2)).unwrap();
+  let _ = coordinator.handle_heartbeat("node-a", now(3)).unwrap();
+
+  let suspect_outcome = coordinator.poll(now(5)).unwrap();
+  let subject = coordinator.snapshot().entries[0].unique_address.clone();
+  let state = suspect_outcome
+    .member_events
+    .iter()
+    .find_map(
+      |event| {
+        if let ClusterEvent::CurrentClusterState { state, .. } = event { Some(state.clone()) } else { None }
+      },
+    )
+    .expect("current cluster state");
+  assert_eq!(coordinator.snapshot().reachability.aggregate_status(&subject), ReachabilityStatus::Unreachable);
+  assert_eq!(state.reachability.aggregate_status(&subject), ReachabilityStatus::Unreachable);
+
+  let _ = coordinator.handle_heartbeat("node-a", now(6)).unwrap();
+
+  assert_eq!(coordinator.snapshot().reachability.aggregate_status(&subject), ReachabilityStatus::Reachable);
+}
+
+#[test]
+fn reachability_snapshot_tracks_suspect_without_advertised_address() {
+  let table = MembershipTable::new(3);
+  let mut config = base_config();
+  config.suspect_timeout = Duration::from_secs(30);
+  let mut coordinator = MembershipCoordinator::new(config, local_cluster_config(), table, registry(1.0));
+  coordinator.start_member().unwrap();
+
+  let _ =
+    coordinator.handle_join("node-1".to_string(), "node-a".to_string(), &joining_cluster_config(), now(1)).unwrap();
+  let _ = coordinator.handle_heartbeat("node-a", now(2)).unwrap();
+  let _ = coordinator.handle_heartbeat("node-a", now(3)).unwrap();
+
+  let _ = coordinator.poll(now(5)).unwrap();
+  let subject = coordinator.snapshot().entries[0].unique_address.clone();
+
+  assert_eq!(coordinator.snapshot().reachability.aggregate_status(&subject), ReachabilityStatus::Unreachable);
+}
+
+#[test]
+fn gossip_delta_new_incarnation_removes_previous_active_from_current_state() {
+  let mut table = MembershipTable::new(3);
+  let address = Address::new("cluster", "node-a", 2552);
+  let first = UniqueAddress::new(address.clone(), 10);
+  let second = UniqueAddress::new(address, 11);
+  table
+    .try_join_with_identity("node-1".to_string(), first.clone(), DataCenter::default(), "1.0.0".to_string(), vec![])
+    .expect("first incarnation joins");
+  table.mark_weakly_up("cluster@node-a:2552").expect("first weakly up").expect("delta");
+  table.mark_up("cluster@node-a:2552").expect("first up").expect("delta");
+  let version = table.version();
+  let second_record = NodeRecord::new_with_identity(
+    second.clone(),
+    DataCenter::default(),
+    "node-1".to_string(),
+    NodeStatus::Joining,
+    version.next(),
+    "1.0.1".to_string(),
+    vec![],
+  );
+  let delta = MembershipDelta::new(version, version.next(), vec![second_record]);
+
+  let mut coordinator = MembershipCoordinator::new(base_config(), local_cluster_config(), table, registry(1.0));
+  coordinator.start_member().unwrap();
+
+  let outcome = coordinator.handle_gossip_delta("peer", &delta, now(6)).unwrap();
+  let state = outcome
+    .member_events
+    .iter()
+    .find_map(
+      |event| {
+        if let ClusterEvent::CurrentClusterState { state, .. } = event { Some(state.clone()) } else { None }
+      },
+    )
+    .expect("current cluster state");
+
+  assert!(!state.members.iter().any(|record| record.unique_address == first));
+  assert!(state.members.iter().any(|record| record.unique_address == second));
+  assert!(outcome.member_events.iter().any(|event| matches!(
+    event,
+    ClusterEvent::MemberStatusChanged { authority, from: NodeStatus::Up, to: NodeStatus::Dead, .. }
+      if authority == "cluster@node-a:2552"
+  )));
+  assert!(outcome.member_events.iter().any(|event| matches!(
+    event,
+    ClusterEvent::MemberQuarantined { authority, reason, .. }
+      if authority == "cluster@node-a:2552" && reason == "gossip-dead"
   )));
 }
 

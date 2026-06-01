@@ -9,6 +9,8 @@ mod tests;
 pub enum NodeStatus {
   /// Node requested to join and is being accepted.
   Joining,
+  /// Node is provisionally accepted and may participate with limited guarantees.
+  WeaklyUp,
   /// Node is active and participates in the cluster.
   Up,
   /// Node is suspected to be unreachable.
@@ -31,6 +33,12 @@ impl NodeStatus {
   /// Returns true when the node can serve requests.
   #[must_use]
   pub const fn is_active(self) -> bool {
-    matches!(self, Self::Joining | Self::Up | Self::Suspect)
+    matches!(self, Self::Joining | Self::WeaklyUp | Self::Up | Self::Suspect)
+  }
+
+  /// Returns true when the node is provisionally accepted.
+  #[must_use]
+  pub const fn is_provisional(self) -> bool {
+    matches!(self, Self::WeaklyUp)
   }
 }

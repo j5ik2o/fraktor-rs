@@ -1,6 +1,7 @@
 //! Membership management, gossip dissemination, and node lifecycle.
 
 mod current_cluster_state;
+mod data_center;
 mod gossip_dissemination_coordinator;
 mod gossip_event;
 mod gossip_outbound;
@@ -9,6 +10,7 @@ mod gossip_transport;
 mod gossip_transport_error;
 mod gossiper;
 mod gossiper_shared;
+mod indirect_connection_evidence;
 mod membership_coordinator;
 mod membership_coordinator_config;
 mod membership_coordinator_error;
@@ -27,9 +29,14 @@ mod noop_gossiper;
 mod quarantine_entry;
 mod quarantine_event;
 mod quarantine_table;
+mod reachability_matrix;
+mod reachability_record;
+mod reachability_snapshot;
+mod reachability_status;
 mod vector_clock;
 
 pub use current_cluster_state::CurrentClusterState;
+pub use data_center::DataCenter;
 pub use gossip_dissemination_coordinator::GossipDisseminationCoordinator;
 pub use gossip_event::GossipEvent;
 pub use gossip_outbound::GossipOutbound;
@@ -38,6 +45,7 @@ pub use gossip_transport::GossipTransport;
 pub use gossip_transport_error::GossipTransportError;
 pub use gossiper::Gossiper;
 pub use gossiper_shared::GossiperShared;
+pub use indirect_connection_evidence::IndirectConnectionEvidence;
 pub use membership_coordinator::MembershipCoordinator;
 pub use membership_coordinator_config::MembershipCoordinatorConfig;
 pub use membership_coordinator_error::MembershipCoordinatorError;
@@ -56,4 +64,8 @@ pub use noop_gossiper::NoopGossiper;
 pub use quarantine_entry::QuarantineEntry;
 pub use quarantine_event::QuarantineEvent;
 pub use quarantine_table::QuarantineTable;
+pub use reachability_matrix::ReachabilityMatrix;
+pub use reachability_record::ReachabilityRecord;
+pub use reachability_snapshot::ReachabilitySnapshot;
+pub use reachability_status::ReachabilityStatus;
 pub use vector_clock::VectorClock;

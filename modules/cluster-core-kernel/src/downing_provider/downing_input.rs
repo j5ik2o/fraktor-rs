@@ -3,6 +3,7 @@
 use alloc::string::String;
 
 use super::FailureObservation;
+use crate::membership::IndirectConnectionEvidence;
 
 /// Input passed into the core downing boundary.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -14,6 +15,8 @@ pub enum DowningInput {
   },
   /// Availability observation from membership or failure detection.
   FailureObservation(FailureObservation),
+  /// Indirect connectivity evidence from the membership reachability matrix.
+  IndirectConnectionEvidence(IndirectConnectionEvidence),
 }
 
 impl DowningInput {

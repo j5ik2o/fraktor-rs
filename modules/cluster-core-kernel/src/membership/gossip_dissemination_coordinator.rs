@@ -7,7 +7,8 @@ use alloc::{
 };
 
 use super::{
-  GossipEvent, GossipOutbound, GossipState, MembershipDelta, MembershipTable, MembershipVersion, VectorClock,
+  GossipEvent, GossipOutbound, GossipState, MembershipDelta, MembershipTable, MembershipVersion, NodeRecord,
+  VectorClock,
 };
 
 #[cfg(test)]
@@ -139,7 +140,7 @@ impl GossipDisseminationCoordinator {
   }
 
   /// Applies an incoming delta and detects conflicts.
-  pub fn apply_incoming(&mut self, delta: &MembershipDelta, peer: &str) {
+  pub fn apply_incoming(&mut self, delta: &MembershipDelta, peer: &str) -> Vec<NodeRecord> {
     if delta.to < self.table.version() {
       self.state = GossipState::Reconciling;
       self.events.push(GossipEvent::ConflictDetected {
@@ -147,10 +148,10 @@ impl GossipDisseminationCoordinator {
         local_version:  self.table.version(),
         remote_version: delta.to,
       });
-      return;
+      return Vec::new();
     }
 
-    self.table.apply_delta(delta.clone());
+    let superseded = self.table.apply_delta(delta.clone());
     self.peer_versions.insert(peer.to_string(), delta.to);
     self.inflight_version = delta.to;
     self.vector_clock.observe(peer, delta.to.value());
@@ -169,6 +170,7 @@ impl GossipDisseminationCoordinator {
     } else {
       self.state = GossipState::Diffusing;
     }
+    superseded
   }
 
   /// Drains accumulated events.

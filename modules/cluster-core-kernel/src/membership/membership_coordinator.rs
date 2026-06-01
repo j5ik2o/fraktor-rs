@@ -12,13 +12,14 @@ use alloc::{
 };
 use core::time::Duration;
 
+use fraktor_remote_core_rs::address::{Address, UniqueAddress};
 use fraktor_utils_core_rs::time::TimerInstant;
 
 use super::{
   CurrentClusterState, GossipDisseminationCoordinator, GossipEvent, MembershipCoordinatorConfig,
   MembershipCoordinatorError, MembershipCoordinatorOutcome, MembershipCoordinatorState, MembershipDelta,
   MembershipError, MembershipSnapshot, MembershipTable, MembershipVersion, NodeRecord, NodeStatus, QuarantineEntry,
-  QuarantineTable,
+  QuarantineTable, ReachabilityMatrix,
 };
 use crate::{
   ClusterEvent, ClusterExtensionConfig, ClusterTopology, ConfigValidation, JoinConfigCompatChecker, TopologyUpdate,
@@ -33,6 +34,7 @@ pub struct MembershipCoordinator {
   gossip:                GossipDisseminationCoordinator,
   registry:              DefaultFailureDetectorRegistry<String>,
   quarantine:            QuarantineTable,
+  reachability:          ReachabilityMatrix,
   last_cluster_state:    Option<CurrentClusterState>,
   topology_accumulator:  TopologyAccumulator,
   next_topology_emit_at: Option<TimerInstant>,
@@ -56,6 +58,7 @@ impl MembershipCoordinator {
       gossip: GossipDisseminationCoordinator::new(table, local_authority, Vec::new()),
       registry,
       quarantine: QuarantineTable::new(),
+      reachability: ReachabilityMatrix::new(),
       last_cluster_state: None,
       topology_accumulator: TopologyAccumulator::new(),
       next_topology_emit_at: None,
@@ -98,6 +101,7 @@ impl MembershipCoordinator {
     self.state = MembershipCoordinatorState::Stopped;
     self.suspect_since.clear();
     self.topology_accumulator.clear();
+    self.reachability = ReachabilityMatrix::new();
     self.last_cluster_state = None;
     Ok(())
   }
@@ -108,7 +112,8 @@ impl MembershipCoordinator {
     if self.state == MembershipCoordinatorState::Stopped {
       return MembershipSnapshot::new(MembershipVersion::zero(), Vec::new());
     }
-    self.gossip.table().snapshot()
+    let snapshot = self.gossip.table().snapshot();
+    MembershipSnapshot::new_with_reachability(snapshot.version, snapshot.entries, self.reachability.snapshot())
   }
 
   /// Returns current quarantine snapshot.
@@ -284,13 +289,20 @@ impl MembershipCoordinator {
 
     let status = self.gossip.table().record(authority).map(|record| record.status);
     if let Some(status) = status
-      && status == NodeStatus::Joining
-      && let Some(delta) = self.gossip.table_mut().mark_up(authority).map_err(MembershipCoordinatorError::Membership)?
+      && matches!(status, NodeStatus::Joining | NodeStatus::WeaklyUp)
     {
-      if self.config.gossip_enabled {
-        outcome.gossip_outbound.extend(self.gossip.disseminate(&delta));
+      let next_status = if status == NodeStatus::Joining { NodeStatus::WeaklyUp } else { NodeStatus::Up };
+      let delta = if status == NodeStatus::Joining {
+        self.gossip.table_mut().mark_weakly_up(authority).map_err(MembershipCoordinatorError::Membership)?
+      } else {
+        self.gossip.table_mut().mark_up(authority).map_err(MembershipCoordinatorError::Membership)?
+      };
+      if let Some(delta) = delta {
+        if self.config.gossip_enabled {
+          outcome.gossip_outbound.extend(self.gossip.disseminate(&delta));
+        }
+        self.emit_status_change(authority, status, next_status, now, &mut outcome);
       }
-      self.emit_status_change(authority, status, NodeStatus::Up, now, &mut outcome);
     }
 
     let was_suspect = self.suspect_since.contains_key(&authority_key);
@@ -318,17 +330,30 @@ impl MembershipCoordinator {
   ) -> Result<MembershipCoordinatorOutcome, MembershipCoordinatorError> {
     self.ensure_started()?;
 
+    let snapshot = self.gossip.table().snapshot();
     let mut previous = BTreeMap::new();
+    let mut incoming_keys = BTreeSet::new();
     for record in delta.entries.iter() {
-      previous.insert(record.authority.clone(), self.gossip.table().record(&record.authority).map(|r| r.status));
+      incoming_keys.insert(record.unique_address.to_string());
+      previous.insert(
+        record.unique_address.to_string(),
+        snapshot.entries.iter().find(|entry| entry.unique_address == record.unique_address).map(|entry| entry.status),
+      );
+    }
+    for record in snapshot.entries.iter() {
+      previous.entry(record.unique_address.to_string()).or_insert(Some(record.status));
     }
 
-    self.gossip.apply_incoming(delta, peer);
+    let superseded = self.gossip.apply_incoming(delta, peer);
     self.refresh_peers();
 
     let mut outcome = MembershipCoordinatorOutcome::default();
     for record in delta.entries.iter() {
-      let before = previous.get(&record.authority).copied().flatten();
+      let before = previous.get(&record.unique_address.to_string()).copied().flatten();
+      self.register_membership_change(record, before, now, &mut outcome);
+    }
+    for record in superseded.iter().filter(|record| !incoming_keys.contains(&record.unique_address.to_string())) {
+      let before = previous.get(&record.unique_address.to_string()).copied().flatten();
       self.register_membership_change(record, before, now, &mut outcome);
     }
 
@@ -430,10 +455,11 @@ impl MembershipCoordinator {
       if self.config.gossip_enabled {
         outcome.gossip_outbound.extend(self.gossip.disseminate(&delta));
       }
-      if let Some(record) = self.gossip.table().record(authority) {
+      if let Some(record) = self.gossip.table().record(authority).cloned() {
         let from = previous_status.unwrap_or(NodeStatus::Up);
+        self.record_unreachable(&record);
         self.emit_status_change(authority, from, record.status, now, outcome);
-        Self::emit_unreachable_event(record, now, outcome);
+        Self::emit_unreachable_event(&record, now, outcome);
       }
     }
     Ok(())
@@ -450,9 +476,10 @@ impl MembershipCoordinator {
       if self.config.gossip_enabled {
         outcome.gossip_outbound.extend(self.gossip.disseminate(&delta));
       }
-      if let Some(record) = self.gossip.table().record(authority) {
+      if let Some(record) = self.gossip.table().record(authority).cloned() {
+        self.record_reachable(&record);
         self.emit_status_change(authority, NodeStatus::Suspect, record.status, now, outcome);
-        Self::emit_reachable_event(record, now, outcome);
+        Self::emit_reachable_event(&record, now, outcome);
       }
     }
     Ok(())
@@ -496,7 +523,7 @@ impl MembershipCoordinator {
     let status = record.status;
     self.update_suspect_tracking(record.authority.as_str(), status, now);
     match status {
-      | NodeStatus::Joining | NodeStatus::Up | NodeStatus::Suspect => {
+      | NodeStatus::Joining | NodeStatus::WeaklyUp | NodeStatus::Up | NodeStatus::Suspect => {
         if before.is_none() || matches!(before, Some(NodeStatus::Removed | NodeStatus::Dead)) {
           self.topology_accumulator.joined.insert(record.authority.clone());
         }
@@ -544,6 +571,19 @@ impl MembershipCoordinator {
     } else {
       self.suspect_since.remove(authority);
     }
+  }
+
+  fn record_unreachable(&mut self, subject: &NodeRecord) {
+    self.reachability.unreachable(self.local_unique_address(), subject.unique_address.clone());
+  }
+
+  fn record_reachable(&mut self, subject: &NodeRecord) {
+    self.reachability.reachable(self.local_unique_address(), subject.unique_address.clone());
+  }
+
+  fn local_unique_address(&self) -> UniqueAddress {
+    local_authority_from_config(&self.cluster_config)
+      .map_or_else(default_local_unique_address, unique_address_from_authority)
   }
 
   fn emit_status_change(
@@ -609,7 +649,14 @@ impl MembershipCoordinator {
     let leader = oldest_authority(&leader_members);
     let role_leader = role_leaders(&members);
     let seen_by = self.gossip.seen_by();
-    CurrentClusterState::new(members, unreachable, seen_by, leader, role_leader)
+    CurrentClusterState::new_with_reachability(
+      members,
+      unreachable,
+      seen_by,
+      leader,
+      role_leader,
+      self.reachability.snapshot(),
+    )
   }
 
   fn collect_current_cluster_state_event(&mut self, now: TimerInstant, outcome: &mut MembershipCoordinatorOutcome) {
@@ -734,6 +781,25 @@ fn local_authority_from_config(cluster_config: &ClusterExtensionConfig) -> Optio
     None
   } else {
     Some(String::from(cluster_config.advertised_address()))
+  }
+}
+
+fn unique_address_from_authority(authority: String) -> UniqueAddress {
+  let (host, port) = authority_host_port(authority);
+  UniqueAddress::new(Address::new("fraktor-cluster", host, port), 1)
+}
+
+fn default_local_unique_address() -> UniqueAddress {
+  UniqueAddress::new(Address::new("fraktor-cluster", "local", 0), 1)
+}
+
+fn authority_host_port(authority: String) -> (String, u16) {
+  if let Some((host, port_text)) = authority.rsplit_once(':')
+    && let Ok(port) = port_text.parse::<u16>()
+  {
+    (host.to_string(), port)
+  } else {
+    (authority, 0)
   }
 }
 

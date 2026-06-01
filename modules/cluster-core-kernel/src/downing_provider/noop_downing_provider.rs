@@ -23,6 +23,7 @@ impl DowningProvider for NoopDowningProvider {
   fn decide(&mut self, input: &DowningInput) -> Result<DowningDecision, ClusterProviderError> {
     match input {
       | DowningInput::ExplicitDown { .. } => Ok(DowningDecision::Down),
+      | DowningInput::IndirectConnectionEvidence(_) => Ok(DowningDecision::Defer),
       | DowningInput::FailureObservation(observation) => match observation.kind() {
         | FailureObservationKind::Suspect | FailureObservationKind::Unreachable => Ok(DowningDecision::Defer),
         | FailureObservationKind::Recovered => Ok(DowningDecision::Keep),
