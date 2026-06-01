@@ -7,8 +7,8 @@ use alloc::{
 };
 
 use super::{
-  GossipEvent, GossipOutbound, GossipState, MembershipDelta, MembershipTable, MembershipVersion, NodeRecord,
-  VectorClock,
+  GossipEvent, GossipOutbound, GossipSeenDigest, GossipState, GossipTransportHandoff, MembershipDelta, MembershipTable,
+  MembershipVersion, NodeRecord, VectorClock,
 };
 
 #[cfg(test)]
@@ -23,6 +23,8 @@ pub struct GossipDisseminationCoordinator {
   peer_versions:    BTreeMap<String, MembershipVersion>,
   vector_clock:     VectorClock,
   seen_by:          BTreeSet<String>,
+  seen_digest:      GossipSeenDigest,
+  seen_identities:  BTreeMap<String, NodeRecord>,
   state:            GossipState,
   inflight_version: MembershipVersion,
   events:           Vec<GossipEvent>,
@@ -38,6 +40,7 @@ impl GossipDisseminationCoordinator {
     for peer in peers.iter() {
       vector_clock.observe(peer, current.value());
     }
+    let seen_identities = seen_identity_index(&table);
     Self {
       table,
       local_authority,
@@ -45,6 +48,8 @@ impl GossipDisseminationCoordinator {
       peer_versions,
       vector_clock,
       seen_by: BTreeSet::new(),
+      seen_digest: GossipSeenDigest::new(),
+      seen_identities,
       state: GossipState::Confirmed,
       inflight_version: current,
       events: Vec::new(),
@@ -75,6 +80,12 @@ impl GossipDisseminationCoordinator {
     self.seen_by.iter().cloned().collect()
   }
 
+  /// Projects the acknowledged authorities to confirmed member identities.
+  #[must_use]
+  pub const fn seen_digest(&self) -> &GossipSeenDigest {
+    &self.seen_digest
+  }
+
   /// Replaces peer list and refreshes peer versions.
   pub fn set_peers(&mut self, peers: Vec<String>) {
     let current = self.table.version();
@@ -96,12 +107,14 @@ impl GossipDisseminationCoordinator {
   pub fn disseminate(&mut self, delta: &MembershipDelta) -> Vec<GossipOutbound> {
     let out = self.peers.iter().cloned().map(|peer| GossipOutbound::new(peer, delta.clone())).collect::<Vec<_>>();
 
+    self.index_delta_identities(delta);
     self.inflight_version = delta.to;
     self.state = GossipState::Diffusing;
     self.seen_by.clear();
     if let Some(local_authority) = self.local_authority.as_ref() {
       self.seen_by.insert(local_authority.clone());
     }
+    self.mark_seen_authority_if_member(self.local_authority.clone(), delta.to);
     let mut vector_clock = VectorClock::new();
     for peer in self.peers.iter() {
       vector_clock.observe(peer, delta.from.value());
@@ -110,6 +123,10 @@ impl GossipDisseminationCoordinator {
     self.vector_clock = vector_clock;
     self.events.push(GossipEvent::Disseminated { peers: self.peers.len(), version: delta.to });
     self.events.push(self.seen_changed_event());
+    if self.has_converged() {
+      self.state = GossipState::Confirmed;
+      self.events.push(GossipEvent::Confirmed { version: self.inflight_version });
+    }
 
     out
   }
@@ -118,6 +135,7 @@ impl GossipDisseminationCoordinator {
   pub fn handle_ack(&mut self, peer: &str) -> Option<GossipState> {
     self.peer_versions.insert(peer.to_string(), self.inflight_version);
     self.vector_clock.observe(peer, self.inflight_version.value());
+    self.mark_seen_authority_if_member(Some(peer.to_string()), self.inflight_version);
     if self.seen_by.insert(peer.to_string()) {
       self.events.push(self.seen_changed_event());
     }
@@ -152,13 +170,19 @@ impl GossipDisseminationCoordinator {
     }
 
     let superseded = self.table.apply_delta(delta.clone());
+    for record in &superseded {
+      index_seen_identity(&mut self.seen_identities, record);
+    }
+    self.index_delta_identities(delta);
     self.peer_versions.insert(peer.to_string(), delta.to);
     self.inflight_version = delta.to;
     self.vector_clock.observe(peer, delta.to.value());
+    self.mark_seen_authority_if_member(Some(peer.to_string()), delta.to);
     let mut seen_changed = false;
     if let Some(local_authority) = self.local_authority.as_ref() {
       seen_changed |= self.seen_by.insert(local_authority.clone());
     }
+    self.mark_seen_authority_if_member(self.local_authority.clone(), delta.to);
     seen_changed |= self.seen_by.insert(peer.to_string());
     if seen_changed {
       self.events.push(self.seen_changed_event());
@@ -189,6 +213,56 @@ impl GossipDisseminationCoordinator {
   fn has_converged(&self) -> bool {
     self.vector_clock.has_seen_all(&self.peers, self.inflight_version.value())
   }
+
+  fn mark_seen_authority_if_member(&mut self, authority: Option<String>, version: MembershipVersion) {
+    let Some(authority) = authority else {
+      return;
+    };
+    if let Some(record) = self.seen_identities.get(authority.as_str()) {
+      self.seen_digest.mark_seen(record.unique_address.clone(), version);
+    }
+  }
+
+  fn index_delta_identities(&mut self, delta: &MembershipDelta) {
+    for record in &delta.entries {
+      index_seen_identity(&mut self.seen_identities, record);
+    }
+  }
 }
 
 const LOCAL_VECTOR_CLOCK_NODE: &str = "$local";
+
+fn seen_identity_index(table: &MembershipTable) -> BTreeMap<String, NodeRecord> {
+  let mut index = BTreeMap::new();
+  for record in table.records() {
+    index_seen_identity(&mut index, record);
+  }
+  index
+}
+
+fn index_seen_identity(index: &mut BTreeMap<String, NodeRecord>, record: &NodeRecord) {
+  index_seen_identity_key(index, record.authority.clone(), record);
+  index_seen_identity_key(index, GossipTransportHandoff::endpoint_for_identity(&record.unique_address), record);
+}
+
+fn index_seen_identity_key(index: &mut BTreeMap<String, NodeRecord>, key: String, record: &NodeRecord) {
+  match index.get(&key) {
+    | Some(existing) if !seen_identity_candidate_wins(existing, record) => {},
+    | _ => {
+      index.insert(key, record.clone());
+    },
+  }
+}
+
+fn seen_identity_candidate_wins(existing: &NodeRecord, candidate: &NodeRecord) -> bool {
+  if existing.status.is_active() != candidate.status.is_active() {
+    return candidate.status.is_active();
+  }
+  if existing.join_version != candidate.join_version {
+    return candidate.join_version > existing.join_version;
+  }
+  if existing.version != candidate.version {
+    return candidate.version > existing.version;
+  }
+  candidate.unique_address > existing.unique_address
+}

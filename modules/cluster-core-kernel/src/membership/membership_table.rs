@@ -410,6 +410,11 @@ impl MembershipTable {
     self.entries.get(authority).or_else(|| self.record_for_authority(authority))
   }
 
+  /// Iterates records without cloning the table.
+  pub fn records(&self) -> impl Iterator<Item = &NodeRecord> {
+    self.entries.values()
+  }
+
   /// Drains buffered events.
   pub fn drain_events(&mut self) -> Vec<MembershipEvent> {
     core::mem::take(&mut self.events)
