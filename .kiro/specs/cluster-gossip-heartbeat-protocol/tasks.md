@@ -53,7 +53,7 @@
   - _Boundary: GossipTransportHandoff, TokioGossipTransport_
   - _Depends: 1, 3, 4, 5_
 
-- [ ] 7. gap analysis evidence と scope guard を更新する
+- [x] 7. gap analysis evidence と scope guard を更新する
   - `GossipEnvelope`、dedicated cluster heartbeat protocol、full `Gossip` merge / tombstone / seen digest、`CrossDcClusterHeartbeat` の evidence を `docs/gap-analysis/cluster-gap-analysis.md` に反映する。
   - downing SBR、discovery provider、pubsub mediator、serialization contract、Deferred Pekko concepts をこの task で完了扱いにしない。
   - targeted tests と no_std check の結果で gossip / heartbeat protocol の境界が成立することを確認する。
