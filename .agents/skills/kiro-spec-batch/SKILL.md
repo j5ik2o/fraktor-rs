@@ -64,12 +64,12 @@ Create a complete specification for feature "{feature-name}".
 
 1. Read the brief at .kiro/specs/{feature-name}/brief.md for feature context
 2. Read the roadmap at .kiro/steering/roadmap.md for project context
-3. Execute the full spec pipeline. For each phase, read the corresponding skill's SKILL.md for complete instructions (templates, rules, review gates):
+3. Execute the full spec pipeline in auto-approve mode. For each phase, read the corresponding skill's SKILL.md for complete instructions (templates, rules, review gates):
    a. Initialize: Read .agents/skills/kiro-spec-init/SKILL.md, then create spec.json and requirements.md
-   b. Generate requirements: Read .agents/skills/kiro-spec-requirements/SKILL.md, then follow its steps
-   c. Generate design: Read .agents/skills/kiro-spec-design/SKILL.md, then follow its steps
-   d. Generate tasks: Read .agents/skills/kiro-spec-tasks/SKILL.md, then follow its steps
-4. Set all approvals to true in spec.json (auto-approve mode, equivalent of -y flag)
+   b. Generate requirements: Read .agents/skills/kiro-spec-requirements/SKILL.md, then follow its steps and set `approvals.requirements.approved = true`
+   c. Generate design: Read .agents/skills/kiro-spec-design/SKILL.md, then follow its steps and set `approvals.design.approved = true` before generating tasks
+   d. Generate tasks: Read .agents/skills/kiro-spec-tasks/SKILL.md, then follow its steps and set `approvals.tasks.approved = true`
+4. Confirm spec.json has all approvals set to true and `ready_for_implementation = true`
 5. Report completion with file list and task count
 ```
 
@@ -79,9 +79,10 @@ If multi-agent is not available, execute features in the wave sequentially.
 1. Verify each feature has: spec.json, requirements.md, design.md, tasks.md
 2. Mark a feature as succeeded only when all required files exist and the sub-agent reported completion.
 3. If any feature failed, report the failed feature and error, then recompute remaining waves using only completed roadmap specs and succeeded features from earlier waves as satisfied dependencies.
-4. If any downstream feature depends on a failed feature, do not dispatch that downstream feature. Report it as blocked and stop before the next wave so the roadmap or failed upstream spec can be repaired.
-5. Display wave completion: "Wave N complete: [features]. Files verified."
-6. Proceed to the next wave only when every dependency for every feature in that wave is backed by a completed roadmap item or a succeeded earlier-wave feature.
+4. For the next wave, split features into runnable and blocked sets. Dispatch runnable features whose dependencies are satisfied; do not dispatch blocked features that depend on failed or missing specs.
+5. If an entire future wave is blocked, stop before that wave and report the blocked features so the roadmap or failed upstream spec can be repaired.
+6. Display wave completion: "Wave N complete: [features]. Files verified. Blocked: [features]."
+7. Proceed to the next wave only with the runnable subset backed by completed roadmap items or succeeded earlier-wave features.
 
 ## Step 4: Cross-Spec Review
 
