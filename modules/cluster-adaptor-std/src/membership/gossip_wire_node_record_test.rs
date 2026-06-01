@@ -64,6 +64,28 @@ fn to_record_preserves_unique_address_and_data_center() {
 }
 
 #[test]
+fn to_record_falls_back_to_authority_system_host_and_port() {
+  let wire = GossipWireNodeRecord {
+    node_id:       String::from("node-1"),
+    authority:     String::from("cluster@n1:4050"),
+    unique_system: String::new(),
+    unique_host:   String::new(),
+    unique_port:   0,
+    unique_uid:    42,
+    data_center:   String::from("dc-east"),
+    status:        1,
+    version:       4,
+    join_version:  4,
+    app_version:   String::from("1.0.0"),
+    roles:         vec![String::from("role-a")],
+  };
+
+  let decoded = wire.to_record().expect("decode");
+
+  assert_eq!(decoded.unique_address, UniqueAddress::new(Address::new("cluster", "n1", 4050), 42));
+}
+
+#[test]
 fn to_record_preserves_shutdown_related_statuses() {
   for status in [NodeStatus::PreparingForShutdown, NodeStatus::ReadyForShutdown] {
     let record = NodeRecord::new(

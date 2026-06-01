@@ -84,12 +84,16 @@ impl GossipWireNodeRecord {
   }
 
   fn unique_address(&self) -> UniqueAddress {
-    let (host, port) = if self.unique_host.is_empty() {
-      authority_host_port(self.authority.clone())
+    let (authority_system, host, port) = if self.unique_host.is_empty() {
+      authority_system_host_port(self.authority.clone())
     } else {
-      (self.unique_host.clone(), self.unique_port)
+      (None, self.unique_host.clone(), self.unique_port)
     };
-    let system = if self.unique_system.is_empty() { "fraktor-cluster".to_string() } else { self.unique_system.clone() };
+    let system = if self.unique_system.is_empty() {
+      authority_system.unwrap_or_else(|| "fraktor-cluster".to_string())
+    } else {
+      self.unique_system.clone()
+    };
     UniqueAddress::new(Address::new(system, host, port), self.unique_uid)
   }
 
@@ -106,13 +110,19 @@ fn default_data_center_name() -> String {
   "default".to_string()
 }
 
-fn authority_host_port(authority: String) -> (String, u16) {
-  if let Some((host, port_text)) = authority.rsplit_once(':')
+fn authority_system_host_port(authority: String) -> (Option<String>, String, u16) {
+  let (system, host_port) = if let Some((system, host_port)) = authority.split_once('@') {
+    (Some(system.to_string()), host_port.to_string())
+  } else {
+    (None, authority)
+  };
+
+  if let Some((host, port_text)) = host_port.rsplit_once(':')
     && let Ok(port) = port_text.parse::<u16>()
   {
-    (host.to_string(), port)
+    (system, host.to_string(), port)
   } else {
-    (authority, 0)
+    (system, host_port, 0)
   }
 }
 
