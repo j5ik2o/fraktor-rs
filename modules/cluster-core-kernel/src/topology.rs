@@ -1,6 +1,9 @@
 //! Observed cluster topology and topology-change contracts.
 
 mod block_list_provider;
+mod cluster_compatibility_key;
+mod cluster_compatibility_key_catalog;
+mod cluster_compatibility_key_set;
 mod cluster_event;
 mod cluster_event_type;
 mod cluster_metrics;
@@ -12,6 +15,9 @@ mod topology_apply_error;
 mod topology_update;
 
 pub use block_list_provider::BlockListProvider;
+pub use cluster_compatibility_key::ClusterCompatibilityKey;
+pub use cluster_compatibility_key_catalog::ClusterCompatibilityKeyCatalog;
+pub use cluster_compatibility_key_set::ClusterCompatibilityKeySet;
 pub use cluster_event::ClusterEvent;
 pub use cluster_event_type::ClusterEventType;
 pub use cluster_metrics::ClusterMetrics;

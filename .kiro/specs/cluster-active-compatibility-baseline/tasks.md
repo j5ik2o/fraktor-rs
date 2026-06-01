@@ -1,6 +1,6 @@
 # 実装計画
 
-- [ ] 1. compatibility key catalog の土台を追加する
+- [x] 1. compatibility key catalog の土台を追加する
   - join compatibility で比較する required key、比較対象外の sensitive/local-only key、downstream が参照する stable key 名を定義する。
   - 既存の pubsub、downing provider、SBR settings に加えて failure detector choice の identity を catalog に含める。
   - catalog は `no_std` core で使える immutable surface として観測できる。
