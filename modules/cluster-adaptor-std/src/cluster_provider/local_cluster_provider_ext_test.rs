@@ -59,6 +59,14 @@ fn publish_connected(event_stream: &EventStreamShared, authority: &str) {
   }));
 }
 
+fn publish_quarantined(event_stream: &EventStreamShared, authority: &str) {
+  event_stream.publish(&EventStreamEvent::RemotingLifecycle(RemotingLifecycleEvent::Quarantined {
+    authority:      String::from(authority),
+    reason:         String::from("association quarantined"),
+    correlation_id: CorrelationId::nil(),
+  }));
+}
+
 fn subscribe_recorder(event_stream: &EventStreamShared) -> (RecordingClusterEvents, EventStreamSubscription) {
   let recorder = RecordingClusterEvents::new();
   let subscriber: EventStreamSubscriberShared = subscriber_handle(recorder.clone());
@@ -86,6 +94,30 @@ fn subscribe_remoting_events_keeps_subscription_after_helper_returns() {
     event,
     ClusterEvent::TopologyUpdated { update }
     if update.topology.joined() == &Vec::from([String::from("remote-sys@127.0.0.1:2552")])
+  )));
+}
+
+#[test]
+fn retained_remoting_subscription_converts_quarantined_event_to_leave_topology() {
+  let event_stream = EventStreamShared::default();
+  let provider = wrap_local_cluster_provider(LocalClusterProvider::new(
+    event_stream.clone(),
+    block_list(),
+    "local-sys@127.0.0.1:2551",
+  ));
+  provider.with_write(|provider| provider.start_member().expect("provider should start"));
+  let (recorder, _cluster_subscription) = subscribe_recorder(&event_stream);
+  let _remoting_subscription = subscribe_remoting_events(&provider);
+
+  publish_connected(&event_stream, "remote-sys@127.0.0.1:2552");
+  publish_quarantined(&event_stream, "remote-sys@127.0.0.1:2552");
+
+  assert_eq!(provider.with_read(|provider| provider.member_count()), 1);
+  let events = recorder.events();
+  assert!(events.iter().any(|event| matches!(
+    event,
+    ClusterEvent::TopologyUpdated { update }
+    if update.topology.left() == &Vec::from([String::from("remote-sys@127.0.0.1:2552")])
   )));
 }
 

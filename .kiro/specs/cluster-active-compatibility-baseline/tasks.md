@@ -29,7 +29,7 @@
   - _Requirements: 3.1, 3.2, 3.3, 3.4_
   - _Boundary: DowningProviderCompatibility_
 
-- [ ] 5. std remoting lifecycle bridge retention を検証する
+- [x] 5. std remoting lifecycle bridge retention を検証する
   - `subscribe_remoting_events` が `EventStreamSubscription` を返し、helper return 後も guard 保持中の connected event が topology join input になることを確認する。
   - guard drop 後に topology update が生成されないことを確認する。
   - subscription が provider を strong reference で保持しないことを確認する。
