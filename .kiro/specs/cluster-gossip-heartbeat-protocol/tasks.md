@@ -1,6 +1,6 @@
 # 実装計画
 
-- [ ] 1. gossip envelope の core contract を追加する
+- [x] 1. gossip envelope の core contract を追加する
   - gossip payload が from/to `UniqueAddress`、payload kind、membership version、deadline を保持できるようにする。
   - delta、full gossip state、seen digest、heartbeat request / response、cross-DC heartbeat を payload kind として区別できるようにする。
   - identity 未確定と deadline expired が caller から観測できる outcome になる。
