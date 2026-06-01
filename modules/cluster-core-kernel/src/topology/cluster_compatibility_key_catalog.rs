@@ -9,6 +9,8 @@ const SENSITIVE_PROVIDER_FACTORY_REASON: &str =
 static REQUIRED_KEYS: [ClusterCompatibilityKey; 2] =
   [ClusterCompatibilityKeyCatalog::PUBSUB, ClusterCompatibilityKeyCatalog::DOWNING_PROVIDER];
 
+static CONDITIONAL_KEYS: [ClusterCompatibilityKey; 1] = [ClusterCompatibilityKeyCatalog::SPLIT_BRAIN_RESOLVER_SETTINGS];
+
 static EXCLUDED_KEYS: [ClusterCompatibilityKey; 2] =
   [ClusterCompatibilityKeyCatalog::ADVERTISED_ADDRESS, ClusterCompatibilityKeyCatalog::DOWNING_PROVIDER_FACTORY];
 
@@ -34,6 +36,12 @@ impl ClusterCompatibilityKeyCatalog {
   #[must_use]
   pub const fn required_keys() -> &'static [ClusterCompatibilityKey] {
     &REQUIRED_KEYS
+  }
+
+  /// Returns keys compared only when their provider is active.
+  #[must_use]
+  pub const fn conditional_keys() -> &'static [ClusterCompatibilityKey] {
+    &CONDITIONAL_KEYS
   }
 
   /// Returns keys excluded from join compatibility comparison.

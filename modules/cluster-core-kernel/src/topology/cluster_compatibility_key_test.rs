@@ -8,6 +8,14 @@ fn catalog_exposes_required_stable_key_names() {
 }
 
 #[test]
+fn catalog_exposes_conditional_stable_key_names() {
+  let conditional_names: Vec<_> =
+    ClusterCompatibilityKeyCatalog::conditional_keys().iter().map(|key| key.name()).collect();
+
+  assert_eq!(conditional_names, vec!["cluster.split-brain-resolver.settings"]);
+}
+
+#[test]
 fn catalog_exposes_excluded_keys_with_reasons() {
   let excluded = ClusterCompatibilityKeyCatalog::excluded_keys();
 

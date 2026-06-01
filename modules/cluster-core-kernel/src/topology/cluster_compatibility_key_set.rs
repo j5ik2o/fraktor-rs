@@ -9,8 +9,9 @@ use crate::topology::{ClusterCompatibilityKey, ClusterCompatibilityKeyCatalog};
 /// Immutable required and excluded key set for cluster compatibility.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ClusterCompatibilityKeySet {
-  required_keys: &'static [ClusterCompatibilityKey],
-  excluded_keys: &'static [ClusterCompatibilityKey],
+  required_keys:    &'static [ClusterCompatibilityKey],
+  conditional_keys: &'static [ClusterCompatibilityKey],
+  excluded_keys:    &'static [ClusterCompatibilityKey],
 }
 
 impl ClusterCompatibilityKeySet {
@@ -18,8 +19,9 @@ impl ClusterCompatibilityKeySet {
   #[must_use]
   pub const fn cluster_compatibility() -> Self {
     Self {
-      required_keys: ClusterCompatibilityKeyCatalog::required_keys(),
-      excluded_keys: ClusterCompatibilityKeyCatalog::excluded_keys(),
+      required_keys:    ClusterCompatibilityKeyCatalog::required_keys(),
+      conditional_keys: ClusterCompatibilityKeyCatalog::conditional_keys(),
+      excluded_keys:    ClusterCompatibilityKeyCatalog::excluded_keys(),
     }
   }
 
@@ -27,6 +29,12 @@ impl ClusterCompatibilityKeySet {
   #[must_use]
   pub const fn required_keys(&self) -> &'static [ClusterCompatibilityKey] {
     self.required_keys
+  }
+
+  /// Returns keys compared only when their provider is active.
+  #[must_use]
+  pub const fn conditional_keys(&self) -> &'static [ClusterCompatibilityKey] {
+    self.conditional_keys
   }
 
   /// Returns keys excluded from join compatibility comparison.
