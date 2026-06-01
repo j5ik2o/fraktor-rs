@@ -15,7 +15,7 @@
   - _Boundary: JoinCompatibilityComposition_
   - _Depends: 1_
 
-- [ ] 3. remote actor path helper contract を固定する
+- [x] 3. remote actor path helper contract を固定する
   - local actor ref が cluster advertised authority 付き canonical remote path に変換されることを維持する。
   - 既存 remote authority と UID が保持され、canonical path 不在時は observable error になることを test で確認する。
   - `ClusterApi::remote_path_of` の scope を path formatting に限定し、remote delivery や actor resolution behavior を変更しない。

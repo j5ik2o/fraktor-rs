@@ -139,16 +139,17 @@ fn remote_path_of_uses_cluster_advertised_authority_for_local_ref() {
 }
 
 #[test]
-fn remote_path_of_preserves_existing_remote_authority() {
+fn remote_path_of_preserves_existing_remote_authority_and_uid() {
   let (system, _ext) = build_system_with_extension(|| Box::new(StaticIdentityLookup::new("node1:8080")));
   let api = ClusterApi::try_from_system(&system).expect("cluster api");
   let remote_path =
-    ActorPathParser::parse("fraktor.tcp://cellactor@node2:8080/user/worker").expect("remote path parses");
+    ActorPathParser::parse("fraktor.tcp://cellactor@node2:8080/user/worker#77").expect("remote path parses");
   let actor_ref = ActorRef::with_canonical_path(Pid::new(11, 0), TestSender, remote_path.clone());
 
   let resolved = api.remote_path_of(&actor_ref).expect("remote path");
 
   assert_eq!(resolved.to_canonical_uri(), remote_path.to_canonical_uri());
+  assert_eq!(resolved.uid().map(|uid| uid.value()), Some(77));
 }
 
 #[test]
