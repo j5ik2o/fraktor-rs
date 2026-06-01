@@ -51,14 +51,17 @@ Execute these 4 phases in order:
 
 **Core Logic**:
 
-1. **Check for Brief**:
-   - If `.kiro/specs/{feature-name}/brief.md` exists (created by `$kiro-discovery`), read it for discovery context (problem, approach, scope, constraints)
-   - Use brief content as the project description instead of `$ARGUMENTS`
-
-2. **Generate Feature Name**:
-   - Convert description to kebab-case
+1. **Resolve Feature Name**:
+   - If `$ARGUMENTS` names an existing `.kiro/specs/{feature-name}/` directory, use that directory name as the feature name
+   - Otherwise convert description to kebab-case
    - Example: "User profile with avatar upload" → "user-profile-avatar-upload"
    - Keep name concise (2-4 words ideally)
+
+2. **Check for Brief**:
+   - If `.kiro/specs/{feature-name}/brief.md` exists (created by `$kiro-discovery`), read it for discovery context (problem, approach, scope, constraints)
+   - If the generated name has no brief but a brief-only spec directory clearly matches the request, use that existing directory instead of creating a second spec directory
+   - If multiple brief-only directories could match, ask the user to choose before continuing
+   - Use brief content as the project description instead of `$ARGUMENTS`
 
 3. **Check Uniqueness**:
    - Use Glob to check `.kiro/specs/*/`

@@ -8,14 +8,15 @@ description: Initialize a new specification with detailed project description
 
 <instructions>
 ## Core Task
-Generate a unique feature name from the project description ($ARGUMENTS) and initialize the specification structure.
+Resolve or generate a unique feature name from the project description ($ARGUMENTS) and initialize the specification structure.
 
 ## Execution Steps
-1. **Check for Brief**: If `.kiro/specs/{feature-name}/brief.md` exists (created by `$kiro-discovery`), read it. The brief contains problem, approach, scope, and constraints from the discovery session. Use this to pre-fill the project description and skip clarification questions that the brief already answers.
-2. **Clarify Intent**: The Project Description in requirements.md must contain three elements: (a) who has the problem, (b) current situation, (c) what should change. If a brief.md exists and covers these, skip to step 3. Otherwise, ask the user to clarify before proceeding. Ask as many questions as needed; do not fill in gaps with your own assumptions.
-3. **Check Uniqueness**: Verify `.kiro/specs/` for naming conflicts. If the directory already exists with only `brief.md` (no `spec.json`), use that directory (discovery created it).
-4. **Create Directory**: `.kiro/specs/[feature-name]/` (skip if already exists from discovery)
-5. **Initialize Files Using Templates**:
+1. **Resolve Feature Name**: If $ARGUMENTS names an existing `.kiro/specs/{feature-name}/` directory, use that directory name. Otherwise generate the feature name from the project description.
+2. **Check for Brief**: After resolving the feature name, read `.kiro/specs/{feature-name}/brief.md` if it exists. If no brief exists at the resolved name but a brief-only spec directory clearly matches the request, switch to that directory instead of creating a duplicate spec directory. If multiple brief-only directories could match, ask the user to choose before continuing. The brief contains problem, approach, scope, and constraints from the discovery session. Use this to pre-fill the project description and skip clarification questions that the brief already answers.
+3. **Clarify Intent**: The Project Description in requirements.md must contain three elements: (a) who has the problem, (b) current situation, (c) what should change. If a brief.md exists and covers these, skip to step 4. Otherwise, ask the user to clarify before proceeding. Ask as many questions as needed; do not fill in gaps with your own assumptions.
+4. **Check Uniqueness**: Verify `.kiro/specs/` for naming conflicts. If the directory already exists with only `brief.md` (no `spec.json`), use that directory (discovery created it).
+5. **Create Directory**: `.kiro/specs/[feature-name]/` (skip if already exists from discovery)
+6. **Initialize Files Using Templates**:
    - Read `.kiro/settings/templates/specs/init.json`
    - Read `.kiro/settings/templates/specs/requirements-init.md`
    - Replace placeholders:
@@ -48,4 +49,3 @@ Provide output in the language specified in `spec.json` with the following struc
 - **Template Missing**: If template files don't exist in `.kiro/settings/templates/specs/`, report error with specific missing file path and suggest checking repository setup
 - **Directory Conflict**: If feature name already exists, append numeric suffix (e.g., `feature-name-2`) and notify user of automatic conflict resolution
 - **Write Failure**: Report error with specific path and suggest checking permissions or disk space
-

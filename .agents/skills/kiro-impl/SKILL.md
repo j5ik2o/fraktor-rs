@@ -64,8 +64,8 @@ After all parallel research completes, synthesize implementation brief before st
 - Read tasks.md, identify actionable sub-tasks (X.Y numbering like 1.1, 2.3)
 - Major tasks (1., 2.) are grouping headers, not execution units
 - Skip tasks with `_Blocked:_` annotation
-- For each selected task, check `_Depends:_` annotations -- verify referenced tasks are `[x]`
-- If prerequisites incomplete, execute them first or warn the user
+- For each selected task, check `_Depends:_` annotations -- a task is actionable only when every referenced task is currently `[x]`
+- If prerequisites are incomplete, execute prerequisite tasks first when they are in scope; otherwise leave the downstream task pending and report it as blocked
 - Use `_Boundary:_` annotations to understand the task's component scope
 
 ## Step 3: Execute Implementation
@@ -74,7 +74,7 @@ After all parallel research completes, synthesize implementation brief before st
 
 **Iteration discipline**: Process exactly ONE sub-task (e.g., 1.1) per iteration. Do NOT batch multiple sub-tasks into a single sub-agent dispatch. Each iteration follows the full cycle: dispatch implementer → review → commit → re-read tasks.md → next.
 
-**Context management**: At the start of each iteration, re-read `tasks.md` to determine the next actionable sub-task. Do NOT rely on accumulated memory of previous iterations. After completing each iteration, retain only a one-line summary (e.g., "1.1: READY_FOR_REVIEW, 3 files changed") and discard the full status report and reviewer details.
+**Context management**: At the start of each iteration, re-read `tasks.md` to determine the next actionable sub-task. A task is eligible only if it is unchecked, has no `_Blocked:_` annotation, and every `_Depends:_` reference is currently `[x]`. Do NOT rely on accumulated memory of previous iterations. If no eligible task remains but unchecked or blocked tasks still exist, stop and report those tasks instead of continuing to final validation. After completing each iteration, retain only a one-line summary (e.g., "1.1: READY_FOR_REVIEW, 3 files changed") and discard the full status report and reviewer details.
 
 If multi-agent capability is available, for each task (one at a time):
 
@@ -112,8 +112,9 @@ If multi-agent capability is available, for each task (one at a time):
 - Parse reviewer verdict only from the exact `## Review Verdict` block and `- VERDICT:` field.
 - If `VERDICT` is missing, ambiguous, or replaced with prose, re-dispatch the reviewer once requesting the exact structured verdict only. Do NOT mark the task complete, commit, or continue to the next task without a parseable `APPROVED | REJECTED` value.
 - **APPROVED** → before marking the task `[x]` or making any success claim, apply `kiro-verify-completion` using fresh evidence from the current code state; then mark task `[x]` in tasks.md and perform selective git commit
-- **REJECTED (round 1-2)** → re-dispatch implementer with review feedback
-- **REJECTED (round 3)** → dispatch debug subagent (see section below)
+- **REJECTED** → increment this task's `review_rejection_count`
+- If `review_rejection_count <= 2` → re-dispatch implementer with review feedback
+- If `review_rejection_count >= 3` → dispatch debug subagent (see section below)
 
 **e) Commit** (parent-only, selective staging):
 - Stage only the files actually changed for this task, plus tasks.md
@@ -175,7 +176,8 @@ Before writing any code, read the relevant sections of requirements.md and desig
 ## Step 4: Final Validation
 
 **Autonomous mode**:
-- After all tasks complete, run `$kiro-validate-impl $1` as a GO/NO-GO gate
+- Before final validation, re-read `tasks.md` and verify every selected task is `[x]`. If unchecked or `_Blocked:_` tasks remain, stop and report them; do not run feature-level validation.
+- After every selected task is `[x]`, run `$kiro-validate-impl $1` as a GO/NO-GO gate
 - If validation returns GO → before reporting feature success, apply `kiro-verify-completion` to the feature-level claim using the validation result and fresh supporting evidence
 - If validation returns NO-GO:
   - Fix only concrete findings from the validation report
@@ -202,7 +204,7 @@ For tasks that add or change behavior, enforce RED → GREEN with a feature flag
 - **Strict Handoff Parsing**: Never infer implementer `STATUS` or reviewer `VERDICT` from surrounding prose; only the exact structured fields count
 - **No Destructive Reset**: Never use `git checkout .`, `git reset --hard`, or similar destructive rollback inside the implementation loop
 - **Selective Staging**: NEVER use `git add -A` or `git add .`; always stage explicit file paths
-- **Bounded Review Rounds**: Max 2 implementer re-dispatch rounds per reviewer rejection, then debug
+- **Bounded Review Rounds**: Maintain a per-task `review_rejection_count`; after 2 implementer re-dispatches for reviewer rejection, route the third rejection to debug
 - **Bounded Debug**: Max 2 debug rounds per task (debug + re-implementation per round); if still failing → BLOCKED
 - **Bounded Remediation**: Cap final-validation remediation at 3 rounds
 
