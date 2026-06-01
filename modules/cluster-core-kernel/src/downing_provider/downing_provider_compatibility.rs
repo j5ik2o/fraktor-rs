@@ -1,6 +1,6 @@
 //! Downing provider compatibility metadata for join checks.
 
-use alloc::string::String;
+use alloc::{format, string::String};
 
 use super::SplitBrainResolverSettings;
 
@@ -12,6 +12,7 @@ const EMPTY_DOWNING_PROVIDER_KEY_REASON: &str = "downing provider compatibility 
 pub struct DowningProviderCompatibility {
   provider_key:                  String,
   split_brain_resolver_settings: Option<SplitBrainResolverSettings>,
+  sbr_settings_identity:         Option<String>,
 }
 
 impl DowningProviderCompatibility {
@@ -24,7 +25,7 @@ impl DowningProviderCompatibility {
   pub fn new(provider_key: impl Into<String>) -> Self {
     let provider_key = provider_key.into();
     assert!(!provider_key.is_empty(), "{EMPTY_DOWNING_PROVIDER_KEY_REASON}");
-    Self { provider_key, split_brain_resolver_settings: None }
+    Self { provider_key, split_brain_resolver_settings: None, sbr_settings_identity: None }
   }
 
   /// Creates compatibility metadata for the built-in no-op downing provider.
@@ -45,10 +46,26 @@ impl DowningProviderCompatibility {
     self.split_brain_resolver_settings.as_ref()
   }
 
+  /// Returns the deterministic Split Brain Resolver settings identity.
+  #[must_use]
+  pub fn sbr_settings_identity(&self) -> Option<&str> {
+    self.sbr_settings_identity.as_deref()
+  }
+
   /// Attaches Split Brain Resolver settings to this compatibility identity.
   #[must_use]
-  pub const fn with_split_brain_resolver_settings(mut self, settings: SplitBrainResolverSettings) -> Self {
+  pub fn with_split_brain_resolver_settings(mut self, settings: SplitBrainResolverSettings) -> Self {
     self.split_brain_resolver_settings = Some(settings);
+    self.sbr_settings_identity = Some(format_sbr_settings_identity(settings));
     self
   }
+}
+
+fn format_sbr_settings_identity(settings: SplitBrainResolverSettings) -> String {
+  format!(
+    "stable-after-nanos={};active-strategy={};down-all-when-unstable-nanos={}",
+    settings.stable_after().as_nanos(),
+    settings.active_strategy().as_str(),
+    settings.down_all_when_unstable().as_nanos()
+  )
 }

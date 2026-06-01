@@ -38,6 +38,7 @@ fn downing_provider_compatibility_preserves_provider_key() {
 
   assert_eq!(compatibility.provider_key(), "split-brain-resolver");
   assert!(compatibility.split_brain_resolver_settings().is_none());
+  assert!(compatibility.sbr_settings_identity().is_none());
 }
 
 #[test]
@@ -53,10 +54,31 @@ fn downing_provider_compatibility_preserves_split_brain_resolver_settings() {
 
   assert_eq!(compatibility.provider_key(), "split-brain-resolver");
   assert_eq!(compatibility.split_brain_resolver_settings(), Some(&settings));
+  assert_eq!(
+    compatibility.sbr_settings_identity(),
+    Some("stable-after-nanos=20000000000;active-strategy=keep-majority;down-all-when-unstable-nanos=15000000000")
+  );
 }
 
 #[test]
 #[should_panic(expected = "downing provider compatibility key must not be empty")]
 fn downing_provider_compatibility_rejects_empty_provider_key() {
   let _compatibility = DowningProviderCompatibility::new("");
+}
+
+#[test]
+fn split_brain_resolver_settings_identity_uses_strategy_identifier_and_durations() {
+  let settings = SplitBrainResolverSettings::new(
+    Duration::from_millis(2500),
+    SplitBrainResolverStrategy::LeaseMajority,
+    Duration::from_millis(750),
+  );
+
+  let compatibility =
+    DowningProviderCompatibility::new("split-brain-resolver").with_split_brain_resolver_settings(settings);
+
+  assert_eq!(
+    compatibility.sbr_settings_identity(),
+    Some("stable-after-nanos=2500000000;active-strategy=lease-majority;down-all-when-unstable-nanos=750000000")
+  );
 }

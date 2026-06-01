@@ -22,7 +22,7 @@
   - _Requirements: 2.1, 2.2, 2.3, 2.4_
   - _Boundary: RemotePathHelper_
 
-- [ ] 4. downing provider compatibility metadata を固定する
+- [x] 4. downing provider compatibility metadata を固定する
   - provider key と SBR settings identity を `DowningProviderCompatibility` の比較語彙として観測できるようにする。
   - custom provider factory と no-op downing provider の既存 behavior を変更しないことを確認する。
   - provider-facing SBR hook、decision failure 変換、reachability、lease majority の判定は downstream `cluster-downing-sbr-decision-model` に残す。
