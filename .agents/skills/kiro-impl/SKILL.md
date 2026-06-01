@@ -63,6 +63,7 @@ After all parallel research completes, synthesize implementation brief before st
 **Build task queue**:
 - Read tasks.md, identify actionable sub-tasks (X.Y numbering like 1.1, 2.3)
 - Major tasks (1., 2.) are grouping headers, not execution units
+- Treat `- [ ]` as a required pending task and `- [ ]*` as a deferred optional task. Autonomous mode selects required pending tasks only; optional tasks run only when explicitly selected by task number.
 - Skip tasks with `_Blocked:_` annotation
 - For each selected task, check `_Depends:_` annotations -- a task is actionable only when every referenced task is currently `[x]`
 - If prerequisites are incomplete, execute prerequisite tasks first when they are in scope; otherwise leave the downstream task pending and report it as blocked
@@ -74,11 +75,12 @@ After all parallel research completes, synthesize implementation brief before st
 
 **Iteration discipline**: Process exactly ONE sub-task (e.g., 1.1) per iteration. Do NOT batch multiple sub-tasks into a single sub-agent dispatch. Each iteration follows the full cycle: dispatch implementer → review → commit → re-read tasks.md → next.
 
-**Context management**: At the start of each iteration, re-read `tasks.md` to determine the next actionable sub-task. A task is eligible only if it is unchecked, has no `_Blocked:_` annotation, and every `_Depends:_` reference is currently `[x]`. Do NOT rely on accumulated memory of previous iterations. If no eligible task remains but unchecked or blocked tasks still exist, stop and report those tasks instead of continuing to final validation. After completing each iteration, retain only a one-line summary (e.g., "1.1: READY_FOR_REVIEW, 3 files changed") and discard the full status report and reviewer details.
+**Context management**: At the start of each iteration, re-read `tasks.md` to determine the next actionable sub-task. A task is eligible only if it is unchecked, required (`- [ ]`), has no `_Blocked:_` annotation, and every `_Depends:_` reference is currently `[x]`. Do NOT rely on accumulated memory of previous iterations. If no eligible required task remains but required unchecked or blocked tasks still exist, stop and report those tasks instead of continuing to final validation. Ignore deferred optional `- [ ]*` tasks for autonomous eligibility unless the user explicitly selected them. After completing each iteration, retain only a one-line summary (e.g., "1.1: READY_FOR_REVIEW, 3 files changed") and discard the full status report and reviewer details.
 
 If multi-agent capability is available, for each task (one at a time):
 
 **a) Dispatch implementer**:
+- Initialize `review_rejection_count = 0` for this task ID when the task is selected. Keep the counter keyed to the current task ID only; do not carry it into the next task.
 - Read `templates/implementer-prompt.md` from this skill's directory
 - Construct a prompt by combining the template with task-specific context:
   - Task description and boundary scope
@@ -176,7 +178,7 @@ Before writing any code, read the relevant sections of requirements.md and desig
 ## Step 4: Final Validation
 
 **Autonomous mode**:
-- Before final validation, re-read `tasks.md` and verify every selected task is `[x]`. If unchecked or `_Blocked:_` tasks remain, stop and report them; do not run feature-level validation.
+- Before final validation, re-read `tasks.md` and verify every selected required task is `[x]`. Deferred optional `- [ ]*` tasks do not block validation unless the user explicitly selected them for this run. If required unchecked or `_Blocked:_` tasks remain, stop and report them; do not run feature-level validation.
 - After every selected task is `[x]`, run `$kiro-validate-impl $1` as a GO/NO-GO gate
 - If validation returns GO → before reporting feature success, apply `kiro-verify-completion` to the feature-level claim using the validation result and fresh supporting evidence
 - If validation returns NO-GO:

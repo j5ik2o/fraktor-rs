@@ -64,6 +64,7 @@ Create a complete specification for feature "{feature-name}".
 
 1. Read the brief at .kiro/specs/{feature-name}/brief.md for feature context
 2. Read the roadmap at .kiro/steering/roadmap.md for project context
+   - If spec.json, requirements.md, design.md, or tasks.md already exists while roadmap.md still marks the feature `[ ]`, treat it as a partial spec to resume or repair. Do not skip it solely because tasks.md exists.
 3. Execute the full spec pipeline in auto-approve mode. For each phase, read the corresponding skill's SKILL.md for complete instructions (templates, rules, review gates):
    a. Initialize: Read .agents/skills/kiro-spec-init/SKILL.md, then create spec.json and requirements.md
    b. Generate requirements: Read .agents/skills/kiro-spec-requirements/SKILL.md, then follow its steps and set `approvals.requirements.approved = true`
@@ -146,7 +147,7 @@ Next: Review generated specs, then start implementation with $kiro-impl <feature
 - **Wave dependency order is strict**: Never start a feature until its dependencies are satisfied by completed roadmap specs or succeeded earlier-wave features. If an earlier feature fails, later waves may run only the runnable subset that does not depend on the failed or missing spec.
 - **Parallel within waves**: All features in the same wave should be dispatched in parallel if multi-agent is available.
 - **No partial waves**: If a feature in a wave fails, still complete the other features in that wave before reporting.
-- **Skip completed specs**: Features with `[x]` in roadmap.md or existing tasks.md are skipped.
+- **Skip only completed roadmap entries**: Features with `[x]` in roadmap.md are skipped. A pending `[ ]` feature with existing spec files or tasks.md is partial work and must be resumed, repaired, or reported as failed -- never silently skipped.
 - **`## Specs (dependency order)` remains authoritative for batch execution**: Other roadmap sections are context, not wave inputs.
 
 ## Safety & Fallback
