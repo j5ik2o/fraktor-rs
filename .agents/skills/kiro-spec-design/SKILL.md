@@ -86,7 +86,6 @@ After all findings return, synthesize in main context before proceeding.
 
 4. **Persist Findings to Research Log**:
    - Create or update `.kiro/specs/$1/research.md` using the shared template
-   - If `research.md` already exists, preserve existing sections and appended gap-analysis content; append new discovery or synthesis entries under the appropriate section instead of overwriting the file wholesale
    - Summarize discovery scope and key findings (Summary section)
    - Record investigations in Research Log topics with sources and implications
    - Document architecture pattern evaluation, design decisions, and risks using the template sections
@@ -129,8 +128,7 @@ After all findings return, synthesize in main context before proceeding.
 
 1. **Write Final Design and Research Log**:
    - Write `.kiro/specs/$1/design.md` only after the design review gate passes
-   - Write or update research.md with discovery findings and synthesis outcomes
-   - When research.md already contains `$kiro-validate-gap` output or earlier discovery notes, merge by appending/updating bounded sections for the current design pass; do not delete or replace prior gap-analysis entries unless they are explicitly superseded and the supersession is recorded
+   - Write research.md with discovery findings and synthesis outcomes (if not already written)
    - Persist any `research.md` updates that support the finalized design
 
 2. **Update Metadata** in spec.json:

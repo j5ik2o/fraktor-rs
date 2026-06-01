@@ -84,7 +84,6 @@ After all parallel research completes, synthesize findings before generating tas
   - English template phrases such as "Implementation Plan", "Foundation", "Build", "Validate", and "Task Format Template" are not present in `tasks.md` unless the target language is English
 - If issues are task-plan-local, repair the draft and re-run the review gate before writing
 - Keep the review bounded to at most 2 repair passes
-- If the review gate still fails after 2 repair passes, stop without running sanity review or writing `tasks.md`; report the remaining gate findings
 - If review exposes a real requirements/design gap or contradiction, stop and send the user back to requirements/design instead of inventing filler tasks
 
 ### Step 3.5: Run Task-Graph Sanity Review
@@ -105,8 +104,6 @@ Before writing `tasks.md`, run one lightweight independent sanity review of the 
   - `NEEDS_FIXES`
   - `RETURN_TO_DESIGN`
 - If `NEEDS_FIXES`, repair the draft once and re-run the sanity review one time.
-- Proceed to Step 4 only when the final sanity review verdict is `PASS`.
-- If the second sanity review still returns `NEEDS_FIXES`, stop without writing `tasks.md` and report the remaining task-graph issues.
 - If `RETURN_TO_DESIGN`, stop without writing `tasks.md` and point back to the exact gap in requirements/design.
 - Keep this bounded. Do not turn it into a second full planning cycle.
 
@@ -119,13 +116,11 @@ Before writing `tasks.md`, run one lightweight independent sanity review of the 
   - Set `approvals.tasks.generated: true, approved: false`
   - Set `approvals.requirements.approved: true`
   - Set `approvals.design.approved: true`
-  - Keep `ready_for_implementation: false` until tasks are approved
   - Update `updated_at` timestamp
 
 **Approval**:
 - If auto-approve flag (`-y`) is provided:
   - Set `approvals.tasks.approved: true` in spec.json
-  - Set `ready_for_implementation: true` in spec.json
   - Display task summary (task count, major groups, parallel markers)
   - Respond: "Tasks generated and auto-approved. Start implementation with `$kiro-impl $1`"
 - Otherwise (interactive):
@@ -133,7 +128,6 @@ Before writing `tasks.md`, run one lightweight independent sanity review of the 
   - Ask the user: "Tasks generated. Approve and proceed to implementation?"
   - If the user approves:
     - Set `approvals.tasks.approved: true` in spec.json
-    - Set `ready_for_implementation: true` in spec.json
     - Respond: "Tasks approved. Start implementation with `$kiro-impl $1`"
   - If the user wants changes:
     - Keep `approvals.tasks.approved: false`

@@ -44,7 +44,7 @@ Focus on capabilities and outcomes, not code structure.
 
 ### 3. Task Ordering Principle
 
-**Order implies dependency**: Task N implicitly depends on all required tasks before it. This is the primary dependency mechanism used by `$kiro-impl`.
+**Order implies dependency**: Task N implicitly depends on all tasks before it. This is the primary dependency mechanism.
 
 **Tasks must follow this phase order**:
 1. **Foundation**: Environment setup, test infrastructure, shared utilities, database schema, configuration
@@ -52,7 +52,7 @@ Focus on capabilities and outcomes, not code structure.
 3. **Integration**: Wiring components together, cross-boundary connections
 4. **Validation**: E2E tests, edge cases, regression checks
 
-**Rationale**: Foundation work unblocks everything else. Placing setup tasks early prevents downstream blocking. Core tasks marked `(P)` are parallel-capable metadata for executors that explicitly support parallel task scheduling; `$kiro-impl` still processes tasks sequentially in document order.
+**Rationale**: Foundation work unblocks everything else. Placing setup tasks early prevents downstream blocking. Core tasks can often run in parallel because foundation is already complete.
 
 ### 4. Task Integration & Progression
 
@@ -68,16 +68,16 @@ Focus on capabilities and outcomes, not code structure.
 
 ### 5. Dependency Declaration
 
-**Default**: Sequential ordering handles most dependencies (task N depends on required tasks before it).
+**Default**: Sequential ordering handles most dependencies (task N depends on tasks before it).
 
 **Explicit declaration required when**:
 - A task depends on a specific task in a different major-task group (cross-boundary)
 - The dependency is non-obvious from ordering alone
-- A task marked `(P)` still needs specific prior work that is not already guaranteed by earlier required tasks
+- A task can skip ahead of its position (declared via `(P)`) but still needs specific prior work
 
 **Format**: `_Depends: 1.2, 2.3_` — placed alongside `_Requirements:_` in task detail sections.
 
-**Do not over-annotate**: If a task simply depends on earlier required tasks in document order, ordering alone is sufficient. `(P)` does not waive document-order execution for `$kiro-impl`; it only records parallel capability for compatible executors.
+**Do not over-annotate**: If a task simply depends on the task directly before it, ordering alone is sufficient.
 
 ### 6. Boundary Scope
 
@@ -105,7 +105,7 @@ Focus on capabilities and outcomes, not code structure.
 ### 8. Requirements Mapping
 
 **End each task detail section with**:
-- `_Requirements: 1, 2_` listing **only exact numeric requirement IDs from requirements.md** (comma-separated). Never append descriptive text, parentheses, translations, invented sub-IDs, or free-form labels.
+- `_Requirements: X.X, Y.Y_` listing **only numeric requirement IDs** (comma-separated). Never append descriptive text, parentheses, translations, or free-form labels.
 - For cross-cutting requirements, list every relevant requirement ID. All requirements MUST have numeric IDs in requirements.md. If an ID is missing, stop and correct requirements.md before generating tasks.
 - Reference components/interfaces from design.md when helpful (e.g., `_Contracts: AuthService API`)
 
@@ -214,19 +214,19 @@ Before writing `tasks.md`, review the draft task plan and repair local issues un
   - Detail item 1
   - Detail item 2
   - Observable completion condition
-  - _Requirements: 1_
+  - _Requirements: X.X_
 
 - [ ] 2. Core feature A
 - [ ] 2.1 (P) Sub-task description
   - Detail items...
   - Observable completion condition
-  - _Requirements: 2_
+  - _Requirements: Y.Y_
   - _Boundary: AuthService_
 
 - [ ] 2.2 (P) Sub-task description
   - Detail items...
   - Observable completion condition
-  - _Requirements: 3_
+  - _Requirements: Z.Z_
   - _Boundary: UserRepository_
 
 - [ ] 3. Integration and wiring
@@ -234,7 +234,7 @@ Before writing `tasks.md`, review the draft task plan and repair local issues un
   - Detail items...
   - Observable completion condition
   - _Depends: 2.1, 2.2_
-  - _Requirements: 4_
+  - _Requirements: W.W_
 ```
 
 ## Requirements Coverage
@@ -245,6 +245,6 @@ Before writing `tasks.md`, review the draft task plan and repair local issues un
 - If gaps found: Return to requirements or design phase
 - No requirement should be left without corresponding tasks
 
-Use the exact numeric requirement IDs that appear in `requirements.md` (for example, `1`, `2`, or `2.3` only when `requirements.md` actually defines that ID). Do not invent sub-IDs, aliases, or local indexes during task generation.
+Use `N.M`-style numeric requirement IDs where `N` is the top-level requirement number from requirements.md (for example, Requirement 1 → 1.1, 1.2; Requirement 2 → 2.1, 2.2), and `M` is a local index within that requirement group.
 
 Document any intentionally deferred requirements with rationale.

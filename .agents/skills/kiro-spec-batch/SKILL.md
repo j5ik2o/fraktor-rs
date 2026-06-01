@@ -35,8 +35,6 @@ description: Create complete specs (requirements, design, tasks) for all feature
 
 ## Step 2: Build Dependency Waves
 
-Before building waves, validate the `## Specs (dependency order)` dependency graph is acyclic. If any cycle exists, stop and report the exact cycle; do not dispatch batch agents.
-
 Group pending features into waves based on dependencies:
 
 - **Wave 1**: Features with no dependencies (or all dependencies already completed `[x]`)
@@ -66,13 +64,12 @@ Create a complete specification for feature "{feature-name}".
 
 1. Read the brief at .kiro/specs/{feature-name}/brief.md for feature context
 2. Read the roadmap at .kiro/steering/roadmap.md for project context
-   - If spec.json, requirements.md, design.md, or tasks.md already exists while roadmap.md still marks the feature `[ ]`, treat it as a partial spec to resume or repair. Do not skip it solely because tasks.md exists.
-3. Execute the full spec pipeline in auto-approve mode. For each phase, read the corresponding skill's SKILL.md for complete instructions (templates, rules, review gates):
-   a. Initialize: If spec.json or requirements.md is missing, read .agents/skills/kiro-spec-init/SKILL.md and create only the missing initialization outputs. If both already exist, skip init and preserve existing spec.json/requirements.md.
-   b. Generate requirements: If requirements are not generated or not approved, read .agents/skills/kiro-spec-requirements/SKILL.md, then follow its steps and set `approvals.requirements.approved = true`. If already approved, preserve the file and continue.
-   c. Generate design: If design is not generated or not approved, read .agents/skills/kiro-spec-design/SKILL.md, then follow its steps and set `approvals.design.approved = true` before generating tasks. If already approved, preserve the file and continue.
-   d. Generate tasks: If tasks are not generated or not approved, read .agents/skills/kiro-spec-tasks/SKILL.md, then follow its steps and set `approvals.tasks.approved = true` and `ready_for_implementation = true`. If already approved, confirm `ready_for_implementation = true`.
-4. Confirm spec.json has all approvals set to true and `ready_for_implementation = true`
+3. Execute the full spec pipeline. For each phase, read the corresponding skill's SKILL.md for complete instructions (templates, rules, review gates):
+   a. Initialize: Read .agents/skills/kiro-spec-init/SKILL.md, then create spec.json and requirements.md
+   b. Generate requirements: Read .agents/skills/kiro-spec-requirements/SKILL.md, then follow its steps
+   c. Generate design: Read .agents/skills/kiro-spec-design/SKILL.md, then follow its steps
+   d. Generate tasks: Read .agents/skills/kiro-spec-tasks/SKILL.md, then follow its steps
+4. Set all approvals to true in spec.json (auto-approve mode, equivalent of -y flag)
 5. Report completion with file list and task count
 ```
 
@@ -80,12 +77,9 @@ If multi-agent is not available, execute features in the wave sequentially.
 
 **After all sub-agents in the wave complete**:
 1. Verify each feature has: spec.json, requirements.md, design.md, tasks.md
-2. Mark a feature as succeeded only when all required files exist and the sub-agent reported completion.
-3. If any feature failed, report the failed feature and error, then recompute remaining waves using only completed roadmap specs and succeeded features from earlier waves as satisfied dependencies.
-4. For the next wave, split features into runnable and blocked sets. Dispatch runnable features whose dependencies are satisfied; do not dispatch blocked features that depend on failed or missing specs.
-5. If an entire future wave is blocked, stop before that wave and report the blocked features so the roadmap or failed upstream spec can be repaired.
-6. Display wave completion: "Wave N complete: [features]. Files verified. Blocked: [features]."
-7. Proceed to the next wave only with the runnable subset backed by completed roadmap items or succeeded earlier-wave features.
+2. If any feature failed, report the error and continue with features that succeeded
+3. Display wave completion: "Wave N complete: [features]. Files verified."
+4. Proceed to next wave
 
 ## Step 4: Cross-Spec Review
 
@@ -117,7 +111,6 @@ Output: CONSISTENT areas + ISSUES with (which specs, what's inconsistent, sugges
 
 **After the review sub-agent returns**:
 - **Critical/important issues found**: Dispatch fix sub-agents for each affected spec to apply the suggested fixes. If the issue is really a decomposition problem (for example boundary overlap or one spec carrying multiple independent seams), stop and return to roadmap/discovery instead of papering over it locally. Re-run cross-spec review after fixes (max 3 remediation rounds).
-- If critical/important issues remain after 3 remediation rounds, stop and report the unresolved findings. Do not proceed to Step 5 or mark roadmap entries `[x]`.
 - **Minor issues only**: Report them for user awareness, proceed to Step 5.
 - **No issues**: Proceed to Step 5.
 
@@ -147,10 +140,10 @@ Next: Review generated specs, then start implementation with $kiro-impl <feature
 
 ## Critical Constraints
 - **Controller stays lightweight**: Only read roadmap.md and brief.md existence checks in main context. All spec generation happens in sub-agents.
-- **Wave dependency order is strict**: Never start a feature until its dependencies are satisfied by completed roadmap specs or succeeded earlier-wave features. If an earlier feature fails, later waves may run only the runnable subset that does not depend on the failed or missing spec.
+- **Wave ordering is strict**: Never start a wave until all features in previous waves are complete.
 - **Parallel within waves**: All features in the same wave should be dispatched in parallel if multi-agent is available.
 - **No partial waves**: If a feature in a wave fails, still complete the other features in that wave before reporting.
-- **Skip only completed roadmap entries**: Features with `[x]` in roadmap.md are skipped. A pending `[ ]` feature with existing spec files or tasks.md is partial work and must be resumed, repaired, or reported as failed -- never silently skipped.
+- **Skip completed specs**: Features with `[x]` in roadmap.md or existing tasks.md are skipped.
 - **`## Specs (dependency order)` remains authoritative for batch execution**: Other roadmap sections are context, not wave inputs.
 
 ## Safety & Fallback

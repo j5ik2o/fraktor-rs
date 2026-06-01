@@ -11,17 +11,16 @@ description: Quick spec generation with interactive or automatic mode
 **If `--auto` flag is present in `$ARGUMENTS`, you are in AUTOMATIC MODE.**
 
 In Automatic Mode:
-- Execute all incomplete phases in a continuous loop without stopping for routine "Next Step" prompts
-- If a phase requires human clarification, reports ambiguity, or cannot satisfy its review gate without user input, stop and report the blocker instead of fabricating content
+- Execute ALL 4 phases in a continuous loop without stopping
 - Display progress after each phase (e.g., "Phase 1/4 complete: spec initialized")
 - IGNORE any "Next Step" messages from Phase 2-4 (they are for standalone usage)
 - After Phase 4, run the final sanity review before exiting
-- Stop ONLY after the sanity review completes, a human-clarification blocker appears, or an error occurs
+- Stop ONLY after the sanity review completes or if error occurs
 
 ---
 
 ## Core Task
-Execute 4 spec phases sequentially. In automatic mode, execute all incomplete phases without stopping for routine phase prompts. In interactive mode, prompt user for approval between phases.
+Execute 4 spec phases sequentially. In automatic mode, execute all phases without stopping. In interactive mode, prompt user for approval between phases.
 
 Before claiming quick generation is complete, run one lightweight sanity review over the generated requirements, design, and tasks. If multi-agent is available, use a fresh sub-agent. Otherwise run the sanity review inline.
 
@@ -52,21 +51,17 @@ Execute these 4 phases in order:
 
 **Core Logic**:
 
-1. **Resolve Feature Name**:
-   - If `$ARGUMENTS` names an existing `.kiro/specs/{feature-name}/` directory, use that directory name as the feature name
-   - Otherwise convert description to kebab-case
+1. **Check for Brief**:
+   - If `.kiro/specs/{feature-name}/brief.md` exists (created by `$kiro-discovery`), read it for discovery context (problem, approach, scope, constraints)
+   - Use brief content as the project description instead of `$ARGUMENTS`
+
+2. **Generate Feature Name**:
+   - Convert description to kebab-case
    - Example: "User profile with avatar upload" → "user-profile-avatar-upload"
    - Keep name concise (2-4 words ideally)
 
-2. **Check for Brief**:
-   - If `.kiro/specs/{feature-name}/brief.md` exists (created by `$kiro-discovery`), read it for discovery context (problem, approach, scope, constraints)
-   - If the generated name has no brief but a brief-only spec directory clearly matches the request, use that existing directory instead of creating a second spec directory
-   - If multiple brief-only directories could match, ask the user to choose before continuing
-   - Use brief content as the project description instead of `$ARGUMENTS`
-
 3. **Check Uniqueness**:
    - Use Glob to check `.kiro/specs/*/`
-   - If step 1 selected an existing `.kiro/specs/{feature-name}/` directory, uniqueness is already satisfied; resume that directory in place and do not append `-2`, `-3`, etc.
    - If directory exists with only `brief.md` (no `spec.json`), use that directory (discovery created it)
    - Otherwise if feature name exists, append `-2`, `-3`, etc.
 
@@ -94,7 +89,6 @@ Execute these 4 phases in order:
    - .kiro/specs/{feature-name}/spec.json
    - .kiro/specs/{feature-name}/requirements.md
    ```
-   If `spec.json` or `requirements.md` already exists in the selected directory, preserve existing files and write only missing initialization outputs. If both files already exist, skip initialization writes and continue the later phases against the selected directory.
 
 6. **Output Progress**: "Phase 1/4 complete: Spec initialized at .kiro/specs/{feature-name}/"
 
@@ -108,9 +102,7 @@ Execute these 4 phases in order:
 
 #### Phase 2: Generate Requirements
 
-If spec.json already has `approvals.requirements.generated = true` and `approved = true`, skip this phase and preserve the existing `requirements.md`.
-
-Otherwise invoke `$kiro-spec-requirements {feature-name}`. If it requests clarification or reports ambiguity, stop and report that blocker; do not continue to design generation with guessed requirements.
+Invoke `$kiro-spec-requirements {feature-name}`.
 
 Wait for completion. IGNORE any "Next Step" message (it is for standalone usage).
 
@@ -126,9 +118,7 @@ Wait for completion. IGNORE any "Next Step" message (it is for standalone usage)
 
 #### Phase 3: Generate Design
 
-If spec.json already has `approvals.design.generated = true` and `approved = true`, skip this phase and preserve the existing `design.md`.
-
-Otherwise invoke `$kiro-spec-design {feature-name} -y`. The `-y` flag auto-approves requirements.
+Invoke `$kiro-spec-design {feature-name} -y`. The `-y` flag auto-approves requirements.
 
 Wait for completion. IGNORE any "Next Step" message.
 
@@ -144,9 +134,7 @@ Wait for completion. IGNORE any "Next Step" message.
 
 #### Phase 4: Generate Tasks
 
-If spec.json already has `approvals.tasks.generated = true`, `approvals.tasks.approved = true`, and `ready_for_implementation = true`, skip this phase and preserve the existing `tasks.md`.
-
-Otherwise invoke `$kiro-spec-tasks {feature-name} -y`. The `-y` flag auto-approves requirements, design, and tasks.
+Invoke `$kiro-spec-tasks {feature-name} -y`. The `-y` flag auto-approves requirements, design, and tasks.
 
 Wait for completion.
 

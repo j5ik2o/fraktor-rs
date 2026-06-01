@@ -35,8 +35,7 @@ Check `.kiro/steering/` status:
 ## Bootstrap Flow
 
 1. Load templates from `.kiro/settings/templates/steering/`
-2. Load principles from `rules/steering-principles.md` from this skill's directory
-3. Analyze codebase (JIT):
+2. Analyze codebase (JIT):
 
 #### Parallel Research
 
@@ -49,11 +48,12 @@ If multi-agent is enabled, spawn sub-agents for each area above. Otherwise execu
 
 After all parallel research completes, synthesize patterns for steering files.
 
-4. Extract patterns (not lists), applying the loaded steering principles:
+3. Extract patterns (not lists):
    - Product: Purpose, value, core capabilities
    - Tech: Frameworks, decisions, conventions
    - Structure: Organization, naming, imports
-5. Generate steering files (follow templates and principles)
+4. Generate steering files (follow templates)
+5. Load principles from `rules/steering-principles.md` from this skill's directory
 6. Present summary for review
 
 **Focus**: Patterns that guide decisions, not catalogs of files/dependencies.
@@ -153,3 +153,4 @@ Review and approve as Source of Truth.
 - Avoid documenting agent-specific tooling directories (e.g. `.cursor/`, `.gemini/`, `.claude/`)
 - `.kiro/settings/` content should NOT be documented in steering files (settings are metadata, not project knowledge)
 - Light references to `.kiro/specs/` and `.kiro/steering/` are acceptable; avoid other `.kiro/` directories
+
