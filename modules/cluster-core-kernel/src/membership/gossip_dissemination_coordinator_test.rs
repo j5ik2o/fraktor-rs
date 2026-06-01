@@ -265,6 +265,7 @@ fn disseminate_marks_self_as_seen_in_single_node_cluster() {
 
   let outbound = coordinator.disseminate(&delta);
   assert!(outbound.is_empty());
+  assert_eq!(coordinator.state(), GossipState::Confirmed);
   assert_eq!(coordinator.seen_by(), vec!["n1:4050".to_string()]);
 
   let events = coordinator.drain_events();
@@ -279,4 +280,5 @@ fn disseminate_marks_self_as_seen_in_single_node_cluster() {
     })
     .collect::<Vec<_>>();
   assert_eq!(seen_events, vec![(vec!["n1:4050".to_string()], MembershipVersion::new(1))]);
+  assert_eq!(events.last(), Some(&GossipEvent::Confirmed { version: MembershipVersion::new(1) }));
 }

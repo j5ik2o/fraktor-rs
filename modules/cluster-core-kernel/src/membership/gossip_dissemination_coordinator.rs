@@ -119,6 +119,10 @@ impl GossipDisseminationCoordinator {
     self.vector_clock = vector_clock;
     self.events.push(GossipEvent::Disseminated { peers: self.peers.len(), version: delta.to });
     self.events.push(self.seen_changed_event());
+    if self.has_converged() {
+      self.state = GossipState::Confirmed;
+      self.events.push(GossipEvent::Confirmed { version: self.inflight_version });
+    }
 
     out
   }

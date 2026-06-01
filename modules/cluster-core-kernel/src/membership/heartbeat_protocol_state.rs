@@ -19,7 +19,6 @@ pub struct HeartbeatProtocolState {
   next_sequences: BTreeMap<UniqueAddress, u64>,
   pending: BTreeMap<PendingHeartbeatKey, PendingHeartbeat>,
   has_success: BTreeMap<UniqueAddress, bool>,
-  first_expectation_sent: BTreeMap<UniqueAddress, bool>,
   first_miss_reported: BTreeMap<UniqueAddress, bool>,
 }
 
@@ -34,7 +33,6 @@ impl HeartbeatProtocolState {
       next_sequences: BTreeMap::new(),
       pending: BTreeMap::new(),
       has_success: BTreeMap::new(),
-      first_expectation_sent: BTreeMap::new(),
       first_miss_reported: BTreeMap::new(),
     }
   }
@@ -44,12 +42,10 @@ impl HeartbeatProtocolState {
     let mut requests = Vec::new();
     for peer in peers {
       let sequence = self.next_sequence(peer.clone());
-      let timeout_ms = if !self.first_expectation_sent.get(peer).copied().unwrap_or(false) {
-        self.first_heartbeat_timeout_ms
-      } else {
-        self.heartbeat_timeout_ms
-      };
-      self.first_expectation_sent.insert(peer.clone(), true);
+      let waiting_for_first_result = !self.has_success.get(peer).copied().unwrap_or(false)
+        && !self.first_miss_reported.get(peer).copied().unwrap_or(false);
+      let timeout_ms =
+        if waiting_for_first_result { self.first_heartbeat_timeout_ms } else { self.heartbeat_timeout_ms };
       let request = HeartbeatRequest::new(self.local.clone(), peer.clone(), sequence, now_ms + timeout_ms);
       self.pending.insert(PendingHeartbeatKey { peer: peer.clone(), sequence }, PendingHeartbeat {
         sent_at_ms:  now_ms,
@@ -72,11 +68,11 @@ impl HeartbeatProtocolState {
       return None;
     }
     let key = PendingHeartbeatKey { peer: response.from.clone(), sequence: response.sequence };
-    let pending = self.pending.get(&key)?;
+    let pending = *self.pending.get(&key)?;
     if pending.deadline_ms < now_ms {
       return None;
     }
-    let pending = self.pending.remove(&key)?;
+    self.pending.retain(|pending_key, _| pending_key.peer != response.from || pending_key.sequence > response.sequence);
     self.has_success.insert(response.from.clone(), true);
     Some(HeartbeatEvidence::new(
       self.local.clone(),
@@ -116,7 +112,6 @@ impl HeartbeatProtocolState {
   pub fn remove_peer(&mut self, peer: &UniqueAddress) {
     self.next_sequences.remove(peer);
     self.has_success.remove(peer);
-    self.first_expectation_sent.remove(peer);
     self.first_miss_reported.remove(peer);
     self.pending.retain(|key, _| &key.peer != peer);
   }

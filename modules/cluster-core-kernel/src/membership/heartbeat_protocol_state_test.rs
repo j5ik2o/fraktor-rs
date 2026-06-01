@@ -22,7 +22,7 @@ fn heartbeat_tick_generates_sequence_per_peer() {
   assert_eq!(first.len(), 2);
   assert_eq!(first[0], HeartbeatRequest::new(local.clone(), peer_a.clone(), 1, 1100));
   assert_eq!(first[1], HeartbeatRequest::new(local.clone(), peer_b.clone(), 1, 1100));
-  assert_eq!(second, vec![HeartbeatRequest::new(local, peer_a, 2, 1150)]);
+  assert_eq!(second, vec![HeartbeatRequest::new(local, peer_a, 2, 1200)]);
 }
 
 #[test]
@@ -94,6 +94,39 @@ fn overlapping_heartbeat_requests_match_by_peer_and_sequence() {
   assert_eq!(second_evidence.subject, peer);
   assert_eq!(second_evidence.sequence, 2);
   assert_eq!(second_evidence.kind, HeartbeatEvidenceKind::Reachable { latency_ms: 20 });
+}
+
+#[test]
+fn newer_success_clears_older_pending_heartbeats_for_peer() {
+  let local = unique_address("node-a", 10);
+  let peer = unique_address("node-b", 11);
+  let mut state = HeartbeatProtocolState::new(local.clone(), 50, 100);
+  let _first_request = state.tick(1000, slice::from_ref(&peer)).remove(0);
+  let second_request = state.tick(1010, slice::from_ref(&peer)).remove(0);
+
+  let evidence = state
+    .handle_response(HeartbeatProtocolState::handle_request(second_request), 1030)
+    .expect("newer pending sequence should produce success evidence");
+  let timeouts = state.collect_timeouts(1101);
+
+  assert_eq!(evidence.observer, local);
+  assert_eq!(evidence.subject, peer);
+  assert_eq!(evidence.sequence, 2);
+  assert_eq!(evidence.kind, HeartbeatEvidenceKind::Reachable { latency_ms: 20 });
+  assert!(timeouts.is_empty());
+}
+
+#[test]
+fn first_heartbeat_grace_remains_until_first_result_resolves() {
+  let local = unique_address("node-a", 10);
+  let peer = unique_address("node-b", 11);
+  let mut state = HeartbeatProtocolState::new(local, 50, 100);
+
+  let _ = state.tick(1000, slice::from_ref(&peer));
+  let _ = state.tick(1010, slice::from_ref(&peer));
+  let early_timeouts = state.collect_timeouts(1061);
+
+  assert!(early_timeouts.is_empty());
 }
 
 #[test]

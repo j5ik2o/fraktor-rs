@@ -172,6 +172,10 @@ fn tombstone_retention_prunes_only_converged_versions() {
   let retained = model.prune_retained_tombstones(MembershipVersion::new(3));
   assert_eq!(retained.pruned.len(), 1);
   assert!(model.snapshot().tombstones.get(&identity).is_none());
+  assert!(model.snapshot().membership.entries.is_empty());
+
+  let rebuilt = GossipStateModel::new(model.snapshot().clone());
+  assert!(rebuilt.snapshot().tombstones.get(&identity).is_none());
 }
 
 #[test]
@@ -300,4 +304,5 @@ fn tombstone_prune_waits_until_seen_by_all_active_peers() {
   let pruned = model.prune_tombstones_when_seen_by_all(&[peer_a, peer_b], MembershipVersion::new(3));
   assert_eq!(pruned.pruned.len(), 1);
   assert!(model.snapshot().tombstones.get(&member).is_none());
+  assert!(model.snapshot().membership.entries.is_empty());
 }

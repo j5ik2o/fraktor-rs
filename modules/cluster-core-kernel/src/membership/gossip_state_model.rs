@@ -101,7 +101,15 @@ impl GossipStateModel {
 
   /// Prunes tombstones whose versions have been retained through convergence.
   pub fn prune_retained_tombstones(&mut self, retained_through: MembershipVersion) -> GossipTombstonePruneOutcome {
-    GossipTombstonePruneOutcome::new(self.snapshot.tombstones.prune_retained(retained_through))
+    let pruned = self.snapshot.tombstones.prune_retained(retained_through);
+    for tombstone in &pruned {
+      self.snapshot.membership.entries.retain(|record| {
+        record.unique_address != tombstone.member
+          || !matches!(record.status, NodeStatus::Removed | NodeStatus::Dead)
+          || record.version > tombstone.version
+      });
+    }
+    GossipTombstonePruneOutcome::new(pruned)
   }
 
   /// Marks a peer identity as having observed a membership version.
