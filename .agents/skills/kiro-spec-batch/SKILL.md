@@ -35,6 +35,8 @@ description: Create complete specs (requirements, design, tasks) for all feature
 
 ## Step 2: Build Dependency Waves
 
+Before building waves, validate the `## Specs (dependency order)` dependency graph is acyclic. If any cycle exists, stop and report the exact cycle; do not dispatch batch agents.
+
 Group pending features into waves based on dependencies:
 
 - **Wave 1**: Features with no dependencies (or all dependencies already completed `[x]`)
@@ -66,10 +68,10 @@ Create a complete specification for feature "{feature-name}".
 2. Read the roadmap at .kiro/steering/roadmap.md for project context
    - If spec.json, requirements.md, design.md, or tasks.md already exists while roadmap.md still marks the feature `[ ]`, treat it as a partial spec to resume or repair. Do not skip it solely because tasks.md exists.
 3. Execute the full spec pipeline in auto-approve mode. For each phase, read the corresponding skill's SKILL.md for complete instructions (templates, rules, review gates):
-   a. Initialize: Read .agents/skills/kiro-spec-init/SKILL.md, then create spec.json and requirements.md
-   b. Generate requirements: Read .agents/skills/kiro-spec-requirements/SKILL.md, then follow its steps and set `approvals.requirements.approved = true`
-   c. Generate design: Read .agents/skills/kiro-spec-design/SKILL.md, then follow its steps and set `approvals.design.approved = true` before generating tasks
-   d. Generate tasks: Read .agents/skills/kiro-spec-tasks/SKILL.md, then follow its steps and set `approvals.tasks.approved = true`
+   a. Initialize: If spec.json or requirements.md is missing, read .agents/skills/kiro-spec-init/SKILL.md and create only the missing initialization outputs. If both already exist, skip init and preserve existing spec.json/requirements.md.
+   b. Generate requirements: If requirements are not generated or not approved, read .agents/skills/kiro-spec-requirements/SKILL.md, then follow its steps and set `approvals.requirements.approved = true`. If already approved, preserve the file and continue.
+   c. Generate design: If design is not generated or not approved, read .agents/skills/kiro-spec-design/SKILL.md, then follow its steps and set `approvals.design.approved = true` before generating tasks. If already approved, preserve the file and continue.
+   d. Generate tasks: If tasks are not generated or not approved, read .agents/skills/kiro-spec-tasks/SKILL.md, then follow its steps and set `approvals.tasks.approved = true` and `ready_for_implementation = true`. If already approved, confirm `ready_for_implementation = true`.
 4. Confirm spec.json has all approvals set to true and `ready_for_implementation = true`
 5. Report completion with file list and task count
 ```
@@ -115,6 +117,7 @@ Output: CONSISTENT areas + ISSUES with (which specs, what's inconsistent, sugges
 
 **After the review sub-agent returns**:
 - **Critical/important issues found**: Dispatch fix sub-agents for each affected spec to apply the suggested fixes. If the issue is really a decomposition problem (for example boundary overlap or one spec carrying multiple independent seams), stop and return to roadmap/discovery instead of papering over it locally. Re-run cross-spec review after fixes (max 3 remediation rounds).
+- If critical/important issues remain after 3 remediation rounds, stop and report the unresolved findings. Do not proceed to Step 5 or mark roadmap entries `[x]`.
 - **Minor issues only**: Report them for user awareness, proceed to Step 5.
 - **No issues**: Proceed to Step 5.
 

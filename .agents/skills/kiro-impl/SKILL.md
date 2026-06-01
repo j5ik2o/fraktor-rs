@@ -41,6 +41,7 @@ After all parallel research completes, synthesize implementation brief before st
 ### Preflight
 
 **Validate approvals**:
+- Verify `.kiro/specs/$1/spec.json`, `requirements.md`, `design.md`, and `tasks.md` all exist before reading approvals or building the task queue. If any are missing, stop and report the missing files.
 - Verify tasks are approved in spec.json (stop if not, see Safety & Fallback)
 
 **Discover validation commands**:
@@ -73,7 +74,7 @@ After all parallel research completes, synthesize implementation brief before st
 
 ### Autonomous Mode (sub-agent dispatch)
 
-**Iteration discipline**: Process exactly ONE sub-task (e.g., 1.1) per iteration. Do NOT batch multiple sub-tasks into a single sub-agent dispatch. Each iteration follows the full cycle: dispatch implementer → review → commit → re-read tasks.md → next.
+**Iteration discipline**: Process exactly ONE sub-task (e.g., 1.1) per iteration. Do NOT batch multiple sub-tasks into a single sub-agent dispatch. Each iteration follows the full cycle: dispatch implementer → review → verify → record notes → commit → re-read tasks.md → next.
 
 **Context management**: At the start of each iteration, re-read `tasks.md` to determine the next actionable sub-task. A task is eligible only if it is unchecked, required (`- [ ]`), has no `_Blocked:_` annotation, and every `_Depends:_` reference is currently `[x]`. Do NOT rely on accumulated memory of previous iterations. If no eligible required task remains but required unchecked or blocked tasks still exist, stop and report those tasks instead of continuing to final validation. Ignore deferred optional `- [ ]*` tasks for autonomous eligibility unless the user explicitly selected them. After completing each iteration, retain only a one-line summary (e.g., "1.1: READY_FOR_REVIEW, 3 files changed") and discard the full status report and reviewer details.
 
@@ -94,7 +95,7 @@ If multi-agent capability is available, for each task (one at a time):
 
 **b) Handle implementer status**:
 - Parse implementer status only from the exact `## Status Report` block and `- STATUS:` field.
-- If `STATUS` is missing, ambiguous, or replaced with prose, re-dispatch the implementer once requesting the exact structured status block only. Do NOT proceed to review without a parseable `READY_FOR_REVIEW | BLOCKED | NEEDS_CONTEXT` value.
+- If `STATUS` is missing, ambiguous, or replaced with prose, re-dispatch the implementer once requesting the exact structured status block only. If the second response is still unparseable, dispatch the debug subagent with root cause `HANDOFF_PARSE_FAILURE`; do not proceed to review without a parseable `READY_FOR_REVIEW | BLOCKED | NEEDS_CONTEXT` value.
 - **READY_FOR_REVIEW** → proceed to review
 - **BLOCKED** → dispatch debug subagent (see section below); do NOT immediately skip
 - **NEEDS_CONTEXT** → re-dispatch once with the requested additional context; if still unresolved → dispatch debug subagent
@@ -112,22 +113,25 @@ If multi-agent capability is available, for each task (one at a time):
 
 **d) Handle reviewer verdict**:
 - Parse reviewer verdict only from the exact `## Review Verdict` block and `- VERDICT:` field.
-- If `VERDICT` is missing, ambiguous, or replaced with prose, re-dispatch the reviewer once requesting the exact structured verdict only. Do NOT mark the task complete, commit, or continue to the next task without a parseable `APPROVED | REJECTED` value.
-- **APPROVED** → before marking the task `[x]` or making any success claim, apply `kiro-verify-completion` using fresh evidence from the current code state; then mark task `[x]` in tasks.md and perform selective git commit
+- If `VERDICT` is missing, ambiguous, or replaced with prose, re-dispatch the reviewer once requesting the exact structured verdict only. If the second response is still unparseable, dispatch the debug subagent with root cause `HANDOFF_PARSE_FAILURE`. Do NOT mark the task complete, commit, or continue to the next task without a parseable `APPROVED | REJECTED` value.
+- **APPROVED** → before marking the task `[x]` or making any success claim, apply `kiro-verify-completion` using fresh evidence from the current code state.
+  - If completion verification returns `VERIFIED`, mark the task `[x]` in tasks.md.
+  - If it returns `NOT_VERIFIED`, do not mark complete; increment this task's `review_rejection_count` with the verification findings and follow the same retry/debug thresholds as `REJECTED`.
+  - If it returns `MANUAL_VERIFY_REQUIRED`, stop without marking complete and report the missing verification step.
 - **REJECTED** → increment this task's `review_rejection_count`
 - If `review_rejection_count <= 2` → re-dispatch implementer with review feedback
 - If `review_rejection_count >= 3` → dispatch debug subagent (see section below)
 
-**e) Commit** (parent-only, selective staging):
+**e) Record learnings**:
+- If this task revealed cross-cutting insights, append a one-line note to the `## Implementation Notes` section at the bottom of tasks.md before committing so the note is included with the task completion commit.
+
+**f) Commit** (parent-only, selective staging):
 - Stage only the files actually changed for this task, plus tasks.md
 - **NEVER** use `git add -A` or `git add .`
 - Use `git add <file1> <file2> ...` with explicit file paths
 - Commit message format: `feat(<feature-name>): <task description>`
 
-**f) Record learnings**:
-- If this task revealed cross-cutting insights, append a one-line note to the `## Implementation Notes` section at the bottom of tasks.md
-
-**g) Debug subagent** (triggered by BLOCKED, NEEDS_CONTEXT unresolved, or REJECTED after 2 remediation rounds):
+**g) Debug subagent** (triggered by BLOCKED, NEEDS_CONTEXT unresolved, HANDOFF_PARSE_FAILURE, NOT_VERIFIED after retries, or REJECTED after 2 remediation rounds):
 
 The debug subagent runs in a **fresh context** — it receives only the error information, not the failed implementation history. This avoids the context pollution that causes infinite retry loops.
 
@@ -145,10 +149,10 @@ The debug subagent runs in a **fresh context** — it receives only the error in
 **Handle debug report**:
 - Parse `NEXT_ACTION` from the debug report's exact structured field.
 - If `NEXT_ACTION: STOP_FOR_HUMAN` → append `_Blocked: <ROOT_CAUSE>_` to tasks.md, stop the feature run, and report that human review is required before continuing
-- If `NEXT_ACTION: BLOCK_TASK` → append `_Blocked: <ROOT_CAUSE>_` to tasks.md, skip to next task
+- If `NEXT_ACTION: BLOCK_TASK` → append `_Blocked: <ROOT_CAUSE>_` to tasks.md, then inspect `git status --porcelain`. Do not continue to the next task while failed-task edits are mixed into the worktree. Stash or revert only changes known to have been made for the blocked task after preserving the blocker evidence; if task-local changes cannot be isolated confidently, stop and report the dirty paths for human decision.
 - If `NEXT_ACTION: RETRY_TASK` → preserve the current worktree; do NOT reset or discard unrelated changes. Spawn a **new** implementer sub-agent with the debug report's `FIX_PLAN`, `NOTES`, and the current `git diff`, and require it to repair the task with explicit edits only
   - If the new implementer succeeds (READY_FOR_REVIEW → reviewer APPROVED) → normal flow
-  - If the new implementer also fails → repeat debug cycle (max 2 debug rounds total). After 2 failed debug rounds → append `_Blocked: debug attempted twice, still failing — <ROOT_CAUSE>_` to tasks.md, skip
+  - If the new implementer also fails → repeat debug cycle (max 2 debug rounds total). After 2 failed debug rounds → append `_Blocked: debug attempted twice, still failing — <ROOT_CAUSE>_` to tasks.md, isolate failed-task dirty changes using the same rule as `BLOCK_TASK`, then skip only if the worktree is clean or contains only unrelated pre-existing changes
 - **Max 2 debug rounds per task**. Each round: fresh debug subagent → fresh implementer. If still failing after 2 rounds, the task is blocked.
 - Record debug findings in `## Implementation Notes` (this helps subsequent tasks avoid the same issue)
 
