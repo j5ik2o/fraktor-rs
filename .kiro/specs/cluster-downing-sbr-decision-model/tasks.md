@@ -21,7 +21,7 @@
   - strategy decision の unit test が各 reason を観測できる状態にする。
   - _Requirements: 2.1, 2.3, 2.4, 2.5_
   - _Boundary: DowningStrategyDecision_
-- [ ] 2.2 SBR evaluator の core strategy を実装する
+- [x] 2.2 SBR evaluator の core strategy を実装する
   - `KeepMajority`、`StaticQuorum`、`KeepOldest`、`DownAll` の evaluation を settings と context から返す。
   - stable-after 未達、evidence 不足、majority tie は member state を変更せず defer にする。
   - evaluator tests で strategy ごとの keep/down/defer と trace が確認できる状態にする。

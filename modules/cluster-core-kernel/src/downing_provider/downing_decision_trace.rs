@@ -16,6 +16,12 @@ pub struct DowningDecisionTrace {
 }
 
 impl DowningDecisionTrace {
+  /// Creates a trace for a deferred decision.
+  #[must_use]
+  pub const fn defer(strategy: SplitBrainResolverStrategy, reason: String) -> Self {
+    Self { strategy, reason, tie_break_rule: None, stable_after_required: None, down_all_timeout: None }
+  }
+
   /// Creates a trace for a selected majority partition.
   #[must_use]
   pub const fn majority_partition(strategy: SplitBrainResolverStrategy, reason: String) -> Self {
@@ -35,6 +41,22 @@ impl DowningDecisionTrace {
       tie_break_rule: None,
       stable_after_required: Some(stable_after_required),
       down_all_timeout: None,
+    }
+  }
+
+  /// Creates a trace for a pending all-down timeout decision.
+  #[must_use]
+  pub const fn down_all_pending(
+    strategy: SplitBrainResolverStrategy,
+    down_all_timeout: Duration,
+    reason: String,
+  ) -> Self {
+    Self {
+      strategy,
+      reason,
+      tie_break_rule: None,
+      stable_after_required: None,
+      down_all_timeout: Some(down_all_timeout),
     }
   }
 
