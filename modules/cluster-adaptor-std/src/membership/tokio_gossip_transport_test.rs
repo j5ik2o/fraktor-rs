@@ -117,6 +117,30 @@ async fn handoff_envelope_rejects_unknown_peer_identity() {
 }
 
 #[tokio::test]
+async fn send_envelope_rejects_sender_that_differs_from_local_identity() {
+  let local = unique_address("127.0.0.2", 10);
+  let forged = unique_address("127.0.0.3", 12);
+  let peer = unique_address("127.0.0.1", 11);
+  let config = TokioGossipTransportConfig::new(String::from("127.0.0.1:0"), 1024, 8)
+    .with_local_identity(local.clone())
+    .with_allowed_peer_identities(vec![peer.clone()]);
+  let mut transport = TokioGossipTransport::bind(config, Handle::current()).expect("transport bind");
+  let envelope =
+    GossipEnvelope::try_new(forged.clone(), peer, GossipPayloadKind::FullState, MembershipVersion::new(2), 100)
+      .expect("envelope");
+
+  let err = transport.send_envelope(envelope, 100).expect_err("forged sender identity should fail");
+
+  assert_eq!(
+    err,
+    GossipTransportError::Handoff(GossipTransportHandoffError::InvalidIdentity {
+      expected: Box::new(local),
+      actual:   Box::new(forged),
+    })
+  );
+}
+
+#[tokio::test]
 async fn update_peer_identities_preserves_new_endpoint_mapping() {
   let peer_a = unique_address("127.0.0.1", 11);
   let peer_b = unique_address("127.0.0.2", 12);

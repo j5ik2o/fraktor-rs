@@ -7,7 +7,7 @@ use fraktor_remote_core_rs::address::UniqueAddress;
 use super::{
   GossipMergeConflict, GossipMergeOutcome, GossipSeenDigest, GossipStateSnapshot, GossipTombstonePruneOutcome,
   GossipTombstoneSet, MembershipSnapshot, MembershipVersion, NodeRecord, NodeStatus, ReachabilityRecord,
-  ReachabilitySnapshot,
+  ReachabilitySnapshot, ReachabilityStatus,
 };
 
 #[cfg(test)]
@@ -136,6 +136,13 @@ impl GossipStateModel {
           || !matches!(record.status, NodeStatus::Removed | NodeStatus::Dead)
           || record.version > tombstone.version
       });
+      self
+        .snapshot
+        .membership
+        .reachability
+        .records
+        .retain(|record| record.observer != tombstone.member && record.subject != tombstone.member);
+      self.snapshot.membership.reachability.observer_versions.remove(&tombstone.member);
     }
     GossipTombstonePruneOutcome::new(pruned)
   }
@@ -249,7 +256,10 @@ fn merge_reachability(left: &ReachabilitySnapshot, right: &ReachabilitySnapshot)
       continue;
     }
     match records.get(&(record.observer.clone(), record.subject.clone())) {
-      | Some(existing) if existing.version >= record.version => {},
+      | Some(existing) if existing.version > record.version => {},
+      | Some(existing)
+        if existing.version == record.version
+          && reachability_status_rank(existing.status) >= reachability_status_rank(record.status) => {},
       | _ => {
         records.insert((record.observer.clone(), record.subject.clone()), record);
       },
@@ -265,4 +275,12 @@ fn merge_reachability(left: &ReachabilitySnapshot, right: &ReachabilitySnapshot)
   }
 
   ReachabilitySnapshot::new(records.values().cloned().collect(), observer_versions)
+}
+
+const fn reachability_status_rank(status: ReachabilityStatus) -> u8 {
+  match status {
+    | ReachabilityStatus::Terminated => 2,
+    | ReachabilityStatus::Unreachable => 1,
+    | ReachabilityStatus::Reachable => 0,
+  }
 }

@@ -1,6 +1,7 @@
 //! Tokio-based gossip transport.
 
 use alloc::{
+  boxed::Box,
   string::{String, ToString},
   vec::Vec,
 };
@@ -153,6 +154,14 @@ impl TokioGossipTransport {
     envelope: GossipEnvelope,
     now_tick: u64,
   ) -> Result<GossipTransportHandoff, GossipTransportHandoffError> {
+    if let Some(local_identity) = &self.local_identity
+      && envelope.from() != local_identity
+    {
+      return Err(GossipTransportHandoffError::InvalidIdentity {
+        expected: Box::new(local_identity.clone()),
+        actual:   Box::new(envelope.from().clone()),
+      });
+    }
     GossipTransportHandoff::try_new(envelope, &self.peer_identities, now_tick)
   }
 

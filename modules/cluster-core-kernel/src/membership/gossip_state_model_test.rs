@@ -218,6 +218,49 @@ fn tombstone_retention_prunes_only_converged_versions() {
 }
 
 #[test]
+fn tombstone_retention_prunes_reachability_rows_for_retained_member() {
+  let member = unique_address("node-a", 10);
+  let observer = unique_address("node-b", 11);
+  let subject = unique_address("node-c", 12);
+  let mut observer_versions = BTreeMap::new();
+  observer_versions.insert(observer.clone(), 3);
+  observer_versions.insert(member.clone(), 3);
+  let local = GossipStateSnapshot::new(
+    MembershipSnapshot::new_with_reachability(
+      MembershipVersion::new(3),
+      vec![record(member.clone(), NodeStatus::Dead, 3), record(observer.clone(), NodeStatus::Up, 1)],
+      ReachabilitySnapshot::new(
+        vec![
+          ReachabilityRecord {
+            observer: observer.clone(),
+            subject:  member.clone(),
+            status:   ReachabilityStatus::Unreachable,
+            version:  3,
+          },
+          ReachabilityRecord {
+            observer: member.clone(),
+            subject:  subject.clone(),
+            status:   ReachabilityStatus::Unreachable,
+            version:  3,
+          },
+        ],
+        observer_versions,
+      ),
+    ),
+    GossipTombstoneSet::new(),
+  );
+  let mut model = GossipStateModel::new(local);
+
+  let pruned = model.prune_retained_tombstones(MembershipVersion::new(3));
+
+  assert_eq!(pruned.pruned.len(), 1);
+  assert!(model.snapshot().membership.reachability.records.is_empty());
+  assert_eq!(model.snapshot().membership.reachability.observer_versions.get(&observer), Some(&3));
+  assert!(!model.snapshot().membership.reachability.observer_versions.contains_key(&member));
+  assert_eq!(model.snapshot().membership.reachability.aggregate_status(&member), ReachabilityStatus::Reachable);
+}
+
+#[test]
 fn seen_digest_tracks_peer_observed_versions_and_convergence() {
   let peer_a = unique_address("node-a", 10);
   let peer_b = unique_address("node-b", 11);
@@ -324,6 +367,58 @@ fn full_state_merge_ignores_remote_reachability_record_older_than_local_row() {
   assert!(model.snapshot().membership.reachability.records.is_empty());
   assert_eq!(model.snapshot().membership.reachability.aggregate_status(&subject), ReachabilityStatus::Reachable);
   assert_eq!(model.snapshot().membership.reachability.observer_versions.get(&observer), Some(&5));
+}
+
+#[test]
+fn full_state_merge_uses_stronger_reachability_status_for_equal_versions() {
+  let observer = unique_address("node-a", 10);
+  let subject = unique_address("node-b", 11);
+  let mut observer_versions = BTreeMap::new();
+  observer_versions.insert(observer.clone(), 5);
+  let unreachable = GossipStateSnapshot::new(
+    MembershipSnapshot::new_with_reachability(
+      MembershipVersion::new(5),
+      vec![record(observer.clone(), NodeStatus::Up, 1), record(subject.clone(), NodeStatus::Up, 1)],
+      ReachabilitySnapshot::new(
+        vec![ReachabilityRecord {
+          observer: observer.clone(),
+          subject:  subject.clone(),
+          status:   ReachabilityStatus::Unreachable,
+          version:  5,
+        }],
+        observer_versions.clone(),
+      ),
+    ),
+    GossipTombstoneSet::new(),
+  );
+  let terminated = GossipStateSnapshot::new(
+    MembershipSnapshot::new_with_reachability(
+      MembershipVersion::new(5),
+      vec![record(observer.clone(), NodeStatus::Up, 1), record(subject.clone(), NodeStatus::Up, 1)],
+      ReachabilitySnapshot::new(
+        vec![ReachabilityRecord {
+          observer: observer.clone(),
+          subject:  subject.clone(),
+          status:   ReachabilityStatus::Terminated,
+          version:  5,
+        }],
+        observer_versions,
+      ),
+    ),
+    GossipTombstoneSet::new(),
+  );
+
+  let mut unreachable_first = GossipStateModel::new(unreachable.clone());
+  unreachable_first.merge(terminated.clone());
+  let mut terminated_first = GossipStateModel::new(terminated);
+  terminated_first.merge(unreachable);
+
+  assert_eq!(unreachable_first.snapshot(), terminated_first.snapshot());
+  assert_eq!(unreachable_first.snapshot().membership.reachability.records[0].status, ReachabilityStatus::Terminated);
+  assert_eq!(
+    unreachable_first.snapshot().membership.reachability.aggregate_status(&subject),
+    ReachabilityStatus::Terminated
+  );
 }
 
 #[test]
