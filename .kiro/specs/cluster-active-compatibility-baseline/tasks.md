@@ -36,7 +36,7 @@
   - _Requirements: 4.1, 4.2, 4.3, 4.4_
   - _Boundary: TransportLifecycleBridge_
 
-- [ ] 6. baseline 統合と gap analysis evidence を更新する
+- [x] 6. baseline 統合と gap analysis evidence を更新する
   - trivial / easy の4項目について、実装済みまたは baseline 契約化済みの evidence を `docs/gap-analysis/cluster-gap-analysis.md` に反映する。
   - membership、gossip、downing decision、discovery、pubsub、serialization、Deferred Pekko concepts の status をこの task で完了扱いにしない。
   - 対象 crate の unit tests を実行し、config/path/provider/lifecycle の baseline が同時に成立することを確認する。
