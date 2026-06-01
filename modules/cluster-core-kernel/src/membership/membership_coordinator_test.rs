@@ -1,7 +1,10 @@
 use alloc::{boxed::Box, string::String};
 use core::time::Duration;
 
-use fraktor_remote_core_rs::{address::Address, failure_detector::PhiAccrualFailureDetector};
+use fraktor_remote_core_rs::{
+  address::{Address, UniqueAddress},
+  failure_detector::PhiAccrualFailureDetector,
+};
 use fraktor_utils_core_rs::time::TimerInstant;
 
 use super::MembershipCoordinator;
@@ -9,7 +12,7 @@ use crate::{
   ClusterEvent, ClusterExtensionConfig,
   failure_detector::{DefaultFailureDetectorRegistry, FailureDetector},
   membership::{
-    MembershipCoordinatorConfig, MembershipCoordinatorError, MembershipCoordinatorState, MembershipDelta,
+    DataCenter, MembershipCoordinatorConfig, MembershipCoordinatorError, MembershipCoordinatorState, MembershipDelta,
     MembershipError, MembershipEvent, MembershipTable, MembershipVersion, NodeRecord, NodeStatus, QuarantineEvent,
     ReachabilityStatus,
   },
@@ -561,23 +564,17 @@ fn reachability_snapshot_tracks_suspect_without_advertised_address() {
 fn gossip_delta_new_incarnation_removes_previous_active_from_current_state() {
   let mut table = MembershipTable::new(3);
   let address = Address::new("cluster", "node-a", 2552);
-  let first = fraktor_remote_core_rs::address::UniqueAddress::new(address.clone(), 10);
-  let second = fraktor_remote_core_rs::address::UniqueAddress::new(address, 11);
+  let first = UniqueAddress::new(address.clone(), 10);
+  let second = UniqueAddress::new(address, 11);
   table
-    .try_join_with_identity(
-      "node-1".to_string(),
-      first.clone(),
-      crate::membership::DataCenter::default(),
-      "1.0.0".to_string(),
-      vec![],
-    )
+    .try_join_with_identity("node-1".to_string(), first.clone(), DataCenter::default(), "1.0.0".to_string(), vec![])
     .expect("first incarnation joins");
   table.mark_weakly_up("cluster@node-a:2552").expect("first weakly up").expect("delta");
   table.mark_up("cluster@node-a:2552").expect("first up").expect("delta");
   let version = table.version();
   let second_record = NodeRecord::new_with_identity(
     second.clone(),
-    crate::membership::DataCenter::default(),
+    DataCenter::default(),
     "node-1".to_string(),
     NodeStatus::Joining,
     version.next(),

@@ -3,7 +3,9 @@ use alloc::{string::ToString, vec};
 use fraktor_remote_core_rs::address::{Address, UniqueAddress};
 
 use super::MembershipTable;
-use crate::membership::{DataCenter, MembershipDelta, MembershipError, MembershipEvent, MembershipVersion, NodeStatus};
+use crate::membership::{
+  DataCenter, MembershipDelta, MembershipError, MembershipEvent, MembershipVersion, NodeRecord, NodeStatus,
+};
 
 #[test]
 fn join_registers_joining_and_snapshots_latest_table() {
@@ -197,7 +199,7 @@ fn gossip_delta_supersedes_previous_active_incarnation() {
   table.mark_up("cluster@n1:4050").expect("up").expect("delta");
 
   let version = table.version();
-  let record = crate::membership::NodeRecord::new_with_identity(
+  let record = NodeRecord::new_with_identity(
     second.clone(),
     DataCenter::new("dc-east"),
     "node-1".to_string(),
