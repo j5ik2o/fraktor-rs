@@ -28,5 +28,10 @@ fn catalog_exposes_excluded_keys_with_reasons() {
       && key.exclusion_reason()
         == Some("sensitive local factory implementation is not compared during join compatibility")
   }));
+  assert!(excluded.iter().any(|key| {
+    key.name() == "cluster.failure-detector.choice"
+      && key.exclusion_reason()
+        == Some("failure detector implementation choice is not compared until cluster config owns detector selection")
+  }));
   assert!(excluded.iter().all(|key| key.exclusion_reason().is_some()));
 }
