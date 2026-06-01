@@ -8,7 +8,7 @@
   - _Requirements: 1.1, 1.2, 1.3, 1.4, 1.5, 2.1, 2.2, 2.3_
   - _Boundary: NodeIdentityRecord, DataCenterMembership_
 
-- [ ] 2. membership table と current state に data center view を接続する
+- [x] 2. membership table と current state に data center view を接続する
   - join/rejoin の membership flow が identity と data center を保持するようにする。
   - data center ごとの member view が status と identity を失わずに取得できるようにする。
   - current cluster state が data center 付き member view を公開し、Cross-DC heartbeat は開始しない。

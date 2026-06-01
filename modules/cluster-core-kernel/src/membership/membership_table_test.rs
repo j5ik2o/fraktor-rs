@@ -236,6 +236,32 @@ fn rejoin_from_dead_updates_metadata() {
 }
 
 #[test]
+fn rejoin_with_identity_updates_data_center() {
+  let mut table = MembershipTable::new(3);
+  let identity = UniqueAddress::new(Address::new("cluster", "n1", 4050), 10);
+  table
+    .try_join_with_identity(
+      "node-1".to_string(),
+      identity.clone(),
+      DataCenter::new("dc-east"),
+      "1.0.0".to_string(),
+      vec!["backend".to_string()],
+    )
+    .expect("join succeeds");
+  table.mark_suspect("cluster@n1:4050").expect("mark suspect should succeed");
+  table.mark_dead("cluster@n1:4050").expect("mark dead should succeed");
+
+  let delta = table
+    .try_join_with_identity("node-1".to_string(), identity, DataCenter::new("dc-west"), "2.0.0".to_string(), vec![
+      "backend".to_string(),
+    ])
+    .expect("rejoin succeeds");
+
+  assert_eq!(delta.entries[0].data_center, DataCenter::new("dc-west"));
+  assert_eq!(table.record("cluster@n1:4050").expect("record should exist").data_center, DataCenter::new("dc-west"));
+}
+
+#[test]
 fn status_update_does_not_change_age_ordering() {
   let mut table = MembershipTable::new(3);
   table

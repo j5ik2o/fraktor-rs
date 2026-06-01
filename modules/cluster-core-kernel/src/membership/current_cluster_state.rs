@@ -6,7 +6,7 @@ mod tests;
 
 use alloc::{collections::BTreeMap, string::String, vec::Vec};
 
-use crate::membership::NodeRecord;
+use crate::membership::{DataCenter, NodeRecord};
 
 /// Enriched cluster state containing leaders, seen members, and unreachable members.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -34,5 +34,17 @@ impl CurrentClusterState {
     role_leader: BTreeMap<String, Option<String>>,
   ) -> Self {
     Self { members, unreachable, seen_by, leader, role_leader }
+  }
+
+  /// Returns members in the requested data center.
+  #[must_use]
+  pub fn members_in_data_center(&self, data_center: &DataCenter) -> Vec<NodeRecord> {
+    self.members.iter().filter(|record| &record.data_center == data_center).cloned().collect()
+  }
+
+  /// Returns unreachable members in the requested data center.
+  #[must_use]
+  pub fn unreachable_in_data_center(&self, data_center: &DataCenter) -> Vec<NodeRecord> {
+    self.unreachable.iter().filter(|record| &record.data_center == data_center).cloned().collect()
   }
 }
