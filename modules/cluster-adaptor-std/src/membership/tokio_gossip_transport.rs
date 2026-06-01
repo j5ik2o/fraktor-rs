@@ -174,7 +174,7 @@ impl TokioGossipTransport {
   /// # Errors
   ///
   /// Returns a transport error when the source identity is not allowed or the target endpoint does
-  /// not match this transport.
+  /// not match this transport's advertised identity.
   pub fn accept_handoff(&mut self, handoff: GossipTransportHandoff) -> Result<(), GossipTransportError> {
     if !self.peer_identities.iter().any(|peer| peer == handoff.from()) {
       return Err(GossipTransportError::Handoff(GossipTransportHandoffError::UnknownPeer {
@@ -190,7 +190,7 @@ impl TokioGossipTransport {
         actual:   Box::new(handoff.to().clone()),
       }));
     }
-    if handoff.target_endpoint() != local_endpoint(self.local_addr).as_str() {
+    if handoff.target_endpoint() != identity_endpoint(local_identity).as_str() {
       return Err(GossipTransportError::ReceiveFailed {
         reason: format!("target endpoint mismatch: {}", handoff.target_endpoint()),
       });
@@ -263,8 +263,8 @@ impl GossipTransport for TokioGossipTransport {
   }
 }
 
-fn local_endpoint(local_addr: SocketAddr) -> String {
-  format!("{}:{}", local_addr.ip(), local_addr.port())
+fn identity_endpoint(identity: &UniqueAddress) -> String {
+  format!("{}:{}", identity.address().host(), identity.address().port())
 }
 
 fn decode_delta(bytes: &[u8]) -> Result<MembershipDelta, GossipTransportError> {

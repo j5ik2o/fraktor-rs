@@ -201,6 +201,48 @@ async fn envelope_roundtrip_distinguishes_gossip_state_and_heartbeat_payloads() 
 }
 
 #[tokio::test]
+async fn accept_handoff_uses_advertised_local_identity_endpoint() {
+  let mut sender = TokioGossipTransport::bind(
+    TokioGossipTransportConfig::new(String::from("127.0.0.1:0"), 1024, 8),
+    Handle::current(),
+  )
+  .expect("sender bind");
+  let sender_addr = sender.local_addr();
+  let sender_id = UniqueAddress::new(Address::new("cluster", "127.0.0.1", sender_addr.port()), 10);
+  let mut receiver = TokioGossipTransport::bind(
+    TokioGossipTransportConfig::new(String::from("127.0.0.1:0"), 1024, 8)
+      .with_allowed_peer_identities(vec![sender_id.clone()]),
+    Handle::current(),
+  )
+  .expect("receiver bind");
+  let receiver_id =
+    UniqueAddress::new(Address::new("cluster", "cluster-node.example.test", receiver.local_addr().port()), 11);
+  sender.update_peer_identities(vec![receiver_id.clone()]);
+  receiver.update_local_identity(receiver_id.clone());
+
+  sender
+    .send_envelope(
+      GossipEnvelope::try_new(
+        sender_id.clone(),
+        receiver_id,
+        GossipPayloadKind::FullState,
+        MembershipVersion::new(2),
+        100,
+      )
+      .expect("envelope"),
+      100,
+    )
+    .expect("send envelope");
+  let handoff = sender.poll_outbound_handoffs().remove(0);
+
+  receiver.accept_handoff(handoff).expect("accept handoff");
+
+  let envelopes = receiver.poll_envelopes().into_iter().collect::<Result<Vec<_>, _>>().expect("valid envelopes");
+  assert_eq!(envelopes.len(), 1);
+  assert_eq!(envelopes[0].from(), &sender_id);
+}
+
+#[tokio::test]
 async fn accept_handoff_rejects_mismatched_target_identity() {
   let mut sender = TokioGossipTransport::bind(
     TokioGossipTransportConfig::new(String::from("127.0.0.1:0"), 1024, 8),
