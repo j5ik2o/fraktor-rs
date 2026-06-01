@@ -1,9 +1,15 @@
 use alloc::{string::ToString, vec::Vec};
 
+use fraktor_remote_core_rs::address::{Address, UniqueAddress};
+
 use crate::membership::{
-  GossipDisseminationCoordinator, GossipEvent, GossipOutbound, GossipState, MembershipDelta, MembershipTable,
-  MembershipVersion, NodeRecord, NodeStatus,
+  DataCenter, GossipDisseminationCoordinator, GossipEvent, GossipOutbound, GossipState, MembershipDelta,
+  MembershipTable, MembershipVersion, NodeRecord, NodeStatus,
 };
+
+fn unique_address(host: &str, uid: u64) -> UniqueAddress {
+  UniqueAddress::new(Address::new("cluster", host, 2552), uid)
+}
 
 #[test]
 fn diffusing_reaches_confirmed_after_all_peers_ack() {
@@ -171,6 +177,80 @@ fn seen_by_tracks_latest_acknowledgements() {
 
   let _ = coordinator.handle_ack("node-2");
   assert_eq!(coordinator.seen_by(), vec!["n1:4050".to_string(), "node-2".to_string(), "node-3".to_string()]);
+}
+
+#[test]
+fn seen_digest_projects_acknowledged_authorities_to_member_identities() {
+  let local = unique_address("node-a", 10);
+  let peer = unique_address("node-b", 11);
+  let mut table = MembershipTable::new(3);
+  table
+    .try_join_with_identity("node-a".to_string(), local.clone(), DataCenter::new("dc-a"), "1.0.0".to_string(), vec![
+      "member".to_string(),
+    ])
+    .expect("local joins");
+  table
+    .try_join_with_identity("node-b".to_string(), peer.clone(), DataCenter::new("dc-a"), "1.0.0".to_string(), vec![
+      "member".to_string(),
+    ])
+    .expect("peer joins");
+  table.drain_events();
+  let current = table.version();
+  let local_authority = local.address().to_string();
+  let peer_authority = peer.address().to_string();
+  let mut coordinator = GossipDisseminationCoordinator::new(table, Some(local_authority), vec![peer_authority.clone()]);
+  let delta = MembershipDelta::new(current, current.next(), Vec::new());
+
+  let _ = coordinator.disseminate(&delta);
+  let _ = coordinator.handle_ack(peer_authority.as_str());
+
+  let digest = coordinator.seen_digest();
+  assert_eq!(digest.observed_version(&local), Some(current.next()));
+  assert_eq!(digest.observed_version(&peer), Some(current.next()));
+  assert!(digest.has_seen_all(&[local, peer], current.next()));
+}
+
+#[test]
+fn seen_digest_does_not_promote_old_seen_peer_to_new_incoming_version() {
+  let local = unique_address("node-a", 10);
+  let peer_b = unique_address("node-b", 11);
+  let peer_c = unique_address("node-c", 12);
+  let mut table = MembershipTable::new(3);
+  table
+    .try_join_with_identity("node-a".to_string(), local.clone(), DataCenter::new("dc-a"), "1.0.0".to_string(), vec![
+      "member".to_string(),
+    ])
+    .expect("local joins");
+  table
+    .try_join_with_identity("node-b".to_string(), peer_b.clone(), DataCenter::new("dc-a"), "1.0.0".to_string(), vec![
+      "member".to_string(),
+    ])
+    .expect("peer b joins");
+  table
+    .try_join_with_identity("node-c".to_string(), peer_c.clone(), DataCenter::new("dc-a"), "1.0.0".to_string(), vec![
+      "member".to_string(),
+    ])
+    .expect("peer c joins");
+  table.drain_events();
+  let version = table.version();
+  let local_authority = local.address().to_string();
+  let peer_b_authority = peer_b.address().to_string();
+  let peer_c_authority = peer_c.address().to_string();
+  let mut coordinator = GossipDisseminationCoordinator::new(table, Some(local_authority), vec![
+    peer_b_authority.clone(),
+    peer_c_authority.clone(),
+  ]);
+  let first_delta = MembershipDelta::new(version, version.next(), Vec::new());
+  let second_delta = MembershipDelta::new(version.next(), version.next().next(), Vec::new());
+
+  let _ = coordinator.disseminate(&first_delta);
+  let _ = coordinator.handle_ack(peer_b_authority.as_str());
+  coordinator.apply_incoming(&second_delta, peer_c_authority.as_str());
+
+  let digest = coordinator.seen_digest();
+  assert_eq!(digest.observed_version(&peer_b), Some(version.next()));
+  assert_eq!(digest.observed_version(&peer_c), Some(version.next().next()));
+  assert!(!digest.has_seen_all(&[local, peer_b, peer_c], version.next().next()));
 }
 
 #[test]

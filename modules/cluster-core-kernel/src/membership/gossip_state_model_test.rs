@@ -3,8 +3,8 @@ use alloc::{string::ToString, vec, vec::Vec};
 use fraktor_remote_core_rs::address::{Address, UniqueAddress};
 
 use crate::membership::{
-  DataCenter, GossipStateModel, GossipStateSnapshot, GossipTombstone, GossipTombstoneSet, MembershipSnapshot,
-  MembershipVersion, NodeRecord, NodeStatus,
+  DataCenter, GossipSeenDigest, GossipStateModel, GossipStateSnapshot, GossipTombstone, GossipTombstoneSet,
+  MembershipSnapshot, MembershipVersion, NodeRecord, NodeStatus,
 };
 
 fn unique_address(host: &str, uid: u64) -> UniqueAddress {
@@ -171,4 +171,57 @@ fn tombstone_retention_prunes_only_converged_versions() {
   let retained = model.prune_retained_tombstones(MembershipVersion::new(3));
   assert_eq!(retained.pruned.len(), 1);
   assert!(model.snapshot().tombstones.get(&identity).is_none());
+}
+
+#[test]
+fn seen_digest_tracks_peer_observed_versions_and_convergence() {
+  let peer_a = unique_address("node-a", 10);
+  let peer_b = unique_address("node-b", 11);
+  let mut model = GossipStateModel::new(state(3, Vec::new()));
+
+  assert!(model.mark_seen(peer_a.clone(), MembershipVersion::new(3)));
+  assert!(!model.mark_seen(peer_a.clone(), MembershipVersion::new(2)));
+  assert!(!model.has_seen_all(&[peer_a.clone(), peer_b.clone()], MembershipVersion::new(3)));
+
+  assert!(model.mark_seen(peer_b.clone(), MembershipVersion::new(3)));
+
+  assert_eq!(model.seen_digest().observed_version(&peer_a), Some(MembershipVersion::new(3)));
+  assert!(model.has_seen_all(&[peer_a, peer_b], MembershipVersion::new(3)));
+}
+
+#[test]
+fn full_state_merge_merges_seen_digest() {
+  let peer = unique_address("node-a", 10);
+  let local = state(1, Vec::new());
+  let mut remote_digest = GossipSeenDigest::new();
+  remote_digest.mark_seen(peer.clone(), MembershipVersion::new(4));
+  let remote = GossipStateSnapshot::new_with_seen_digest(
+    MembershipSnapshot::new(MembershipVersion::new(4), Vec::new()),
+    GossipTombstoneSet::new(),
+    remote_digest,
+  );
+
+  let mut model = GossipStateModel::new(local);
+  model.merge(remote);
+
+  assert_eq!(model.seen_digest().observed_version(&peer), Some(MembershipVersion::new(4)));
+}
+
+#[test]
+fn tombstone_prune_waits_until_seen_by_all_active_peers() {
+  let member = unique_address("node-a", 10);
+  let peer_a = unique_address("node-b", 11);
+  let peer_b = unique_address("node-c", 12);
+  let local = state(3, vec![record(member.clone(), NodeStatus::Dead, 3)]);
+  let mut model = GossipStateModel::new(local);
+
+  model.mark_seen(peer_a.clone(), MembershipVersion::new(3));
+  let early = model.prune_tombstones_when_seen_by_all(&[peer_a.clone(), peer_b.clone()], MembershipVersion::new(3));
+  assert!(early.pruned.is_empty());
+  assert!(model.snapshot().tombstones.get(&member).is_some());
+
+  model.mark_seen(peer_b.clone(), MembershipVersion::new(3));
+  let pruned = model.prune_tombstones_when_seen_by_all(&[peer_a, peer_b], MembershipVersion::new(3));
+  assert_eq!(pruned.pruned.len(), 1);
+  assert!(model.snapshot().tombstones.get(&member).is_none());
 }

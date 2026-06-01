@@ -17,7 +17,7 @@
   - _Boundary: GossipStateModel_
   - _Depends: 1_
 
-- [ ] 3. seen digest と convergence 判定を coordinator に接続する
+- [x] 3. seen digest と convergence 判定を coordinator に接続する
   - peer identity ごとの observed version を seen digest として保持する。
   - delta diffusion と full gossip merge の両方で seen digest が更新されるようにする。
   - active peer 全員が対象 version を確認したときに convergence event が観測できる。

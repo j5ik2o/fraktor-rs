@@ -5,8 +5,9 @@ use alloc::{collections::BTreeMap, vec::Vec};
 use fraktor_remote_core_rs::address::UniqueAddress;
 
 use super::{
-  GossipMergeConflict, GossipMergeOutcome, GossipStateSnapshot, GossipTombstonePruneOutcome, GossipTombstoneSet,
-  MembershipSnapshot, MembershipVersion, NodeRecord, NodeStatus, ReachabilityRecord, ReachabilitySnapshot,
+  GossipMergeConflict, GossipMergeOutcome, GossipSeenDigest, GossipStateSnapshot, GossipTombstonePruneOutcome,
+  GossipTombstoneSet, MembershipSnapshot, MembershipVersion, NodeRecord, NodeStatus, ReachabilityRecord,
+  ReachabilitySnapshot,
 };
 
 #[cfg(test)]
@@ -39,6 +40,7 @@ impl GossipStateModel {
     let remote = Self::new(remote).snapshot;
     let mut outcome = GossipMergeOutcome::empty();
     outcome.tombstones_added.extend(self.snapshot.tombstones.merge(&remote.tombstones));
+    self.snapshot.seen_digest.merge(&remote.seen_digest);
 
     let mut records = self
       .snapshot
@@ -100,6 +102,36 @@ impl GossipStateModel {
   /// Prunes tombstones whose versions have been retained through convergence.
   pub fn prune_retained_tombstones(&mut self, retained_through: MembershipVersion) -> GossipTombstonePruneOutcome {
     GossipTombstonePruneOutcome::new(self.snapshot.tombstones.prune_retained(retained_through))
+  }
+
+  /// Marks a peer identity as having observed a membership version.
+  pub fn mark_seen(&mut self, peer: UniqueAddress, version: MembershipVersion) -> bool {
+    self.snapshot.seen_digest.mark_seen(peer, version)
+  }
+
+  /// Returns the current seen digest.
+  #[must_use]
+  pub const fn seen_digest(&self) -> &GossipSeenDigest {
+    &self.snapshot.seen_digest
+  }
+
+  /// Returns true when all active peers have observed at least `version`.
+  #[must_use]
+  pub fn has_seen_all(&self, active_peers: &[UniqueAddress], version: MembershipVersion) -> bool {
+    self.snapshot.seen_digest.has_seen_all(active_peers, version)
+  }
+
+  /// Prunes tombstones after all active peers have observed `version`.
+  pub fn prune_tombstones_when_seen_by_all(
+    &mut self,
+    active_peers: &[UniqueAddress],
+    version: MembershipVersion,
+  ) -> GossipTombstonePruneOutcome {
+    if self.has_seen_all(active_peers, version) {
+      self.prune_retained_tombstones(version)
+    } else {
+      GossipTombstonePruneOutcome::new(Vec::new())
+    }
   }
 }
 
