@@ -330,9 +330,13 @@ impl MembershipCoordinator {
   ) -> Result<MembershipCoordinatorOutcome, MembershipCoordinatorError> {
     self.ensure_started()?;
 
+    let snapshot = self.gossip.table().snapshot();
     let mut previous = BTreeMap::new();
     for record in delta.entries.iter() {
-      previous.insert(record.authority.clone(), self.gossip.table().record(&record.authority).map(|r| r.status));
+      previous.insert(
+        record.unique_address.to_string(),
+        snapshot.entries.iter().find(|entry| entry.unique_address == record.unique_address).map(|entry| entry.status),
+      );
     }
 
     self.gossip.apply_incoming(delta, peer);
@@ -340,7 +344,7 @@ impl MembershipCoordinator {
 
     let mut outcome = MembershipCoordinatorOutcome::default();
     for record in delta.entries.iter() {
-      let before = previous.get(&record.authority).copied().flatten();
+      let before = previous.get(&record.unique_address.to_string()).copied().flatten();
       self.register_membership_change(record, before, now, &mut outcome);
     }
 
@@ -561,19 +565,16 @@ impl MembershipCoordinator {
   }
 
   fn record_unreachable(&mut self, subject: &NodeRecord) {
-    if let Some(observer) = self.local_unique_address() {
-      self.reachability.unreachable(observer, subject.unique_address.clone());
-    }
+    self.reachability.unreachable(self.local_unique_address(), subject.unique_address.clone());
   }
 
   fn record_reachable(&mut self, subject: &NodeRecord) {
-    if let Some(observer) = self.local_unique_address() {
-      self.reachability.reachable(observer, subject.unique_address.clone());
-    }
+    self.reachability.reachable(self.local_unique_address(), subject.unique_address.clone());
   }
 
-  fn local_unique_address(&self) -> Option<UniqueAddress> {
-    local_authority_from_config(&self.cluster_config).map(unique_address_from_authority)
+  fn local_unique_address(&self) -> UniqueAddress {
+    local_authority_from_config(&self.cluster_config)
+      .map_or_else(default_local_unique_address, unique_address_from_authority)
   }
 
   fn emit_status_change(
@@ -777,6 +778,10 @@ fn local_authority_from_config(cluster_config: &ClusterExtensionConfig) -> Optio
 fn unique_address_from_authority(authority: String) -> UniqueAddress {
   let (host, port) = authority_host_port(authority);
   UniqueAddress::new(Address::new("fraktor-cluster", host, port), 1)
+}
+
+fn default_local_unique_address() -> UniqueAddress {
+  UniqueAddress::new(Address::new("fraktor-cluster", "local", 0), 1)
 }
 
 fn authority_host_port(authority: String) -> (String, u16) {

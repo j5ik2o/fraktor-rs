@@ -539,6 +539,72 @@ fn reachability_snapshot_tracks_failure_detector_and_heartbeat_receipt() {
 }
 
 #[test]
+fn reachability_snapshot_tracks_suspect_without_advertised_address() {
+  let table = MembershipTable::new(3);
+  let mut config = base_config();
+  config.suspect_timeout = Duration::from_secs(30);
+  let mut coordinator = MembershipCoordinator::new(config, local_cluster_config(), table, registry(1.0));
+  coordinator.start_member().unwrap();
+
+  let _ =
+    coordinator.handle_join("node-1".to_string(), "node-a".to_string(), &joining_cluster_config(), now(1)).unwrap();
+  let _ = coordinator.handle_heartbeat("node-a", now(2)).unwrap();
+  let _ = coordinator.handle_heartbeat("node-a", now(3)).unwrap();
+
+  let _ = coordinator.poll(now(5)).unwrap();
+  let subject = coordinator.snapshot().entries[0].unique_address.clone();
+
+  assert_eq!(coordinator.snapshot().reachability.aggregate_status(&subject), ReachabilityStatus::Unreachable);
+}
+
+#[test]
+fn gossip_delta_status_change_uses_matching_unique_address_previous_state() {
+  let mut table = MembershipTable::new(3);
+  let address = Address::new("cluster", "node-a", 2552);
+  let first = fraktor_remote_core_rs::address::UniqueAddress::new(address.clone(), 10);
+  let second = fraktor_remote_core_rs::address::UniqueAddress::new(address, 11);
+  table
+    .try_join_with_identity(
+      "node-1".to_string(),
+      first.clone(),
+      crate::membership::DataCenter::default(),
+      "1.0.0".to_string(),
+      vec![],
+    )
+    .expect("first incarnation joins");
+  table.mark_weakly_up("cluster@node-a:2552").expect("first weakly up").expect("delta");
+  table.mark_up("cluster@node-a:2552").expect("first up").expect("delta");
+  table
+    .try_join_with_identity(
+      "node-1".to_string(),
+      second,
+      crate::membership::DataCenter::default(),
+      "1.0.1".to_string(),
+      vec![],
+    )
+    .expect("second incarnation joins");
+  table.mark_suspect("cluster@node-a:2552").expect("second suspect").expect("delta");
+
+  let version = table.version();
+  let mut first_record =
+    table.snapshot().entries.into_iter().find(|record| record.unique_address == first).expect("first record");
+  first_record.status = NodeStatus::Suspect;
+  first_record.version = version.next();
+  let delta = MembershipDelta::new(version, version.next(), vec![first_record]);
+
+  let mut coordinator = MembershipCoordinator::new(base_config(), local_cluster_config(), table, registry(1.0));
+  coordinator.start_member().unwrap();
+
+  let outcome = coordinator.handle_gossip_delta("peer", &delta, now(6)).unwrap();
+
+  assert!(outcome.member_events.iter().any(|event| matches!(
+    event,
+    ClusterEvent::MemberStatusChanged { authority, from: NodeStatus::Up, to: NodeStatus::Suspect, .. }
+      if authority == "cluster@node-a:2552"
+  )));
+}
+
+#[test]
 fn gossip_seen_changed_event_is_emitted() {
   let table = MembershipTable::new(3);
   let mut config = base_config();
