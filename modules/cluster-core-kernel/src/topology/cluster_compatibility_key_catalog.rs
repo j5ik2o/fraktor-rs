@@ -6,12 +6,8 @@ const LOCAL_ONLY_NODE_IDENTITY_REASON: &str = "local-only node identity is not c
 const SENSITIVE_PROVIDER_FACTORY_REASON: &str =
   "sensitive local factory implementation is not compared during join compatibility";
 
-static REQUIRED_KEYS: [ClusterCompatibilityKey; 4] = [
-  ClusterCompatibilityKeyCatalog::PUBSUB,
-  ClusterCompatibilityKeyCatalog::DOWNING_PROVIDER,
-  ClusterCompatibilityKeyCatalog::SPLIT_BRAIN_RESOLVER_SETTINGS,
-  ClusterCompatibilityKeyCatalog::FAILURE_DETECTOR_CHOICE,
-];
+static REQUIRED_KEYS: [ClusterCompatibilityKey; 2] =
+  [ClusterCompatibilityKeyCatalog::PUBSUB, ClusterCompatibilityKeyCatalog::DOWNING_PROVIDER];
 
 static EXCLUDED_KEYS: [ClusterCompatibilityKey; 2] =
   [ClusterCompatibilityKeyCatalog::ADVERTISED_ADDRESS, ClusterCompatibilityKeyCatalog::DOWNING_PROVIDER_FACTORY];
@@ -28,9 +24,6 @@ impl ClusterCompatibilityKeyCatalog {
   /// Downing provider factory key excluded because implementation identity is local and sensitive.
   pub const DOWNING_PROVIDER_FACTORY: ClusterCompatibilityKey =
     ClusterCompatibilityKey::excluded("cluster.downing-provider.factory", SENSITIVE_PROVIDER_FACTORY_REASON);
-  /// Failure detector choice compatibility key.
-  pub const FAILURE_DETECTOR_CHOICE: ClusterCompatibilityKey =
-    ClusterCompatibilityKey::required("cluster.failure-detector.choice");
   /// Pub/sub configuration compatibility key.
   pub const PUBSUB: ClusterCompatibilityKey = ClusterCompatibilityKey::required("cluster.pubsub");
   /// Split Brain Resolver settings compatibility key.

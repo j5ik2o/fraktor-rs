@@ -39,7 +39,7 @@ Kiro-style Spec-Driven Development on an agentic SDLC
 - Progress check: `/kiro-spec-status {feature}` (use anytime)
 
 ## Skills Structure
-Skills are located in `.claude/skills/kiro-*/SKILL.md`
+Skills are located in `.agents/skills/kiro-*/SKILL.md`
 - Each skill is a directory with a `SKILL.md` file
 - Skills run inline with access to conversation context
 - Skills may delegate parallel research to subagents for efficiency
