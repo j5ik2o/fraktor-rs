@@ -116,6 +116,31 @@ fn cross_dc_response_is_ignored_after_target_removal() {
 }
 
 #[test]
+fn target_removal_purges_pending_heartbeat_before_rejoin() {
+  let local = unique_address("node-a", 10);
+  let dc_a = DataCenter::new("dc-a");
+  let dc_b = DataCenter::new("dc-b");
+  let first = MembershipSnapshot::new(MembershipVersion::new(1), vec![
+    record("node-a", 10, dc_a.clone(), NodeStatus::Up),
+    record("node-c", 12, dc_b.clone(), NodeStatus::Up),
+  ]);
+  let removed =
+    MembershipSnapshot::new(MembershipVersion::new(2), vec![record("node-a", 10, dc_a.clone(), NodeStatus::Up)]);
+  let rejoined = MembershipSnapshot::new(MembershipVersion::new(3), vec![
+    record("node-a", 10, dc_a.clone(), NodeStatus::Up),
+    record("node-c", 12, dc_b, NodeStatus::Up),
+  ]);
+  let mut heartbeat = CrossDcHeartbeat::new(local, dc_a, 50, 100);
+  let _ = heartbeat.update_targets(&first);
+  let _ = heartbeat.tick(1000);
+
+  let _ = heartbeat.update_targets(&removed);
+  let _ = heartbeat.update_targets(&rejoined);
+
+  assert!(heartbeat.collect_timeouts(1101).is_empty());
+}
+
+#[test]
 fn cross_dc_response_with_mismatched_data_center_pair_is_ignored() {
   let local = unique_address("node-a", 10);
   let peer = unique_address("node-c", 12);

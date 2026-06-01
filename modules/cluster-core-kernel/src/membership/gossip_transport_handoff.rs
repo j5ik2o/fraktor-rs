@@ -36,10 +36,7 @@ impl GossipTransportHandoff {
     if !peers.iter().any(|peer| peer == envelope.to()) {
       return Err(GossipTransportHandoffError::UnknownPeer { peer: envelope.to().clone() });
     }
-    Ok(Self {
-      target_endpoint: format!("{}:{}", envelope.to().address().host(), envelope.to().address().port()),
-      envelope,
-    })
+    Ok(Self { target_endpoint: endpoint_for(envelope.to()), envelope })
   }
 
   /// Returns the envelope carried by this handoff.
@@ -88,4 +85,10 @@ impl GossipTransportHandoff {
       | _ => Err(GossipTransportHandoffError::UnknownPayloadKind { tag }),
     }
   }
+}
+
+fn endpoint_for(identity: &UniqueAddress) -> String {
+  let host = identity.address().host();
+  let port = identity.address().port();
+  if host.contains(':') && !host.starts_with('[') { format!("[{host}]:{port}") } else { format!("{host}:{port}") }
 }

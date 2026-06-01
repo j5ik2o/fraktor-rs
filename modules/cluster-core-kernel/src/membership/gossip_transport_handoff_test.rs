@@ -34,6 +34,19 @@ fn handoff_keeps_envelope_identity_kind_and_endpoint_mapping() {
 }
 
 #[test]
+fn handoff_brackets_ipv6_target_endpoint() {
+  let local = unique_address("node-a", 10);
+  let peer = unique_address("::1", 11);
+  let envelope =
+    GossipEnvelope::try_new(local, peer.clone(), GossipPayloadKind::HeartbeatRequest, MembershipVersion::new(7), 100)
+      .expect("envelope");
+
+  let handoff = GossipTransportHandoff::try_new(envelope, slice::from_ref(&peer), 100).expect("handoff");
+
+  assert_eq!(handoff.target_endpoint(), "[::1]:2552");
+}
+
+#[test]
 fn handoff_rejects_unknown_peer_without_losing_identity() {
   let local = unique_address("node-a", 10);
   let peer = unique_address("node-b", 11);

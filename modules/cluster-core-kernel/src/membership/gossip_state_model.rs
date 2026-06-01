@@ -197,6 +197,17 @@ fn merge_reachability(left: &ReachabilitySnapshot, right: &ReachabilitySnapshot)
     .map(|record| ((record.observer.clone(), record.subject.clone()), record))
     .collect::<BTreeMap<(UniqueAddress, UniqueAddress), ReachabilityRecord>>();
 
+  for (remote_observer, remote_version) in &right.observer_versions {
+    records.retain(|(observer, subject), record| {
+      observer != remote_observer
+        || record.version >= *remote_version
+        || right
+          .records
+          .iter()
+          .any(|right_record| &right_record.observer == observer && &right_record.subject == subject)
+    });
+  }
+
   for record in right.records.iter().cloned() {
     match records.get(&(record.observer.clone(), record.subject.clone())) {
       | Some(existing) if existing.version >= record.version => {},

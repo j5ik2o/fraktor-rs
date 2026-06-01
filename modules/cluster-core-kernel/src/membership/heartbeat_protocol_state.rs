@@ -112,6 +112,15 @@ impl HeartbeatProtocolState {
     evidence
   }
 
+  /// Removes all heartbeat state associated with a peer that left the target set.
+  pub fn remove_peer(&mut self, peer: &UniqueAddress) {
+    self.next_sequences.remove(peer);
+    self.has_success.remove(peer);
+    self.first_expectation_sent.remove(peer);
+    self.first_miss_reported.remove(peer);
+    self.pending.retain(|key, _| &key.peer != peer);
+  }
+
   fn next_sequence(&mut self, peer: UniqueAddress) -> u64 {
     let entry = self.next_sequences.entry(peer).or_insert(0);
     *entry += 1;

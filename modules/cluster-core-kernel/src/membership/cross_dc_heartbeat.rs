@@ -71,6 +71,9 @@ impl CrossDcHeartbeat {
       .map(|(peer, data_center)| self.target(peer.clone(), data_center.clone()))
       .collect::<Vec<_>>();
 
+    for target in &removed {
+      self.heartbeat.remove_peer(&target.peer);
+    }
     self.targets = next;
     CrossDcHeartbeatTargetChange::new(added, removed, retained)
   }

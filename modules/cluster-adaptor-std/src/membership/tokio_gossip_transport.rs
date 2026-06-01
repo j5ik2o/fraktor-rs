@@ -264,7 +264,9 @@ impl GossipTransport for TokioGossipTransport {
 }
 
 fn identity_endpoint(identity: &UniqueAddress) -> String {
-  format!("{}:{}", identity.address().host(), identity.address().port())
+  let host = identity.address().host();
+  let port = identity.address().port();
+  if host.contains(':') && !host.starts_with('[') { format!("[{host}]:{port}") } else { format!("{host}:{port}") }
 }
 
 fn decode_delta(bytes: &[u8]) -> Result<MembershipDelta, GossipTransportError> {

@@ -4,7 +4,7 @@ use fraktor_remote_core_rs::address::{Address, UniqueAddress};
 
 use crate::membership::{
   DataCenter, GossipSeenDigest, GossipStateModel, GossipStateSnapshot, GossipTombstone, GossipTombstoneSet,
-  MembershipSnapshot, MembershipVersion, NodeRecord, NodeStatus,
+  MembershipSnapshot, MembershipVersion, NodeRecord, NodeStatus, ReachabilityMatrix, ReachabilityStatus,
 };
 
 fn unique_address(host: &str, uid: u64) -> UniqueAddress {
@@ -205,6 +205,40 @@ fn full_state_merge_merges_seen_digest() {
   model.merge(remote);
 
   assert_eq!(model.seen_digest().observed_version(&peer), Some(MembershipVersion::new(4)));
+}
+
+#[test]
+fn full_state_merge_prunes_stale_reachability_record_from_newer_reachable_row() {
+  let observer = unique_address("node-a", 10);
+  let subject = unique_address("node-b", 11);
+  let mut local_reachability = ReachabilityMatrix::new();
+  local_reachability.unreachable(observer.clone(), subject.clone());
+  let local = GossipStateSnapshot::new(
+    MembershipSnapshot::new_with_reachability(
+      MembershipVersion::new(1),
+      vec![record(observer.clone(), NodeStatus::Up, 1), record(subject.clone(), NodeStatus::Up, 1)],
+      local_reachability.snapshot(),
+    ),
+    GossipTombstoneSet::new(),
+  );
+  let mut remote_reachability = ReachabilityMatrix::new();
+  remote_reachability.unreachable(observer.clone(), subject.clone());
+  remote_reachability.reachable(observer.clone(), subject.clone());
+  let remote = GossipStateSnapshot::new(
+    MembershipSnapshot::new_with_reachability(
+      MembershipVersion::new(2),
+      vec![record(observer.clone(), NodeStatus::Up, 1), record(subject.clone(), NodeStatus::Up, 1)],
+      remote_reachability.snapshot(),
+    ),
+    GossipTombstoneSet::new(),
+  );
+  let mut model = GossipStateModel::new(local);
+
+  model.merge(remote);
+
+  assert!(model.snapshot().membership.reachability.records.is_empty());
+  assert_eq!(model.snapshot().membership.reachability.aggregate_status(&subject), ReachabilityStatus::Reachable);
+  assert_eq!(model.snapshot().membership.reachability.observer_versions.get(&observer), Some(&2));
 }
 
 #[test]
