@@ -6,6 +6,8 @@ use alloc::{
   vec::Vec,
 };
 
+use fraktor_remote_core_rs::address::UniqueAddress;
+
 use super::{
   GossipEvent, GossipOutbound, GossipSeenDigest, GossipState, GossipTransportHandoff, MembershipDelta, MembershipTable,
   MembershipVersion, NodeRecord, VectorClock,
@@ -24,6 +26,7 @@ pub struct GossipDisseminationCoordinator {
   vector_clock:     VectorClock,
   seen_by:          BTreeSet<String>,
   seen_digest:      GossipSeenDigest,
+  seen_identities:  BTreeMap<String, UniqueAddress>,
   state:            GossipState,
   inflight_version: MembershipVersion,
   events:           Vec<GossipEvent>,
@@ -39,6 +42,7 @@ impl GossipDisseminationCoordinator {
     for peer in peers.iter() {
       vector_clock.observe(peer, current.value());
     }
+    let seen_identities = seen_identity_index(&table);
     Self {
       table,
       local_authority,
@@ -47,6 +51,7 @@ impl GossipDisseminationCoordinator {
       vector_clock,
       seen_by: BTreeSet::new(),
       seen_digest: GossipSeenDigest::new(),
+      seen_identities,
       state: GossipState::Confirmed,
       inflight_version: current,
       events: Vec::new(),
@@ -104,6 +109,7 @@ impl GossipDisseminationCoordinator {
   pub fn disseminate(&mut self, delta: &MembershipDelta) -> Vec<GossipOutbound> {
     let out = self.peers.iter().cloned().map(|peer| GossipOutbound::new(peer, delta.clone())).collect::<Vec<_>>();
 
+    self.index_delta_identities(delta);
     self.inflight_version = delta.to;
     self.state = GossipState::Diffusing;
     self.seen_by.clear();
@@ -166,6 +172,10 @@ impl GossipDisseminationCoordinator {
     }
 
     let superseded = self.table.apply_delta(delta.clone());
+    self.index_delta_identities(delta);
+    for record in &superseded {
+      index_seen_identity(&mut self.seen_identities, record);
+    }
     self.peer_versions.insert(peer.to_string(), delta.to);
     self.inflight_version = delta.to;
     self.vector_clock.observe(peer, delta.to.value());
@@ -210,22 +220,29 @@ impl GossipDisseminationCoordinator {
     let Some(authority) = authority else {
       return;
     };
-    if let Some(record) = self.table.record(authority.as_str()) {
-      self.seen_digest.mark_seen(record.unique_address.clone(), version);
-      return;
+    if let Some(identity) = self.seen_identities.get(authority.as_str()) {
+      self.seen_digest.mark_seen(identity.clone(), version);
     }
+  }
 
-    if let Some(identity) = self
-      .table
-      .snapshot()
-      .entries
-      .into_iter()
-      .find(|record| GossipTransportHandoff::endpoint_for_identity(&record.unique_address) == authority)
-      .map(|record| record.unique_address)
-    {
-      self.seen_digest.mark_seen(identity, version);
+  fn index_delta_identities(&mut self, delta: &MembershipDelta) {
+    for record in &delta.entries {
+      index_seen_identity(&mut self.seen_identities, record);
     }
   }
 }
 
 const LOCAL_VECTOR_CLOCK_NODE: &str = "$local";
+
+fn seen_identity_index(table: &MembershipTable) -> BTreeMap<String, UniqueAddress> {
+  let mut index = BTreeMap::new();
+  for record in table.records() {
+    index_seen_identity(&mut index, record);
+  }
+  index
+}
+
+fn index_seen_identity(index: &mut BTreeMap<String, UniqueAddress>, record: &NodeRecord) {
+  index.insert(record.authority.clone(), record.unique_address.clone());
+  index.insert(GossipTransportHandoff::endpoint_for_identity(&record.unique_address), record.unique_address.clone());
+}
