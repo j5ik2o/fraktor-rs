@@ -61,6 +61,38 @@ fn downing_provider_compatibility_is_preserved() {
 }
 
 #[test]
+fn join_compatibility_key_manifest_separates_required_and_conditional_non_sensitive_keys() {
+  let required_keys = ClusterExtensionConfig::required_join_compatibility_keys();
+  let conditional_keys = ClusterExtensionConfig::conditional_join_compatibility_keys();
+
+  assert_eq!(required_keys, &[
+    "fraktor.cluster.pubsub.subscriber-timeout",
+    "fraktor.cluster.pubsub.suspended-ttl",
+    "fraktor.cluster.downing-provider.provider-key",
+  ]);
+  assert_eq!(conditional_keys, &[
+    "fraktor.cluster.downing-provider.split-brain-resolver.stable-after",
+    "fraktor.cluster.downing-provider.split-brain-resolver.active-strategy",
+    "fraktor.cluster.downing-provider.split-brain-resolver.down-all-when-unstable",
+  ]);
+  assert!(ClusterExtensionConfig::is_required_join_compatibility_key("fraktor.cluster.downing-provider.provider-key"));
+  assert!(!ClusterExtensionConfig::is_required_join_compatibility_key(
+    "fraktor.cluster.downing-provider.split-brain-resolver.stable-after"
+  ));
+  assert!(ClusterExtensionConfig::is_conditional_join_compatibility_key(
+    "fraktor.cluster.downing-provider.split-brain-resolver.stable-after"
+  ));
+  assert!(!ClusterExtensionConfig::is_conditional_join_compatibility_key(
+    "fraktor.cluster.downing-provider.provider-key"
+  ));
+  assert!(!ClusterExtensionConfig::is_required_join_compatibility_key("fraktor.cluster.advertised-address"));
+  assert!(ClusterExtensionConfig::sensitive_join_compatibility_keys().is_empty());
+  assert!(!ClusterExtensionConfig::is_sensitive_join_compatibility_key(
+    "fraktor.cluster.downing-provider.provider-key"
+  ));
+}
+
+#[test]
 fn join_compatibility_reports_pubsub_mismatch() {
   let local = ClusterExtensionConfig::new()
     .with_pubsub_config(PubSubConfig::new(Duration::from_secs(3), Duration::from_secs(30)))
@@ -131,6 +163,22 @@ fn join_compatibility_reports_sbr_settings_mismatch_against_missing_sbr_settings
 }
 
 #[test]
+fn sbr_settings_checker_ignores_non_sbr_provider_pairs() {
+  let sbr = SplitBrainResolverSettings::new(
+    Duration::from_secs(20),
+    SplitBrainResolverStrategy::KeepOldest,
+    Duration::from_secs(15),
+  );
+  let local = ClusterExtensionConfig::new().with_downing_provider_compatibility(
+    DowningProviderCompatibility::new("split-brain-resolver").with_split_brain_resolver_settings(sbr),
+  );
+  let joining =
+    ClusterExtensionConfig::new().with_downing_provider_compatibility(DowningProviderCompatibility::new("noop"));
+
+  assert!(split_brain_resolver_settings_are_compatible(&local, &joining));
+}
+
+#[test]
 fn join_compatibility_reports_sbr_timing_mismatch_when_strategy_matches() {
   let local_sbr = SplitBrainResolverSettings::new(
     Duration::from_secs(20),
@@ -181,10 +229,15 @@ fn join_compatibility_accepts_same_pubsub_config() {
   let local = ClusterExtensionConfig::new()
     .with_pubsub_config(shared)
     .with_app_version("1.0.0")
+    .with_advertised_address("proto://node-a")
     .with_roles(vec!["backend".to_string()]);
+  let topology =
+    ClusterTopology::new(7, vec!["node-a".to_string()], vec!["node-b".to_string()], vec!["node-c".to_string()]);
   let joining = ClusterExtensionConfig::new()
     .with_pubsub_config(shared)
     .with_app_version("2.0.0")
+    .with_advertised_address("proto://node-b")
+    .with_static_topology(topology)
     .with_roles(vec!["frontend".to_string()]);
 
   let validation = local.check_join_compatibility(&joining);
