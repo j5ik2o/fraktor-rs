@@ -50,5 +50,5 @@ Provide output in the language specified in `spec.json` with the following struc
 ## Safety & Fallback
 - **Ambiguous Feature Name**: If feature name generation is unclear, propose 2-3 options and ask user to select
 - **Template Missing**: If template files don't exist in `.kiro/settings/templates/specs/`, report error with specific missing file path and suggest checking repository setup
-- **Directory Conflict**: If feature name already exists, append numeric suffix (e.g., `feature-name-2`) and notify user of automatic conflict resolution
+- **Directory Conflict**: If the user named an existing `.kiro/specs/{feature-name}/`, use the existing directory and follow the overwrite-prevention rules above. If a generated name collides with an unrelated initialized spec, stop and ask for a distinct feature name; do not create a suffixed sibling automatically.
 - **Write Failure**: Report error with specific path and suggest checking permissions or disk space
