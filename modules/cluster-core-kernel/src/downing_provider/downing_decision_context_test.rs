@@ -5,7 +5,10 @@ use fraktor_remote_core_rs::address::{Address, UniqueAddress};
 use fraktor_utils_core_rs::time::TimerInstant;
 
 use crate::{
-  downing_provider::DowningDecisionContext,
+  downing_provider::{
+    DowningDecision, DowningDecisionContext, DowningInput, DowningProvider, FailureObservation, FailureObservationKind,
+    NoopDowningProvider,
+  },
   membership::{
     DataCenter, MembershipSnapshot, MembershipVersion, NodeRecord, NodeStatus, ReachabilityMatrix, ReachabilityStatus,
   },
@@ -114,4 +117,56 @@ fn reachable_observer_version_counts_as_reachability_evidence() {
 
   assert!(!context.requires_reachability_evidence());
   assert_eq!(context.defer_reason(), None);
+}
+
+#[test]
+fn downing_input_explicit_down_creates_context_without_membership_snapshot() {
+  let evaluation_time = TimerInstant::zero(Duration::from_secs(1));
+  let input = DowningInput::explicit_down("node-a:2552");
+
+  let context = DowningDecisionContext::from_downing_input(&input, evaluation_time);
+
+  assert_eq!(context.evaluation_time(), evaluation_time);
+  assert_eq!(context.explicit_down_authority(), Some("node-a:2552"));
+  assert_eq!(context.membership_snapshot(), None);
+  assert_eq!(context.failure_observation(), None);
+  assert!(!context.requires_reachability_evidence());
+}
+
+#[test]
+fn failure_observation_context_can_attach_membership_reachability_snapshot() {
+  let subject = unique("subject", 1);
+  let observer = unique("observer", 2);
+  let mut reachability = ReachabilityMatrix::new();
+  reachability.unreachable(observer, subject.clone());
+  let snapshot = MembershipSnapshot::new_with_reachability(
+    MembershipVersion::new(1),
+    vec![node_record(subject.clone(), DataCenter::new("dc-east"), "node-a", NodeStatus::WeaklyUp)],
+    reachability.snapshot(),
+  );
+  let evaluation_time = TimerInstant::zero(Duration::from_secs(1));
+  let observation = FailureObservation::new("node-a", FailureObservationKind::Unreachable, evaluation_time);
+  let input = DowningInput::FailureObservation(observation.clone());
+
+  let context = DowningDecisionContext::from_downing_input_with_membership_snapshot(&input, snapshot, evaluation_time);
+
+  assert_eq!(context.failure_observation(), Some(&observation));
+  assert_eq!(context.member_record(&subject).expect("subject").status, NodeStatus::WeaklyUp);
+  assert_eq!(context.reachability_status(&subject), Some(ReachabilityStatus::Unreachable));
+  assert_eq!(context.defer_reason(), None);
+}
+
+#[test]
+fn noop_provider_behavior_is_unchanged_after_context_conversion() {
+  let evaluation_time = TimerInstant::zero(Duration::from_secs(1));
+  let input = DowningInput::FailureObservation(FailureObservation::new(
+    "node-a:2552",
+    FailureObservationKind::Recovered,
+    evaluation_time,
+  ));
+  let context = DowningDecisionContext::from_downing_input(&input, evaluation_time);
+  let mut provider = NoopDowningProvider::new();
+
+  assert_eq!(context.failure_observation().expect("observation").kind(), FailureObservationKind::Recovered);
+  assert_eq!(provider.decide(&input).unwrap(), DowningDecision::Keep);
 }

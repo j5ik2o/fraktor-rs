@@ -9,6 +9,7 @@ use alloc::string::String;
 use fraktor_remote_core_rs::address::UniqueAddress;
 use fraktor_utils_core_rs::time::TimerInstant;
 
+use super::{DowningInput, FailureObservation};
 use crate::membership::{IndirectConnectionEvidence, MembershipSnapshot, NodeRecord, ReachabilityStatus};
 
 const MISSING_REACHABILITY_EVIDENCE: &str = "reachability evidence is required for membership evaluation";
@@ -25,7 +26,11 @@ impl DowningDecisionContext {
   #[must_use]
   pub const fn from_membership_snapshot(snapshot: MembershipSnapshot, evaluation_time: TimerInstant) -> Self {
     Self {
-      input: DowningDecisionContextInput::Membership { snapshot, indirect_connection_evidence: None },
+      input: DowningDecisionContextInput::Membership {
+        snapshot,
+        indirect_connection_evidence: None,
+        failure_observation: None,
+      },
       evaluation_time,
     }
   }
@@ -41,8 +46,55 @@ impl DowningDecisionContext {
       input: DowningDecisionContextInput::Membership {
         snapshot,
         indirect_connection_evidence: Some(indirect_connection_evidence),
+        failure_observation: None,
       },
       evaluation_time,
+    }
+  }
+
+  /// Creates an evaluation context from an existing downing input.
+  #[must_use]
+  pub fn from_downing_input(input: &DowningInput, evaluation_time: TimerInstant) -> Self {
+    match input {
+      | DowningInput::ExplicitDown { authority } => Self::from_explicit_down(authority, evaluation_time),
+      | DowningInput::FailureObservation(observation) => Self {
+        input: DowningDecisionContextInput::FailureObservation { observation: observation.clone() },
+        evaluation_time,
+      },
+      | DowningInput::IndirectConnectionEvidence(indirect_connection_evidence) => Self {
+        input: DowningDecisionContextInput::IndirectConnectionEvidence {
+          indirect_connection_evidence: indirect_connection_evidence.clone(),
+        },
+        evaluation_time,
+      },
+    }
+  }
+
+  /// Creates an evaluation context from an existing downing input and membership snapshot.
+  #[must_use]
+  pub fn from_downing_input_with_membership_snapshot(
+    input: &DowningInput,
+    snapshot: MembershipSnapshot,
+    evaluation_time: TimerInstant,
+  ) -> Self {
+    match input {
+      | DowningInput::ExplicitDown { authority } => Self::from_explicit_down(authority, evaluation_time),
+      | DowningInput::FailureObservation(observation) => Self {
+        input: DowningDecisionContextInput::Membership {
+          snapshot,
+          indirect_connection_evidence: None,
+          failure_observation: Some(observation.clone()),
+        },
+        evaluation_time,
+      },
+      | DowningInput::IndirectConnectionEvidence(indirect_connection_evidence) => Self {
+        input: DowningDecisionContextInput::Membership {
+          snapshot,
+          indirect_connection_evidence: Some(indirect_connection_evidence.clone()),
+          failure_observation: None,
+        },
+        evaluation_time,
+      },
     }
   }
 
@@ -63,7 +115,9 @@ impl DowningDecisionContext {
   pub const fn membership_snapshot(&self) -> Option<&MembershipSnapshot> {
     match &self.input {
       | DowningDecisionContextInput::Membership { snapshot, .. } => Some(snapshot),
-      | DowningDecisionContextInput::ExplicitDown { .. } => None,
+      | DowningDecisionContextInput::ExplicitDown { .. }
+      | DowningDecisionContextInput::FailureObservation { .. }
+      | DowningDecisionContextInput::IndirectConnectionEvidence { .. } => None,
     }
   }
 
@@ -74,7 +128,23 @@ impl DowningDecisionContext {
       | DowningDecisionContextInput::Membership { indirect_connection_evidence, .. } => {
         indirect_connection_evidence.as_ref()
       },
-      | DowningDecisionContextInput::ExplicitDown { .. } => None,
+      | DowningDecisionContextInput::IndirectConnectionEvidence { indirect_connection_evidence } => {
+        Some(indirect_connection_evidence)
+      },
+      | DowningDecisionContextInput::ExplicitDown { .. } | DowningDecisionContextInput::FailureObservation { .. } => {
+        None
+      },
+    }
+  }
+
+  /// Returns the failure observation when this context came from failure evidence.
+  #[must_use]
+  pub const fn failure_observation(&self) -> Option<&FailureObservation> {
+    match &self.input {
+      | DowningDecisionContextInput::Membership { failure_observation, .. } => failure_observation.as_ref(),
+      | DowningDecisionContextInput::FailureObservation { observation } => Some(observation),
+      | DowningDecisionContextInput::ExplicitDown { .. }
+      | DowningDecisionContextInput::IndirectConnectionEvidence { .. } => None,
     }
   }
 
@@ -83,7 +153,9 @@ impl DowningDecisionContext {
   pub const fn explicit_down_authority(&self) -> Option<&str> {
     match &self.input {
       | DowningDecisionContextInput::ExplicitDown { authority } => Some(authority.as_str()),
-      | DowningDecisionContextInput::Membership { .. } => None,
+      | DowningDecisionContextInput::Membership { .. }
+      | DowningDecisionContextInput::FailureObservation { .. }
+      | DowningDecisionContextInput::IndirectConnectionEvidence { .. } => None,
     }
   }
 
@@ -105,12 +177,14 @@ impl DowningDecisionContext {
   #[must_use]
   pub fn requires_reachability_evidence(&self) -> bool {
     match &self.input {
-      | DowningDecisionContextInput::Membership { snapshot, indirect_connection_evidence } => {
+      | DowningDecisionContextInput::Membership { snapshot, indirect_connection_evidence, .. } => {
         snapshot.reachability.records.is_empty()
           && snapshot.reachability.observer_versions.is_empty()
           && indirect_connection_evidence.is_none()
       },
-      | DowningDecisionContextInput::ExplicitDown { .. } => false,
+      | DowningDecisionContextInput::FailureObservation { .. } => true,
+      | DowningDecisionContextInput::ExplicitDown { .. }
+      | DowningDecisionContextInput::IndirectConnectionEvidence { .. } => false,
     }
   }
 
@@ -126,8 +200,15 @@ enum DowningDecisionContextInput {
   Membership {
     snapshot:                     MembershipSnapshot,
     indirect_connection_evidence: Option<IndirectConnectionEvidence>,
+    failure_observation:          Option<FailureObservation>,
   },
   ExplicitDown {
     authority: String,
+  },
+  FailureObservation {
+    observation: FailureObservation,
+  },
+  IndirectConnectionEvidence {
+    indirect_connection_evidence: IndirectConnectionEvidence,
   },
 }

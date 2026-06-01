@@ -7,7 +7,7 @@
   - evidence 不足時に defer reason を生成できることを unit test で確認する。
   - _Requirements: 1.1, 1.2, 1.3, 1.4_
   - _Boundary: DowningDecisionContext_
-- [ ] 1.2 既存 downing input から decision context への接続を追加する
+- [x] 1.2 既存 downing input から decision context への接続を追加する
   - explicit down は membership snapshot を要求しない入力として扱う。
   - failure observation は upstream reachability evidence がある場合に richer context へ変換できるようにする。
   - 既存 `NoopDowningProvider` の振る舞いが変わらないことを regression test で確認する。
