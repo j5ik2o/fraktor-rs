@@ -114,6 +114,34 @@ fn join_with_identity_rejects_unconfirmed_uid() {
 }
 
 #[test]
+fn join_with_identity_rejects_same_unique_address_node_conflict() {
+  let mut table = MembershipTable::new(3);
+  let identity = UniqueAddress::new(Address::new("cluster", "n1", 4050), 10);
+  table
+    .try_join_with_identity(
+      "node-1".to_string(),
+      identity.clone(),
+      DataCenter::new("dc-east"),
+      "1.0.0".to_string(),
+      vec!["backend".to_string()],
+    )
+    .expect("first identity join succeeds");
+
+  let err = table
+    .try_join_with_identity("node-2".to_string(), identity, DataCenter::new("dc-east"), "1.0.0".to_string(), vec![
+      "backend".to_string(),
+    ])
+    .expect_err("same identity must keep node ownership");
+
+  assert_eq!(err, MembershipError::AuthorityConflict {
+    authority:         "cluster@n1:4050".to_string(),
+    existing_node_id:  "node-1".to_string(),
+    requested_node_id: "node-2".to_string(),
+  });
+  assert_eq!(table.snapshot().entries.len(), 1);
+}
+
+#[test]
 fn plain_join_and_gossip_delta_share_unique_address_key() {
   let mut table = MembershipTable::new(3);
   let delta = table

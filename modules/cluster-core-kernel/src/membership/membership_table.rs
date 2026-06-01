@@ -120,6 +120,20 @@ impl MembershipTable {
 
     let key = unique_address.to_string();
     if let Some(existing) = self.entries.get_mut(&key) {
+      if existing.node_id != node_id {
+        self.events.push(MembershipEvent::AuthorityConflict {
+          authority:         existing.authority.clone(),
+          existing_node_id:  existing.node_id.clone(),
+          requested_node_id: node_id.clone(),
+        });
+
+        return Err(MembershipError::AuthorityConflict {
+          authority:         existing.authority.clone(),
+          existing_node_id:  existing.node_id.clone(),
+          requested_node_id: node_id,
+        });
+      }
+
       if matches!(existing.status, NodeStatus::Removed | NodeStatus::Dead) {
         let from = self.version;
         self.version = self.version.next();
