@@ -67,6 +67,7 @@ After all parallel research completes, synthesize implementation brief before st
 - Treat `- [ ]` as a required pending task and `- [ ]*` as a deferred optional task. Autonomous mode selects required pending tasks only; optional tasks run only when explicitly selected by task number.
 - Skip tasks with `_Blocked:_` annotation
 - For each selected task, check `_Depends:_` annotations -- a task is actionable only when every referenced task is currently `[x]`
+- Preserve document-order dependencies: in autonomous mode, a task is actionable only when every earlier required sub-task in `tasks.md` is already `[x]`. Pick the earliest actionable required task; do not skip ahead just because `_Depends:_` is absent.
 - If prerequisites are incomplete, execute prerequisite tasks first when they are in scope; otherwise leave the downstream task pending and report it as blocked
 - Use `_Boundary:_` annotations to understand the task's component scope
 
@@ -76,7 +77,7 @@ After all parallel research completes, synthesize implementation brief before st
 
 **Iteration discipline**: Process exactly ONE sub-task (e.g., 1.1) per iteration. Do NOT batch multiple sub-tasks into a single sub-agent dispatch. Each iteration follows the full cycle: dispatch implementer → review → verify → record notes → commit → re-read tasks.md → next.
 
-**Context management**: At the start of each iteration, re-read `tasks.md` to determine the next actionable sub-task. A task is eligible only if it is unchecked, required (`- [ ]`), has no `_Blocked:_` annotation, and every `_Depends:_` reference is currently `[x]`. Do NOT rely on accumulated memory of previous iterations. If no eligible required task remains but required unchecked or blocked tasks still exist, stop and report those tasks instead of continuing to final validation. Ignore deferred optional `- [ ]*` tasks for autonomous eligibility unless the user explicitly selected them. After completing each iteration, retain only a one-line summary (e.g., "1.1: READY_FOR_REVIEW, 3 files changed") and discard the full status report and reviewer details.
+**Context management**: At the start of each iteration, re-read `tasks.md` to determine the next actionable sub-task. A task is eligible only if it is unchecked, required (`- [ ]`), has no `_Blocked:_` annotation, every earlier required sub-task in document order is `[x]`, and every `_Depends:_` reference is currently `[x]`. Do NOT rely on accumulated memory of previous iterations. If no eligible required task remains but required unchecked or blocked tasks still exist, stop and report those tasks instead of continuing to final validation. Ignore deferred optional `- [ ]*` tasks for autonomous eligibility unless the user explicitly selected them. After completing each iteration, retain only a one-line summary (e.g., "1.1: READY_FOR_REVIEW, 3 files changed") and discard the full status report and reviewer details.
 
 If multi-agent capability is available, for each task (one at a time):
 
@@ -142,7 +143,7 @@ The debug subagent runs in a **fresh context** — it receives only the error in
 - If `NEXT_ACTION: RETRY_TASK` → preserve the current worktree; do NOT reset or discard unrelated changes. Spawn a **new** implementer sub-agent with the debug report's `FIX_PLAN`, `NOTES`, and the current `git diff`, and require it to repair the task with explicit edits only
   - If the new implementer succeeds (READY_FOR_REVIEW → reviewer APPROVED) → normal flow
   - If the new implementer also fails → repeat debug cycle (max 2 debug rounds total). After 2 failed debug rounds → append `_Blocked: debug attempted twice, still failing — <ROOT_CAUSE>_` to tasks.md, isolate failed-task dirty changes using the same rule as `BLOCK_TASK`, then skip only if the worktree is clean or contains only unrelated pre-existing changes
-- **Max 2 debug rounds per task**. Each round: fresh debug subagent → fresh implementer. If still failing after 2 rounds, the task is blocked.
+- Maintain `debug_round_count` per task ID and increment it before each debug subagent dispatch. **Max 2 debug rounds per task** applies to every debug trigger, including parse failures, `BLOCKED`, `REJECTED`, and `NOT_VERIFIED` after a debug retry. If any path would dispatch a third debug round, block the task instead of dispatching.
 - Record debug findings in `## Implementation Notes` (this helps subsequent tasks avoid the same issue)
 
 **f) Record learnings**:

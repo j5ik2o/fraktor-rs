@@ -105,7 +105,7 @@ Focus on capabilities and outcomes, not code structure.
 ### 8. Requirements Mapping
 
 **End each task detail section with**:
-- `_Requirements: X.X, Y.Y_` listing **only numeric requirement IDs** (comma-separated). Never append descriptive text, parentheses, translations, or free-form labels.
+- `_Requirements: 1, 2_` listing **only exact numeric requirement IDs from requirements.md** (comma-separated). Never append descriptive text, parentheses, translations, invented sub-IDs, or free-form labels.
 - For cross-cutting requirements, list every relevant requirement ID. All requirements MUST have numeric IDs in requirements.md. If an ID is missing, stop and correct requirements.md before generating tasks.
 - Reference components/interfaces from design.md when helpful (e.g., `_Contracts: AuthService API`)
 
@@ -214,19 +214,19 @@ Before writing `tasks.md`, review the draft task plan and repair local issues un
   - Detail item 1
   - Detail item 2
   - Observable completion condition
-  - _Requirements: X.X_
+  - _Requirements: 1_
 
 - [ ] 2. Core feature A
 - [ ] 2.1 (P) Sub-task description
   - Detail items...
   - Observable completion condition
-  - _Requirements: Y.Y_
+  - _Requirements: 2_
   - _Boundary: AuthService_
 
 - [ ] 2.2 (P) Sub-task description
   - Detail items...
   - Observable completion condition
-  - _Requirements: Z.Z_
+  - _Requirements: 3_
   - _Boundary: UserRepository_
 
 - [ ] 3. Integration and wiring
@@ -234,7 +234,7 @@ Before writing `tasks.md`, review the draft task plan and repair local issues un
   - Detail items...
   - Observable completion condition
   - _Depends: 2.1, 2.2_
-  - _Requirements: W.W_
+  - _Requirements: 4_
 ```
 
 ## Requirements Coverage
@@ -245,6 +245,6 @@ Before writing `tasks.md`, review the draft task plan and repair local issues un
 - If gaps found: Return to requirements or design phase
 - No requirement should be left without corresponding tasks
 
-Use `N.M`-style numeric requirement IDs where `N` is the top-level requirement number from requirements.md (for example, Requirement 1 → 1.1, 1.2; Requirement 2 → 2.1, 2.2), and `M` is a local index within that requirement group.
+Use the exact numeric requirement IDs that appear in `requirements.md` (for example, `1`, `2`, or `2.3` only when `requirements.md` actually defines that ID). Do not invent sub-IDs, aliases, or local indexes during task generation.
 
 Document any intentionally deferred requirements with rationale.
