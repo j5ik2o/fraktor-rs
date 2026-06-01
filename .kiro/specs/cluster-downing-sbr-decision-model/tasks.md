@@ -15,7 +15,7 @@
   - _Boundary: DowningDecisionContext_
 
 - [ ] 2. Split Brain Resolver strategy evaluation を実装する
-- [ ] 2.1 strategy decision と trace vocabulary を定義する (P)
+- [x] 2.1 strategy decision と trace vocabulary を定義する (P)
   - keep/down/defer/all-down、対象 partition、tie-break、stable-after、down-all timeout の reason を表現する。
   - simple `DowningDecision` へ変換できる trace 付き decision として検証する。
   - strategy decision の unit test が各 reason を観測できる状態にする。

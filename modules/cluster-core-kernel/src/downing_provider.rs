@@ -2,8 +2,10 @@
 
 mod downing_decision;
 mod downing_decision_context;
+mod downing_decision_trace;
 mod downing_input;
 mod downing_provider_compatibility;
+mod downing_strategy_decision;
 mod failure_observation;
 mod failure_observation_kind;
 mod noop_downing_provider;
@@ -12,8 +14,10 @@ mod split_brain_resolver_strategy;
 
 pub use downing_decision::DowningDecision;
 pub use downing_decision_context::DowningDecisionContext;
+pub use downing_decision_trace::DowningDecisionTrace;
 pub use downing_input::DowningInput;
 pub use downing_provider_compatibility::DowningProviderCompatibility;
+pub use downing_strategy_decision::DowningStrategyDecision;
 pub use failure_observation::FailureObservation;
 pub use failure_observation_kind::FailureObservationKind;
 pub use noop_downing_provider::NoopDowningProvider;
