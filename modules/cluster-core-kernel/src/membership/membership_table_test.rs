@@ -3,7 +3,7 @@ use alloc::{string::ToString, vec};
 use fraktor_remote_core_rs::address::{Address, UniqueAddress};
 
 use super::MembershipTable;
-use crate::membership::{DataCenter, MembershipError, MembershipEvent, MembershipVersion, NodeStatus};
+use crate::membership::{DataCenter, MembershipDelta, MembershipError, MembershipEvent, MembershipVersion, NodeStatus};
 
 #[test]
 fn join_registers_joining_and_snapshots_latest_table() {
@@ -111,6 +111,44 @@ fn join_with_identity_rejects_unconfirmed_uid() {
 
   assert_eq!(err, MembershipError::UnconfirmedIdentity { unique_address: identity.to_string() });
   assert!(table.snapshot().entries.is_empty());
+}
+
+#[test]
+fn plain_join_and_gossip_delta_share_unique_address_key() {
+  let mut table = MembershipTable::new(3);
+  let delta = table
+    .try_join("node-1".to_string(), "n1:4050".to_string(), "1.0.0".to_string(), vec!["backend".to_string()])
+    .expect("join succeeds");
+  let mut record = delta.entries[0].clone();
+  record.status = NodeStatus::WeaklyUp;
+  record.version = MembershipVersion::new(2);
+
+  table.apply_delta(MembershipDelta::new(MembershipVersion::new(1), MembershipVersion::new(2), vec![record]));
+
+  let snapshot = table.snapshot();
+  assert_eq!(snapshot.entries.len(), 1);
+  assert_eq!(table.record("n1:4050").expect("record should exist").status, NodeStatus::WeaklyUp);
+}
+
+#[test]
+fn join_after_gossip_delta_rejects_same_authority_conflict() {
+  let mut origin = MembershipTable::new(3);
+  let delta = origin
+    .try_join("node-1".to_string(), "n1:4050".to_string(), "1.0.0".to_string(), vec!["backend".to_string()])
+    .expect("join succeeds");
+  let mut receiver = MembershipTable::new(3);
+  receiver.apply_delta(delta);
+
+  let err = receiver
+    .try_join("node-2".to_string(), "n1:4050".to_string(), "1.0.0".to_string(), vec!["backend".to_string()])
+    .expect_err("same authority should still conflict after gossip");
+
+  assert_eq!(err, MembershipError::AuthorityConflict {
+    authority:         "n1:4050".to_string(),
+    existing_node_id:  "node-1".to_string(),
+    requested_node_id: "node-2".to_string(),
+  });
+  assert_eq!(receiver.snapshot().entries.len(), 1);
 }
 
 #[test]

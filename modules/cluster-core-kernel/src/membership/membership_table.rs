@@ -54,7 +54,11 @@ impl MembershipTable {
     app_version: String,
     roles: Vec<String>,
   ) -> Result<MembershipDelta, MembershipError> {
-    if let Some(existing) = self.entries.get_mut(&authority) {
+    if let Some(key) = self.entry_key_for_authority(&authority) {
+      let Some(existing) = self.entries.get_mut(&key) else {
+        return Err(MembershipError::UnknownAuthority { authority });
+      };
+
       if existing.node_id != node_id {
         self.events.push(MembershipEvent::AuthorityConflict {
           authority:         authority.clone(),
@@ -88,8 +92,9 @@ impl MembershipTable {
 
     let record =
       NodeRecord::new(node_id.clone(), authority.clone(), NodeStatus::Joining, self.version, app_version, roles);
-    self.entries.insert(authority.clone(), record.clone());
-    self.heartbeat_miss_counters.insert(authority.clone(), 0);
+    let key = entry_key(&record);
+    self.heartbeat_miss_counters.insert(key.clone(), 0);
+    self.entries.insert(key, record.clone());
 
     self.events.push(MembershipEvent::Joined { node_id, authority });
 
