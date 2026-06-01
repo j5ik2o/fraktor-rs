@@ -24,7 +24,6 @@ reviews:
   path_filters:
     - "!references/**"
     - "!target/**"
-    - "!.agents/**"
     - "!.claude/**"
     - "!.codex*/**"
     - "!.gemini/**"
