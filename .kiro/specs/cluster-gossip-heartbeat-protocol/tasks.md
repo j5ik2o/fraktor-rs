@@ -26,7 +26,7 @@
   - _Boundary: GossipStateModel_
   - _Depends: 2_
 
-- [ ] 4. dedicated heartbeat request / response protocol を追加する
+- [x] 4. dedicated heartbeat request / response protocol を追加する
   - peer ごとの sequence number と pending request を持つ heartbeat protocol state を追加する。
   - heartbeat request から response を生成し、response を request と照合して liveness evidence に変換する。
   - first heartbeat expectation と通常 timeout が missed heartbeat evidence として観測できる。
