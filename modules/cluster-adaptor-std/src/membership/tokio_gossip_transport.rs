@@ -190,7 +190,7 @@ impl TokioGossipTransport {
         actual:   Box::new(handoff.to().clone()),
       }));
     }
-    if handoff.target_endpoint() != identity_endpoint(local_identity).as_str() {
+    if handoff.target_endpoint() != GossipTransportHandoff::endpoint_for_identity(local_identity).as_str() {
       return Err(GossipTransportError::ReceiveFailed {
         reason: format!("target endpoint mismatch: {}", handoff.target_endpoint()),
       });
@@ -261,12 +261,6 @@ impl GossipTransport for TokioGossipTransport {
     }
     envelopes
   }
-}
-
-fn identity_endpoint(identity: &UniqueAddress) -> String {
-  let host = identity.address().host();
-  let port = identity.address().port();
-  if host.contains(':') && !host.starts_with('[') { format!("[{host}]:{port}") } else { format!("{host}:{port}") }
 }
 
 fn decode_delta(bytes: &[u8]) -> Result<MembershipDelta, GossipTransportError> {

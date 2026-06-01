@@ -36,7 +36,7 @@ impl GossipTransportHandoff {
     if !peers.iter().any(|peer| peer == envelope.to()) {
       return Err(GossipTransportHandoffError::UnknownPeer { peer: envelope.to().clone() });
     }
-    Ok(Self { target_endpoint: endpoint_for(envelope.to()), envelope })
+    Ok(Self { target_endpoint: Self::endpoint_for_identity(envelope.to()), envelope })
   }
 
   /// Returns the envelope carried by this handoff.
@@ -69,6 +69,14 @@ impl GossipTransportHandoff {
     self.target_endpoint.as_str()
   }
 
+  /// Formats the transport endpoint advertised by an identity.
+  #[must_use]
+  pub fn endpoint_for_identity(identity: &UniqueAddress) -> String {
+    let host = identity.address().host();
+    let port = identity.address().port();
+    if host.contains(':') && !host.starts_with('[') { format!("[{host}]:{port}") } else { format!("{host}:{port}") }
+  }
+
   /// Decodes the logical payload kind tag used by handoff-oriented tests.
   ///
   /// # Errors
@@ -85,10 +93,4 @@ impl GossipTransportHandoff {
       | _ => Err(GossipTransportHandoffError::UnknownPayloadKind { tag }),
     }
   }
-}
-
-fn endpoint_for(identity: &UniqueAddress) -> String {
-  let host = identity.address().host();
-  let port = identity.address().port();
-  if host.contains(':') && !host.starts_with('[') { format!("[{host}]:{port}") } else { format!("{host}:{port}") }
 }
