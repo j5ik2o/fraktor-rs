@@ -20,12 +20,13 @@ mod tests;
 
 /// Bridges provider start/shutdown with seed and discovery lifecycle.
 pub struct ProviderLifecycleBridge<B> {
-  provider:          LocalClusterProviderWeak,
-  seed_process:      SeedNodeProcess,
-  seed_input:        SeedNodeInput,
-  discovery_adapter: GenericDiscoveryAdapter<B>,
-  topology_mapper:   DiscoveryTopologyMapper,
-  is_shutdown:       bool,
+  provider:              LocalClusterProviderWeak,
+  seed_process:          SeedNodeProcess,
+  seed_input:            SeedNodeInput,
+  discovery_adapter:     GenericDiscoveryAdapter<B>,
+  topology_mapper:       DiscoveryTopologyMapper,
+  next_observation_tick: u64,
+  is_shutdown:           bool,
 }
 
 impl<B> ProviderLifecycleBridge<B> {
@@ -44,6 +45,7 @@ impl<B> ProviderLifecycleBridge<B> {
       seed_input,
       discovery_adapter,
       topology_mapper,
+      next_observation_tick: 1,
       is_shutdown: false,
     }
   }
@@ -83,7 +85,8 @@ where
       provider.with_write(|provider| provider.join(authority.as_str()))?;
     }
 
-    if let Some(result) = self.discovery_adapter.poll(Self::observed_at())
+    let observed_at = self.next_observed_at();
+    if let Some(result) = self.discovery_adapter.poll(observed_at)
       && let Some(update) = self.topology_mapper.apply(&result)
     {
       Self::apply_topology_update(&provider, &update)?;
@@ -137,7 +140,9 @@ where
     Ok(())
   }
 
-  const fn observed_at() -> TimerInstant {
-    TimerInstant::from_ticks(1, Duration::from_secs(1))
+  fn next_observed_at(&mut self) -> TimerInstant {
+    let observed_at = TimerInstant::from_ticks(self.next_observation_tick, Duration::from_secs(1));
+    self.next_observation_tick = self.next_observation_tick.saturating_add(1);
+    observed_at
   }
 }

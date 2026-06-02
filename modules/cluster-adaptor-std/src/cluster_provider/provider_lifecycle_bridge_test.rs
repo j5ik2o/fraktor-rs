@@ -212,6 +212,21 @@ fn provider_lifecycle_bridge_does_not_keep_provider_alive() {
 }
 
 #[test]
+fn provider_lifecycle_bridge_observation_time_advances_per_poll() {
+  let event_stream = EventStreamShared::default();
+  let provider = wrap_local_cluster_provider(LocalClusterProvider::new(event_stream, block_list(), "node-a"));
+  let mut bridge = ProviderLifecycleBridge::new(
+    provider.downgrade(),
+    seed_input("node-a", Vec::new()),
+    GenericDiscoveryAdapter::new(CountingDiscoveryBackend::new("test-discovery", Vec::new())),
+    mapper(),
+  );
+
+  assert_eq!(bridge.next_observed_at(), TimerInstant::from_ticks(1, Duration::from_secs(1)));
+  assert_eq!(bridge.next_observed_at(), TimerInstant::from_ticks(2, Duration::from_secs(1)));
+}
+
+#[test]
 fn generic_discovery_adapter_shutdown_stops_polling() {
   let backend = CountingDiscoveryBackend::new("test-discovery", Vec::from([String::from("node-b")]));
   let backend_probe = backend.clone();
