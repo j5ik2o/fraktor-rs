@@ -25,6 +25,7 @@ const OLDEST_PARTITION_SELECTED: &str = "oldest member partition selected";
 const MAJORITY_TIE: &str = "reachable and non-reachable partitions have equal size";
 const STATIC_QUORUM_SIZE_MISSING: &str = "static quorum size is not configured";
 const STATIC_QUORUM_SIZE_ZERO: &str = "static quorum size must be greater than zero";
+const EXPLICIT_DOWN_SELECTED: &str = "explicit down command selected";
 const STABLE_AFTER_PENDING: &str = "membership has not been stable for the required duration";
 const DOWN_ALL_PENDING: &str = "down-all timeout has not elapsed";
 const DOWN_ALL_ELAPSED: &str = "down-all timeout elapsed";
@@ -53,10 +54,16 @@ impl SplitBrainResolver {
   pub fn decide(&self, context: &DowningDecisionContext) -> DowningStrategyDecision {
     let strategy = self.settings.active_strategy();
 
+    if context.explicit_down_authority().is_some() {
+      return DowningStrategyDecision::down(
+        DowningDecisionTrace::majority_partition(strategy, String::from(EXPLICIT_DOWN_SELECTED)),
+        Vec::new(),
+      );
+    }
     if let Some(reason) = context.defer_reason() {
       return defer(strategy, reason);
     }
-    if self.settings.stable_after() > Duration::ZERO {
+    if self.settings.stable_after() > Duration::ZERO && context.unstable_duration() < self.settings.stable_after() {
       return DowningStrategyDecision::defer(DowningDecisionTrace::stable_after_pending(
         strategy,
         self.settings.stable_after(),
@@ -85,10 +92,19 @@ impl SplitBrainResolver {
     if self.settings.active_strategy() != SplitBrainResolverStrategy::LeaseMajority {
       return self.decide(context);
     }
+    if context.explicit_down_authority().is_some() {
+      return DowningStrategyDecision::down(
+        DowningDecisionTrace::majority_partition(
+          SplitBrainResolverStrategy::LeaseMajority,
+          String::from(EXPLICIT_DOWN_SELECTED),
+        ),
+        Vec::new(),
+      );
+    }
     if let Some(reason) = context.defer_reason() {
       return defer(SplitBrainResolverStrategy::LeaseMajority, reason);
     }
-    if self.settings.stable_after() > Duration::ZERO {
+    if self.settings.stable_after() > Duration::ZERO && context.unstable_duration() < self.settings.stable_after() {
       return DowningStrategyDecision::defer(DowningDecisionTrace::stable_after_pending(
         SplitBrainResolverStrategy::LeaseMajority,
         self.settings.stable_after(),
@@ -226,7 +242,7 @@ impl SplitBrainResolver {
     }
     let targets = partition.all_active_members();
     let timeout = self.settings.down_all_when_unstable();
-    if timeout > Duration::ZERO {
+    if timeout > Duration::ZERO && context.unstable_duration() < timeout {
       return DowningStrategyDecision::defer(DowningDecisionTrace::down_all_pending(
         strategy,
         timeout,

@@ -31,7 +31,11 @@ fn lease_outcome_trace_mapping_distinguishes_failures() {
   );
 
   assert_eq!(denied.reason(), "lease acquisition denied");
+  assert_eq!(denied.lease_outcome(), Some(LeaseAcquisitionOutcome::Denied));
   assert_eq!(unavailable.reason(), "lease backend unavailable");
+  assert_eq!(unavailable.lease_outcome(), Some(LeaseAcquisitionOutcome::Unavailable));
   assert_eq!(unknown.reason(), "lease acquisition outcome unknown");
+  assert_eq!(unknown.lease_outcome(), Some(LeaseAcquisitionOutcome::Unknown));
   assert_eq!(backend_missing.reason(), "lease backend missing");
+  assert_eq!(backend_missing.lease_outcome(), Some(LeaseAcquisitionOutcome::BackendMissing));
 }

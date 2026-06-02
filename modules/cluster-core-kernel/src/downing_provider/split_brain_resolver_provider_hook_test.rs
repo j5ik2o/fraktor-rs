@@ -71,9 +71,7 @@ fn provider_hook_exposes_sbr_compatibility_metadata() {
   assert_eq!(compatibility.split_brain_resolver_settings(), Some(&settings));
   assert_eq!(
     compatibility.sbr_settings_identity(),
-    Some(
-      "stable-after-nanos=20000000000;active-strategy=keep-majority;down-all-when-unstable-nanos=30000000000;static-quorum-size=none"
-    ),
+    Some("stable-after-nanos=20000000000;active-strategy=keep-majority;down-all-when-unstable-nanos=30000000000"),
   );
 }
 
@@ -103,12 +101,23 @@ fn provider_hook_maps_explicit_down_without_membership_snapshot() {
 }
 
 #[test]
+fn provider_hook_prioritizes_explicit_down_before_lease_backend_failure() {
+  let settings =
+    SplitBrainResolverSettings::new(Duration::ZERO, SplitBrainResolverStrategy::LeaseMajority, Duration::from_secs(30));
+  let mut hook = SplitBrainResolverProviderHook::new(settings);
+
+  let decision = hook.decide(&DowningInput::explicit_down("node-a:2552"));
+
+  assert_eq!(decision, Ok(DowningDecision::Down));
+}
+
+#[test]
 fn provider_hook_maps_decision_failure_to_cluster_provider_error() {
   let settings =
     SplitBrainResolverSettings::new(Duration::ZERO, SplitBrainResolverStrategy::LeaseMajority, Duration::from_secs(30));
   let mut hook = SplitBrainResolverProviderHook::new(settings);
 
-  let err = hook.decide(&DowningInput::explicit_down("node-a:2552")).expect_err("missing lease backend");
+  let err = hook.decide_context(&majority_context()).expect_err("missing lease backend");
 
   assert!(matches!(err, ClusterProviderError::DownFailed(_)));
   assert_eq!(err.reason(), "lease backend missing");

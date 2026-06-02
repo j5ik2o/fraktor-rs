@@ -63,9 +63,12 @@ impl SplitBrainResolverProviderHook {
   /// Returns [`ClusterProviderError::DownFailed`] when the evaluator trace reports a provider
   /// failure.
   pub fn decide_context(&mut self, context: &DowningDecisionContext) -> Result<DowningDecision, ClusterProviderError> {
+    if context.explicit_down_authority().is_some() {
+      return Ok(DowningDecision::Down);
+    }
     let strategy_decision = self.resolver.decide(context);
     Self::map_trace(strategy_decision.trace())?;
-    Ok(Self::simple_decision(context, strategy_decision.simple_decision()))
+    Ok(strategy_decision.simple_decision())
   }
 
   /// Decides from a prebuilt context with a lease backend port.
@@ -79,9 +82,12 @@ impl SplitBrainResolverProviderHook {
     context: &DowningDecisionContext,
     lease_port: &mut dyn LeaseMajorityPort,
   ) -> Result<DowningDecision, ClusterProviderError> {
+    if context.explicit_down_authority().is_some() {
+      return Ok(DowningDecision::Down);
+    }
     let strategy_decision = self.resolver.decide_with_lease(context, lease_port);
     Self::map_trace(strategy_decision.trace())?;
-    Ok(Self::simple_decision(context, strategy_decision.simple_decision()))
+    Ok(strategy_decision.simple_decision())
   }
 
   fn expected_compatibility(settings: SplitBrainResolverSettings) -> DowningProviderCompatibility {
@@ -97,10 +103,6 @@ impl SplitBrainResolverProviderHook {
       return Err(ClusterProviderError::down(trace.reason()));
     }
     Ok(())
-  }
-
-  const fn simple_decision(context: &DowningDecisionContext, decision: DowningDecision) -> DowningDecision {
-    if context.explicit_down_authority().is_some() { DowningDecision::Down } else { decision }
   }
 }
 

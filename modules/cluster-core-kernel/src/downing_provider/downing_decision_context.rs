@@ -5,6 +5,7 @@
 mod tests;
 
 use alloc::string::String;
+use core::time::Duration;
 
 use fraktor_remote_core_rs::address::UniqueAddress;
 use fraktor_utils_core_rs::time::TimerInstant;
@@ -21,6 +22,7 @@ const LOCAL_REACHABILITY_OBSERVER_REQUIRED: &str =
 pub struct DowningDecisionContext {
   input:           DowningDecisionContextInput,
   evaluation_time: TimerInstant,
+  unstable_since:  TimerInstant,
 }
 
 impl DowningDecisionContext {
@@ -35,6 +37,7 @@ impl DowningDecisionContext {
         reachability_observer: None,
       },
       evaluation_time,
+      unstable_since: evaluation_time,
     }
   }
 
@@ -53,6 +56,7 @@ impl DowningDecisionContext {
         reachability_observer: None,
       },
       evaluation_time,
+      unstable_since: evaluation_time,
     }
   }
 
@@ -64,12 +68,14 @@ impl DowningDecisionContext {
       | DowningInput::FailureObservation(observation) => Self {
         input: DowningDecisionContextInput::FailureObservation { observation: observation.clone() },
         evaluation_time,
+        unstable_since: evaluation_time,
       },
       | DowningInput::IndirectConnectionEvidence(indirect_connection_evidence) => Self {
         input: DowningDecisionContextInput::IndirectConnectionEvidence {
           indirect_connection_evidence: indirect_connection_evidence.clone(),
         },
         evaluation_time,
+        unstable_since: evaluation_time,
       },
     }
   }
@@ -91,6 +97,7 @@ impl DowningDecisionContext {
           reachability_observer: None,
         },
         evaluation_time,
+        unstable_since: evaluation_time,
       },
       | DowningInput::IndirectConnectionEvidence(indirect_connection_evidence) => Self {
         input: DowningDecisionContextInput::Membership {
@@ -100,6 +107,7 @@ impl DowningDecisionContext {
           reachability_observer: None,
         },
         evaluation_time,
+        unstable_since: evaluation_time,
       },
     }
   }
@@ -107,7 +115,11 @@ impl DowningDecisionContext {
   /// Creates an evaluation context for an explicit down command.
   #[must_use]
   pub fn from_explicit_down(authority: &str, evaluation_time: TimerInstant) -> Self {
-    Self { input: DowningDecisionContextInput::ExplicitDown { authority: String::from(authority) }, evaluation_time }
+    Self {
+      input: DowningDecisionContextInput::ExplicitDown { authority: String::from(authority) },
+      evaluation_time,
+      unstable_since: evaluation_time,
+    }
   }
 
   /// Returns this context with a local reachability observer for partition evaluation.
@@ -119,10 +131,37 @@ impl DowningDecisionContext {
     self
   }
 
+  /// Returns this context with the time at which the membership became unstable.
+  #[must_use]
+  pub const fn with_unstable_since(mut self, unstable_since: TimerInstant) -> Self {
+    self.unstable_since = unstable_since;
+    self
+  }
+
   /// Returns the time attached to this evaluation input.
   #[must_use]
   pub const fn evaluation_time(&self) -> TimerInstant {
     self.evaluation_time
+  }
+
+  /// Returns when the evaluated membership first became unstable.
+  #[must_use]
+  pub const fn unstable_since(&self) -> TimerInstant {
+    self.unstable_since
+  }
+
+  /// Returns elapsed unstable duration at evaluation time.
+  #[must_use]
+  pub fn unstable_duration(&self) -> Duration {
+    if self.evaluation_time.resolution() != self.unstable_since.resolution()
+      || self.evaluation_time.ticks() < self.unstable_since.ticks()
+    {
+      return Duration::ZERO;
+    }
+    ticks_to_duration(
+      self.evaluation_time.ticks().saturating_sub(self.unstable_since.ticks()),
+      self.evaluation_time.resolution(),
+    )
   }
 
   /// Returns the membership snapshot when this context was built from membership state.
@@ -248,6 +287,12 @@ impl DowningDecisionContext {
       None
     }
   }
+}
+
+fn ticks_to_duration(ticks: u64, resolution: Duration) -> Duration {
+  let nanos = resolution.as_nanos().saturating_mul(u128::from(ticks));
+  let clamped = nanos.min(u128::from(u64::MAX));
+  Duration::from_nanos(clamped as u64)
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]

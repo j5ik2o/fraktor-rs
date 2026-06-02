@@ -58,9 +58,7 @@ fn downing_provider_compatibility_preserves_split_brain_resolver_settings() {
   assert_eq!(compatibility.split_brain_resolver_settings(), Some(&settings));
   assert_eq!(
     compatibility.sbr_settings_identity(),
-    Some(
-      "stable-after-nanos=20000000000;active-strategy=keep-majority;down-all-when-unstable-nanos=15000000000;static-quorum-size=none"
-    )
+    Some("stable-after-nanos=20000000000;active-strategy=keep-majority;down-all-when-unstable-nanos=15000000000")
   );
 }
 

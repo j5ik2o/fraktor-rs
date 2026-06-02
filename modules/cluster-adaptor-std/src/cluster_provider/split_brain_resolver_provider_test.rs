@@ -11,7 +11,7 @@ use fraktor_cluster_core_kernel_rs::{
 };
 use fraktor_remote_core_rs::address::{Address, UniqueAddress};
 use fraktor_utils_core_rs::{
-  sync::{ArcShared, SpinSyncMutex},
+  sync::{DefaultMutex, SharedAccess, SharedLock},
   time::TimerInstant,
 };
 
@@ -20,29 +20,29 @@ use super::{StdLeaseMajorityBackend, StdSplitBrainResolverProvider};
 #[derive(Clone)]
 struct RecordingLeaseBackend {
   outcome: LeaseAcquisitionOutcome,
-  calls:   ArcShared<SpinSyncMutex<usize>>,
-  closed:  ArcShared<SpinSyncMutex<usize>>,
+  calls:   SharedLock<usize>,
+  closed:  SharedLock<usize>,
 }
 
 impl RecordingLeaseBackend {
-  fn new(
-    outcome: LeaseAcquisitionOutcome,
-    calls: ArcShared<SpinSyncMutex<usize>>,
-    closed: ArcShared<SpinSyncMutex<usize>>,
-  ) -> Self {
+  fn new(outcome: LeaseAcquisitionOutcome, calls: SharedLock<usize>, closed: SharedLock<usize>) -> Self {
     Self { outcome, calls, closed }
   }
 }
 
 impl StdLeaseMajorityBackend for RecordingLeaseBackend {
   fn acquire(&mut self, _context: &DowningDecisionContext) -> LeaseAcquisitionOutcome {
-    *self.calls.lock() += 1;
+    self.calls.with_write(|calls| *calls += 1);
     self.outcome
   }
 
   fn close(&mut self) {
-    *self.closed.lock() += 1;
+    self.closed.with_write(|closed| *closed += 1);
   }
+}
+
+fn counter() -> SharedLock<usize> {
+  SharedLock::new_with_driver::<DefaultMutex<_>>(0)
 }
 
 fn unique(host: &str, uid: u64) -> UniqueAddress {
@@ -81,8 +81,8 @@ fn lease_majority_settings() -> SplitBrainResolverSettings {
 
 #[test]
 fn start_constructs_hook_and_lease_backend_adapter() {
-  let calls = ArcShared::new(SpinSyncMutex::new(0));
-  let closed = ArcShared::new(SpinSyncMutex::new(0));
+  let calls = counter();
+  let closed = counter();
   let calls_for_factory = calls.clone();
   let closed_for_factory = closed.clone();
   let mut provider =
@@ -98,14 +98,14 @@ fn start_constructs_hook_and_lease_backend_adapter() {
   let decision = provider.decide_context(&majority_context());
 
   assert_eq!(decision, Ok(DowningDecision::Keep));
-  assert_eq!(*calls.lock(), 1);
-  assert_eq!(*closed.lock(), 0);
+  assert_eq!(calls.with_read(|calls| *calls), 1);
+  assert_eq!(closed.with_read(|closed| *closed), 0);
 }
 
 #[test]
 fn stop_closes_active_backend_and_rejects_decisions() {
-  let calls = ArcShared::new(SpinSyncMutex::new(0));
-  let closed = ArcShared::new(SpinSyncMutex::new(0));
+  let calls = counter();
+  let closed = counter();
   let calls_for_factory = calls.clone();
   let closed_for_factory = closed.clone();
   let mut provider =
@@ -123,14 +123,14 @@ fn stop_closes_active_backend_and_rejects_decisions() {
 
   assert!(matches!(err, ClusterProviderError::DownFailed(_)));
   assert_eq!(err.reason(), "split-brain-resolver provider is not started");
-  assert_eq!(*calls.lock(), 0);
-  assert_eq!(*closed.lock(), 1);
+  assert_eq!(calls.with_read(|calls| *calls), 0);
+  assert_eq!(closed.with_read(|closed| *closed), 1);
 }
 
 #[test]
 fn drop_closes_active_backend() {
-  let calls = ArcShared::new(SpinSyncMutex::new(0));
-  let closed = ArcShared::new(SpinSyncMutex::new(0));
+  let calls = counter();
+  let closed = counter();
   {
     let calls_for_factory = calls.clone();
     let closed_for_factory = closed.clone();
@@ -145,8 +145,8 @@ fn drop_closes_active_backend() {
     provider.start().expect("provider starts");
   }
 
-  assert_eq!(*calls.lock(), 0);
-  assert_eq!(*closed.lock(), 1);
+  assert_eq!(calls.with_read(|calls| *calls), 0);
+  assert_eq!(closed.with_read(|closed| *closed), 1);
 }
 
 #[test]

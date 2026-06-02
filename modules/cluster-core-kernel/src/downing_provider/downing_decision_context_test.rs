@@ -149,6 +149,27 @@ fn missing_reachability_evidence_generates_defer_reason() {
 }
 
 #[test]
+fn unstable_since_tracks_elapsed_membership_instability() {
+  let subject = unique("subject", 1);
+  let observer = unique("observer", 2);
+  let mut reachability = ReachabilityMatrix::new();
+  reachability.reachable(observer, subject.clone());
+  let snapshot = MembershipSnapshot::new_with_reachability(
+    MembershipVersion::new(1),
+    vec![node_record(subject, DataCenter::new("dc-east"), "node-a", NodeStatus::Up)],
+    reachability.snapshot(),
+  );
+  let evaluation_time = TimerInstant::from_ticks(42, Duration::from_millis(10));
+
+  let context = DowningDecisionContext::from_membership_snapshot(snapshot, evaluation_time)
+    .with_unstable_since(TimerInstant::from_ticks(12, Duration::from_millis(10)));
+
+  assert_eq!(context.evaluation_time(), evaluation_time);
+  assert_eq!(context.unstable_since(), TimerInstant::from_ticks(12, Duration::from_millis(10)));
+  assert_eq!(context.unstable_duration(), Duration::from_millis(300));
+}
+
+#[test]
 fn reachable_observer_version_counts_as_reachability_evidence() {
   let observer = unique("observer", 1);
   let subject = unique("subject", 2);

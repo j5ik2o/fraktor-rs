@@ -48,6 +48,10 @@ fn context_with_observer(snapshot: MembershipSnapshot, observer: UniqueAddress) 
   context(snapshot).with_reachability_observer(observer)
 }
 
+fn context_at(snapshot: MembershipSnapshot, evaluation_time: TimerInstant) -> DowningDecisionContext {
+  DowningDecisionContext::from_membership_snapshot(snapshot, evaluation_time)
+}
+
 #[test]
 fn keep_majority_keeps_reachable_majority_partition() {
   let node_a = record("node-a", 1, NodeStatus::Up, 1);
@@ -253,6 +257,33 @@ fn stable_after_nonzero_defers_before_strategy_evaluation() {
 }
 
 #[test]
+fn stable_after_elapsed_evaluates_strategy() {
+  let node_a = record("node-a", 1, NodeStatus::Up, 1);
+  let node_b = record("node-b", 2, NodeStatus::Up, 2);
+  let node_c = record("node-c", 3, NodeStatus::Up, 3);
+  let mut reachability = ReachabilityMatrix::new();
+  reachability.unreachable(node_a.unique_address.clone(), node_c.unique_address.clone());
+  let snapshot = MembershipSnapshot::new_with_reachability(
+    MembershipVersion::new(10),
+    vec![node_a.clone(), node_b.clone(), node_c.clone()],
+    reachability.snapshot(),
+  );
+  let resolver = SplitBrainResolver::new(SplitBrainResolverSettings::new(
+    Duration::from_secs(20),
+    SplitBrainResolverStrategy::KeepMajority,
+    Duration::from_secs(30),
+  ));
+  let evaluation_time = TimerInstant::from_ticks(21_000, Duration::from_millis(1));
+
+  let decision = resolver
+    .decide(&context_at(snapshot, evaluation_time).with_unstable_since(TimerInstant::zero(Duration::from_millis(1))));
+
+  assert_eq!(decision.simple_decision(), DowningDecision::Keep);
+  assert_eq!(decision.retained_partition(), &[node_a.unique_address.clone(), node_b.unique_address.clone()]);
+  assert_eq!(decision.downing_targets(), slice::from_ref(&node_c.unique_address));
+}
+
+#[test]
 fn keep_oldest_retains_partition_containing_oldest_member() {
   let node_a = record("node-a", 1, NodeStatus::Up, 10);
   let node_b = record("node-b", 2, NodeStatus::Up, 1);
@@ -322,6 +353,33 @@ fn down_all_returns_all_down_when_timeout_is_elapsed() {
 
   assert_eq!(decision.simple_decision(), DowningDecision::Down);
   assert_eq!(decision.trace().strategy(), SplitBrainResolverStrategy::DownAll);
+  assert_eq!(decision.downing_targets(), &[node_a.unique_address.clone(), node_b.unique_address.clone()]);
+  assert!(decision.is_all_down());
+}
+
+#[test]
+fn down_all_returns_all_down_after_unstable_timeout_elapsed() {
+  let node_a = record("node-a", 1, NodeStatus::Up, 1);
+  let node_b = record("node-b", 2, NodeStatus::Up, 2);
+  let mut reachability = ReachabilityMatrix::new();
+  reachability.unreachable(node_a.unique_address.clone(), node_b.unique_address.clone());
+  let snapshot = MembershipSnapshot::new_with_reachability(
+    MembershipVersion::new(10),
+    vec![node_a.clone(), node_b.clone()],
+    reachability.snapshot(),
+  );
+  let resolver = SplitBrainResolver::new(SplitBrainResolverSettings::new(
+    Duration::ZERO,
+    SplitBrainResolverStrategy::DownAll,
+    Duration::from_secs(30),
+  ));
+  let evaluation_time = TimerInstant::from_ticks(31_000, Duration::from_millis(1));
+
+  let decision = resolver
+    .decide(&context_at(snapshot, evaluation_time).with_unstable_since(TimerInstant::zero(Duration::from_millis(1))));
+
+  assert_eq!(decision.simple_decision(), DowningDecision::Down);
+  assert_eq!(decision.trace().down_all_timeout(), Some(Duration::from_secs(30)));
   assert_eq!(decision.downing_targets(), &[node_a.unique_address.clone(), node_b.unique_address.clone()]);
   assert!(decision.is_all_down());
 }
@@ -431,4 +489,20 @@ fn lease_majority_without_backend_defers_with_backend_missing_outcome() {
 
   assert_eq!(decision.simple_decision(), DowningDecision::Defer);
   assert_eq!(decision.trace().lease_outcome(), Some(LeaseAcquisitionOutcome::BackendMissing));
+}
+
+#[test]
+fn lease_majority_explicit_down_does_not_require_backend() {
+  let resolver = SplitBrainResolver::new(SplitBrainResolverSettings::new(
+    Duration::ZERO,
+    SplitBrainResolverStrategy::LeaseMajority,
+    Duration::from_secs(30),
+  ));
+  let context = DowningDecisionContext::from_explicit_down("node-a:2552", TimerInstant::zero(Duration::from_millis(1)));
+
+  let decision = resolver.decide(&context);
+
+  assert_eq!(decision.simple_decision(), DowningDecision::Down);
+  assert_eq!(decision.trace().strategy(), SplitBrainResolverStrategy::LeaseMajority);
+  assert_eq!(decision.trace().lease_outcome(), None);
 }
