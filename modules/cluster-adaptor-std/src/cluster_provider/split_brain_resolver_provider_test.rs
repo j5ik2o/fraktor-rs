@@ -3,8 +3,8 @@ use core::time::Duration;
 
 use fraktor_cluster_core_kernel_rs::{
   downing_provider::{
-    DowningDecision, DowningDecisionContext, DowningInput, DowningProvider, LeaseAcquisitionOutcome,
-    SplitBrainResolverSettings, SplitBrainResolverStrategy,
+    DowningDecision, DowningDecisionContext, DowningInput, DowningProvider, FailureObservation, FailureObservationKind,
+    LeaseAcquisitionOutcome, SplitBrainResolverSettings, SplitBrainResolverStrategy,
   },
   extension::ClusterProviderError,
   membership::{DataCenter, MembershipSnapshot, MembershipVersion, NodeRecord, NodeStatus, ReachabilityMatrix},
@@ -61,18 +61,21 @@ fn record(host: &str, uid: u64, status: NodeStatus, join_version: u64) -> NodeRe
   )
 }
 
-fn majority_context() -> DowningDecisionContext {
+fn majority_snapshot() -> MembershipSnapshot {
   let node_a = record("node-a", 1, NodeStatus::Up, 1);
   let node_b = record("node-b", 2, NodeStatus::Up, 2);
   let node_c = record("node-c", 3, NodeStatus::Up, 3);
   let mut reachability = ReachabilityMatrix::new();
   reachability.unreachable(node_a.unique_address.clone(), node_c.unique_address.clone());
-  let snapshot = MembershipSnapshot::new_with_reachability(
+  MembershipSnapshot::new_with_reachability(
     MembershipVersion::new(10),
     vec![node_a, node_b, node_c],
     reachability.snapshot(),
-  );
-  DowningDecisionContext::from_membership_snapshot(snapshot, TimerInstant::zero(Duration::from_millis(1)))
+  )
+}
+
+fn majority_context() -> DowningDecisionContext {
+  DowningDecisionContext::from_membership_snapshot(majority_snapshot(), TimerInstant::zero(Duration::from_millis(1)))
 }
 
 fn lease_majority_settings() -> SplitBrainResolverSettings {
@@ -161,4 +164,32 @@ fn downing_provider_decide_delegates_to_core_hook() {
   let decision = provider.decide(&DowningInput::explicit_down("node-a:2552"));
 
   assert_eq!(decision, Ok(DowningDecision::Down));
+}
+
+#[test]
+fn downing_provider_decide_with_membership_snapshot_routes_trait_path_to_lease_backend() {
+  let calls = counter();
+  let closed = counter();
+  let calls_for_factory = calls.clone();
+  let closed_for_factory = closed.clone();
+  let mut provider =
+    StdSplitBrainResolverProvider::new(lease_majority_settings()).with_lease_backend_factory(move || {
+      Box::new(RecordingLeaseBackend::new(
+        LeaseAcquisitionOutcome::Acquired,
+        calls_for_factory.clone(),
+        closed_for_factory.clone(),
+      ))
+    });
+  provider.start().expect("provider starts");
+  let mut downing_provider: Box<dyn DowningProvider> = Box::new(provider);
+  let input = DowningInput::FailureObservation(FailureObservation::new(
+    "node-c:2552",
+    FailureObservationKind::Unreachable,
+    TimerInstant::zero(Duration::from_millis(1)),
+  ));
+
+  let decision = downing_provider.decide_with_membership_snapshot(&input, &majority_snapshot());
+
+  assert_eq!(decision, Ok(DowningDecision::Keep));
+  assert_eq!(calls.with_read(|calls| *calls), 1);
 }
