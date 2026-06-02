@@ -143,6 +143,33 @@ async fn start_member_publishes_startup_event() {
 }
 
 #[tokio::test]
+async fn start_member_initial_topology_uses_authority_only_contract() {
+  let event_stream = EventStreamShared::default();
+  let block_list: ArcShared<dyn BlockListProvider> = ArcShared::new(EmptyBlockList);
+
+  let (subscriber_impl, _subscription) = subscribe_recorder(&event_stream);
+
+  let mut provider = AwsEcsClusterProvider::new(event_stream, block_list, "127.0.0.1:8080");
+
+  let result = provider.start_member();
+  assert!(result.is_ok());
+
+  let events = subscriber_impl.events();
+  let topology_event = events.iter().find(|event| matches!(event, ClusterEvent::TopologyUpdated { .. }));
+  assert!(matches!(
+    topology_event,
+    Some(ClusterEvent::TopologyUpdated { update })
+    if update.joined == vec![String::from("127.0.0.1:8080")]
+      && update.members == vec![String::from("127.0.0.1:8080")]
+      && update.left.is_empty()
+      && update.dead.is_empty()
+      && update.blocked.is_empty()
+  ));
+
+  assert!(provider.shutdown(true).is_ok());
+}
+
+#[tokio::test]
 async fn start_client_publishes_startup_event() {
   let event_stream = EventStreamShared::default();
   let block_list: ArcShared<dyn BlockListProvider> = ArcShared::new(EmptyBlockList);

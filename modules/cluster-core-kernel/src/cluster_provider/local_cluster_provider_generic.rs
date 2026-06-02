@@ -134,6 +134,56 @@ impl LocalClusterProvider {
     self.publish_topology(version, alloc::vec![], alloc::vec![authority]);
   }
 
+  /// Applies an externally computed topology delta as one atomic topology event.
+  pub fn apply_topology_update(&mut self, update: &TopologyUpdate) {
+    let mut joined = Vec::new();
+    for authority in update.joined.iter() {
+      if authority == &self.advertised_address || self.members.contains(authority) {
+        continue;
+      }
+      self.members.push(authority.clone());
+      joined.push(authority.clone());
+    }
+
+    let mut left = Vec::new();
+    for authority in update.left.iter() {
+      if !self.members.contains(authority) {
+        continue;
+      }
+      self.members.retain(|member| member != authority);
+      left.push(authority.clone());
+    }
+
+    let mut dead = Vec::new();
+    for authority in update.dead.iter() {
+      if !self.members.contains(authority) {
+        continue;
+      }
+      self.members.retain(|member| member != authority);
+      dead.push(authority.clone());
+    }
+
+    if joined.is_empty() && left.is_empty() && dead.is_empty() {
+      return;
+    }
+
+    let version = self.next_version();
+    let topology = ClusterTopology::new(version, joined.clone(), left.clone(), dead.clone());
+    let update = TopologyUpdate::new(
+      topology,
+      self.members.clone(),
+      joined,
+      left,
+      dead,
+      self.block_list_provider.blocked_members(),
+      update.observed_at,
+    );
+    let event = ClusterEvent::TopologyUpdated { update };
+    let payload = AnyMessage::new(event);
+    let extension_event = EventStreamEvent::Extension { name: String::from("cluster"), payload };
+    self.event_stream.publish(&extension_event);
+  }
+
   /// Returns the current member count.
   #[must_use]
   #[allow(clippy::missing_const_for_fn)]
