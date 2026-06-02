@@ -12,6 +12,7 @@ mod lease_acquisition_outcome;
 mod lease_majority_port;
 mod noop_downing_provider;
 mod split_brain_resolver;
+mod split_brain_resolver_provider_hook;
 mod split_brain_resolver_settings;
 mod split_brain_resolver_strategy;
 
@@ -27,6 +28,7 @@ pub use lease_acquisition_outcome::LeaseAcquisitionOutcome;
 pub use lease_majority_port::LeaseMajorityPort;
 pub use noop_downing_provider::NoopDowningProvider;
 pub use split_brain_resolver::SplitBrainResolver;
+pub use split_brain_resolver_provider_hook::SplitBrainResolverProviderHook;
 pub use split_brain_resolver_settings::SplitBrainResolverSettings;
 pub use split_brain_resolver_strategy::SplitBrainResolverStrategy;
 

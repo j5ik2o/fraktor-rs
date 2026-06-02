@@ -45,7 +45,7 @@
   - _Depends: 2.2, 3.1_
 
 - [ ] 4. Provider-facing SBR integration を接続する
-- [ ] 4.1 core provider hook と compatibility metadata を追加する
+- [x] 4.1 core provider hook と compatibility metadata を追加する
   - provider key、SBR settings、strategy identity を compatibility metadata として公開する。
   - `DowningProvider` hook が SBR evaluator を呼び、trace 付き decision を simple decision または error に変換する。
   - metadata mismatch と decision failure が `ClusterProviderError` として観測できることを test で確認する。
