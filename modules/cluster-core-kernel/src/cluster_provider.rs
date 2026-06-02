@@ -13,6 +13,10 @@ mod local_cluster_provider_shared_generic;
 mod local_cluster_provider_weak;
 /// No-op provider useful for tests and single-process runs.
 mod noop_cluster_provider;
+/// Seed node input captured from provider lifecycle.
+mod seed_node_input;
+/// Lifecycle-aware seed node join input processing.
+mod seed_node_process;
 /// Static cluster provider for predetermined topology scenarios.
 mod static_cluster_provider;
 
@@ -20,6 +24,8 @@ pub use local_cluster_provider_generic::LocalClusterProvider;
 pub use local_cluster_provider_shared_generic::LocalClusterProviderShared;
 pub use local_cluster_provider_weak::LocalClusterProviderWeak;
 pub use noop_cluster_provider::NoopClusterProvider;
+pub use seed_node_input::SeedNodeInput;
+pub use seed_node_process::SeedNodeProcess;
 pub use static_cluster_provider::StaticClusterProvider;
 
 /// Integrates the cluster runtime with an external membership system.

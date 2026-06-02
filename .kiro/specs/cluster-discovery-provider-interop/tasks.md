@@ -1,6 +1,6 @@
 # 実装計画
 
-- [ ] 1. SeedNodeProcess の core contract を追加する
+- [x] 1. SeedNodeProcess の core contract を追加する
   - seed authority を provider lifecycle から受け取り、member mode と client mode の違いを観測できる contract を定義する。
   - empty seed、self authority、duplicate authority、invalid authority、shutdown 後入力停止を unit test で確認する。
   - 完了時には seed node source から join input を生成する最小 surface が `no_std` core で参照できる。
