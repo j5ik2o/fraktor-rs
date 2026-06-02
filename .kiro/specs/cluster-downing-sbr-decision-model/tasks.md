@@ -61,7 +61,7 @@
   - _Depends: 4.1_
 
 - [ ] 5. 境界と gap evidence を検証する
-- [ ] 5.1 downstream scope を吸収していないことを確認する
+- [x] 5.1 downstream scope を吸収していないことを確認する
   - gossip heartbeat、discovery provider、pubsub mediator、serialization contract の実装をこの変更に含めない。
   - upstream membership reachability の型名や semantics が変わった場合に SBR spec の revalidation が必要であることを確認する。
   - boundary review で変更対象が downing/SBR と std provider binding に収まっている状態にする。
