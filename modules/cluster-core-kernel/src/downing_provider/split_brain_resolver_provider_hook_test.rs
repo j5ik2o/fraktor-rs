@@ -71,7 +71,9 @@ fn provider_hook_exposes_sbr_compatibility_metadata() {
   assert_eq!(compatibility.split_brain_resolver_settings(), Some(&settings));
   assert_eq!(
     compatibility.sbr_settings_identity(),
-    Some("stable-after-nanos=20000000000;active-strategy=keep-majority;down-all-when-unstable-nanos=30000000000"),
+    Some(
+      "stable-after-nanos=20000000000;active-strategy=keep-majority;down-all-when-unstable-nanos=30000000000;static-quorum-size=none"
+    ),
   );
 }
 

@@ -20,8 +20,11 @@ const NO_ACTIVE_MEMBERS: &str = "no active members are available for split-brain
 const REACHABLE_MAJORITY_SELECTED: &str = "reachable majority partition selected";
 const NON_REACHABLE_MAJORITY_SELECTED: &str = "non-reachable majority partition selected";
 const STATIC_QUORUM_SELECTED: &str = "reachable static quorum partition selected";
+const NON_REACHABLE_STATIC_QUORUM_SELECTED: &str = "non-reachable static quorum partition selected";
 const OLDEST_PARTITION_SELECTED: &str = "oldest member partition selected";
 const MAJORITY_TIE: &str = "reachable and non-reachable partitions have equal size";
+const STATIC_QUORUM_SIZE_MISSING: &str = "static quorum size is not configured";
+const STATIC_QUORUM_SIZE_ZERO: &str = "static quorum size must be greater than zero";
 const STABLE_AFTER_PENDING: &str = "membership has not been stable for the required duration";
 const DOWN_ALL_PENDING: &str = "down-all timeout has not elapsed";
 const DOWN_ALL_ELAPSED: &str = "down-all timeout elapsed";
@@ -66,7 +69,7 @@ impl SplitBrainResolver {
         Self::decide_majority(context, strategy, REACHABLE_MAJORITY_SELECTED)
       },
       | SplitBrainResolverStrategy::LeaseMajority => Self::defer_lease_outcome(LeaseAcquisitionOutcome::BackendMissing),
-      | SplitBrainResolverStrategy::StaticQuorum => Self::decide_majority(context, strategy, STATIC_QUORUM_SELECTED),
+      | SplitBrainResolverStrategy::StaticQuorum => self.decide_static_quorum(context),
       | SplitBrainResolverStrategy::KeepOldest => Self::decide_oldest(context),
       | SplitBrainResolverStrategy::DownAll => self.decide_down_all(context),
     }
@@ -143,6 +146,36 @@ impl SplitBrainResolver {
     }
   }
 
+  fn decide_static_quorum(&self, context: &DowningDecisionContext) -> DowningStrategyDecision {
+    let strategy = SplitBrainResolverStrategy::StaticQuorum;
+    let Some(quorum_size) = self.settings.static_quorum_size() else {
+      return defer(strategy, STATIC_QUORUM_SIZE_MISSING);
+    };
+    if quorum_size == 0 {
+      return defer(strategy, STATIC_QUORUM_SIZE_ZERO);
+    }
+    let Some(partition) = PartitionEvaluation::from_context(context) else {
+      return defer(strategy, MEMBERSHIP_REQUIRED);
+    };
+    if partition.active_count() == 0 {
+      return defer(strategy, NO_ACTIVE_MEMBERS);
+    }
+
+    if partition.reachable.len() >= quorum_size {
+      return keep_partition(strategy, STATIC_QUORUM_SELECTED, partition.reachable, partition.non_reachable);
+    }
+    if partition.non_reachable.len() >= quorum_size {
+      return keep_partition(
+        strategy,
+        NON_REACHABLE_STATIC_QUORUM_SELECTED,
+        partition.non_reachable,
+        partition.reachable,
+      );
+    }
+
+    defer(strategy, "no partition satisfies static quorum")
+  }
+
   fn decide_lease_majority(
     context: &DowningDecisionContext,
     lease_port: &mut dyn LeaseMajorityPort,
@@ -154,14 +187,8 @@ impl SplitBrainResolver {
     if partition.active_count() == 0 {
       return defer(strategy, NO_ACTIVE_MEMBERS);
     }
-    if partition.has_tie() {
-      return DowningStrategyDecision::defer(
-        DowningDecisionTrace::defer(strategy, String::from(MAJORITY_TIE)).with_tie_break(String::from(MAJORITY_TIE)),
-      );
-    }
-
     let threshold = partition.active_count() / 2 + 1;
-    let (retained_partition, downing_targets) = if partition.reachable.len() >= threshold {
+    let (retained_partition, downing_targets) = if partition.has_tie() || partition.reachable.len() >= threshold {
       (partition.reachable, partition.non_reachable)
     } else if partition.non_reachable.len() >= threshold {
       (partition.non_reachable, partition.reachable)

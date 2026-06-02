@@ -10,6 +10,7 @@ pub struct SplitBrainResolverSettings {
   stable_after:           Duration,
   active_strategy:        SplitBrainResolverStrategy,
   down_all_when_unstable: Duration,
+  static_quorum_size:     Option<usize>,
 }
 
 impl SplitBrainResolverSettings {
@@ -20,7 +21,14 @@ impl SplitBrainResolverSettings {
     active_strategy: SplitBrainResolverStrategy,
     down_all_when_unstable: Duration,
   ) -> Self {
-    Self { stable_after, active_strategy, down_all_when_unstable }
+    Self { stable_after, active_strategy, down_all_when_unstable, static_quorum_size: None }
+  }
+
+  /// Returns settings with a fixed static quorum size.
+  #[must_use]
+  pub const fn with_static_quorum_size(mut self, static_quorum_size: usize) -> Self {
+    self.static_quorum_size = Some(static_quorum_size);
+    self
   }
 
   /// Returns how long membership must stay stable before decisions are applied.
@@ -39,5 +47,11 @@ impl SplitBrainResolverSettings {
   #[must_use]
   pub const fn down_all_when_unstable(self) -> Duration {
     self.down_all_when_unstable
+  }
+
+  /// Returns the configured fixed quorum size for `StaticQuorum`.
+  #[must_use]
+  pub const fn static_quorum_size(self) -> Option<usize> {
+    self.static_quorum_size
   }
 }

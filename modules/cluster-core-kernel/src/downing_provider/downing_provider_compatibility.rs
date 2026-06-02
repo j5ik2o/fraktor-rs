@@ -63,9 +63,10 @@ impl DowningProviderCompatibility {
 
 fn format_sbr_settings_identity(settings: SplitBrainResolverSettings) -> String {
   format!(
-    "stable-after-nanos={};active-strategy={};down-all-when-unstable-nanos={}",
+    "stable-after-nanos={};active-strategy={};down-all-when-unstable-nanos={};static-quorum-size={}",
     settings.stable_after().as_nanos(),
     settings.active_strategy().as_str(),
-    settings.down_all_when_unstable().as_nanos()
+    settings.down_all_when_unstable().as_nanos(),
+    settings.static_quorum_size().map_or_else(|| String::from("none"), |size| format!("{size}"))
   )
 }
