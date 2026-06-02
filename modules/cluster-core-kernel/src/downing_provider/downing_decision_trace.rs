@@ -3,7 +3,7 @@
 use alloc::string::String;
 use core::time::Duration;
 
-use super::SplitBrainResolverStrategy;
+use super::{LeaseAcquisitionOutcome, SplitBrainResolverStrategy};
 
 /// Observable explanation attached to a strategy decision.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -13,19 +13,34 @@ pub struct DowningDecisionTrace {
   tie_break_rule:        Option<String>,
   stable_after_required: Option<Duration>,
   down_all_timeout:      Option<Duration>,
+  lease_outcome:         Option<LeaseAcquisitionOutcome>,
 }
 
 impl DowningDecisionTrace {
   /// Creates a trace for a deferred decision.
   #[must_use]
   pub const fn defer(strategy: SplitBrainResolverStrategy, reason: String) -> Self {
-    Self { strategy, reason, tie_break_rule: None, stable_after_required: None, down_all_timeout: None }
+    Self {
+      strategy,
+      reason,
+      tie_break_rule: None,
+      stable_after_required: None,
+      down_all_timeout: None,
+      lease_outcome: None,
+    }
   }
 
   /// Creates a trace for a selected majority partition.
   #[must_use]
   pub const fn majority_partition(strategy: SplitBrainResolverStrategy, reason: String) -> Self {
-    Self { strategy, reason, tie_break_rule: None, stable_after_required: None, down_all_timeout: None }
+    Self {
+      strategy,
+      reason,
+      tie_break_rule: None,
+      stable_after_required: None,
+      down_all_timeout: None,
+      lease_outcome: None,
+    }
   }
 
   /// Creates a trace for a stable-after defer.
@@ -41,6 +56,20 @@ impl DowningDecisionTrace {
       tie_break_rule: None,
       stable_after_required: Some(stable_after_required),
       down_all_timeout: None,
+      lease_outcome: None,
+    }
+  }
+
+  /// Creates a trace for a lease majority outcome.
+  #[must_use]
+  pub fn from_lease_outcome(strategy: SplitBrainResolverStrategy, lease_outcome: LeaseAcquisitionOutcome) -> Self {
+    Self {
+      strategy,
+      reason: String::from(lease_outcome.trace_reason()),
+      tie_break_rule: None,
+      stable_after_required: None,
+      down_all_timeout: None,
+      lease_outcome: Some(lease_outcome),
     }
   }
 
@@ -57,6 +86,7 @@ impl DowningDecisionTrace {
       tie_break_rule: None,
       stable_after_required: None,
       down_all_timeout: Some(down_all_timeout),
+      lease_outcome: None,
     }
   }
 
@@ -73,6 +103,7 @@ impl DowningDecisionTrace {
       tie_break_rule: None,
       stable_after_required: None,
       down_all_timeout: Some(down_all_timeout),
+      lease_outcome: None,
     }
   }
 
@@ -111,5 +142,11 @@ impl DowningDecisionTrace {
   #[must_use]
   pub const fn down_all_timeout(&self) -> Option<Duration> {
     self.down_all_timeout
+  }
+
+  /// Returns the lease outcome attached to this trace.
+  #[must_use]
+  pub const fn lease_outcome(&self) -> Option<LeaseAcquisitionOutcome> {
+    self.lease_outcome
   }
 }

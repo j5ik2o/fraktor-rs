@@ -30,7 +30,7 @@
   - _Depends: 1.1, 2.1_
 
 - [ ] 3. Lease-based majority contract を追加する
-- [ ] 3.1 lease majority port と outcome vocabulary を定義する (P)
+- [x] 3.1 lease majority port と outcome vocabulary を定義する (P)
   - acquired、denied、unavailable、unknown、backend missing を区別する。
   - core trait が backend の network I/O、retry、host clock ownership を要求しないことを型境界で確認する。
   - outcome ごとの decision trace mapping を unit test で確認する。
