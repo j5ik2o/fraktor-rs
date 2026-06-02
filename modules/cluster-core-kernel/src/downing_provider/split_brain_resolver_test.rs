@@ -499,7 +499,7 @@ fn lease_majority_consults_lease_when_partitions_are_tied() {
 }
 
 #[test]
-fn lease_majority_acquired_retains_local_reachable_partition_even_when_non_reachable_has_majority() {
+fn lease_majority_acquired_retains_non_reachable_majority_partition() {
   let node_a = record("node-a", 1, NodeStatus::Up, 1);
   let node_b = record("node-b", 2, NodeStatus::Up, 2);
   let node_c = record("node-c", 3, NodeStatus::Up, 3);
@@ -522,8 +522,8 @@ fn lease_majority_acquired_retains_local_reachable_partition_even_when_non_reach
 
   assert_eq!(decision.simple_decision(), DowningDecision::Keep);
   assert_eq!(decision.trace().lease_outcome(), Some(LeaseAcquisitionOutcome::Acquired));
-  assert_eq!(decision.retained_partition(), slice::from_ref(&node_a.unique_address));
-  assert_eq!(decision.downing_targets(), &[node_b.unique_address.clone(), node_c.unique_address.clone()]);
+  assert_eq!(decision.retained_partition(), &[node_b.unique_address.clone(), node_c.unique_address.clone()]);
+  assert_eq!(decision.downing_targets(), slice::from_ref(&node_a.unique_address));
   assert_eq!(lease.calls, 1);
 }
 

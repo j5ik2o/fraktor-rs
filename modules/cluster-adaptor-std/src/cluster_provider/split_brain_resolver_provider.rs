@@ -13,7 +13,6 @@ use fraktor_cluster_core_kernel_rs::{
     LeaseAcquisitionOutcome, LeaseMajorityPort, SplitBrainResolverProviderHook, SplitBrainResolverSettings,
   },
   extension::ClusterProviderError,
-  membership::MembershipSnapshot,
 };
 use fraktor_utils_core_rs::{sync::ArcShared, time::TimerInstant};
 
@@ -113,20 +112,11 @@ impl StdSplitBrainResolverProvider {
 impl DowningProvider for StdSplitBrainResolverProvider {
   fn decide(&mut self, input: &DowningInput) -> Result<DowningDecision, ClusterProviderError> {
     let context = DowningDecisionContext::from_downing_input(input, Self::evaluation_time());
-    self.decide_context(&context)
+    StdSplitBrainResolverProvider::decide_context(self, &context)
   }
 
-  fn decide_with_membership_snapshot(
-    &mut self,
-    input: &DowningInput,
-    snapshot: &MembershipSnapshot,
-  ) -> Result<DowningDecision, ClusterProviderError> {
-    let context = DowningDecisionContext::from_downing_input_with_membership_snapshot(
-      input,
-      snapshot.clone(),
-      Self::evaluation_time(),
-    );
-    self.decide_context(&context)
+  fn decide_context(&mut self, context: &DowningDecisionContext) -> Result<DowningDecision, ClusterProviderError> {
+    StdSplitBrainResolverProvider::decide_context(self, context)
   }
 }
 

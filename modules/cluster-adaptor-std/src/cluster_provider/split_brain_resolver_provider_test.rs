@@ -3,8 +3,8 @@ use core::time::Duration;
 
 use fraktor_cluster_core_kernel_rs::{
   downing_provider::{
-    DowningDecision, DowningDecisionContext, DowningInput, DowningProvider, FailureObservation, FailureObservationKind,
-    LeaseAcquisitionOutcome, SplitBrainResolverSettings, SplitBrainResolverStrategy,
+    DowningDecision, DowningDecisionContext, DowningInput, DowningProvider, LeaseAcquisitionOutcome,
+    SplitBrainResolverSettings, SplitBrainResolverStrategy,
   },
   extension::ClusterProviderError,
   membership::{DataCenter, MembershipSnapshot, MembershipVersion, NodeRecord, NodeStatus, ReachabilityMatrix},
@@ -76,6 +76,27 @@ fn majority_snapshot() -> MembershipSnapshot {
 
 fn majority_context() -> DowningDecisionContext {
   DowningDecisionContext::from_membership_snapshot(majority_snapshot(), TimerInstant::zero(Duration::from_millis(1)))
+}
+
+fn majority_context_at(evaluation_time: TimerInstant, unstable_since: TimerInstant) -> DowningDecisionContext {
+  DowningDecisionContext::from_membership_snapshot(majority_snapshot(), evaluation_time)
+    .with_unstable_since(unstable_since)
+}
+
+fn multi_observer_context_with_local_observer() -> DowningDecisionContext {
+  let node_a = record("node-a", 1, NodeStatus::Up, 1);
+  let node_b = record("node-b", 2, NodeStatus::Up, 2);
+  let node_c = record("node-c", 3, NodeStatus::Up, 3);
+  let mut reachability = ReachabilityMatrix::new();
+  reachability.unreachable(node_a.unique_address.clone(), node_c.unique_address.clone());
+  reachability.reachable(node_b.unique_address.clone(), node_c.unique_address.clone());
+  let snapshot = MembershipSnapshot::new_with_reachability(
+    MembershipVersion::new(10),
+    vec![node_a.clone(), node_b, node_c],
+    reachability.snapshot(),
+  );
+  DowningDecisionContext::from_membership_snapshot(snapshot, TimerInstant::zero(Duration::from_millis(1)))
+    .with_reachability_observer(node_a.unique_address)
 }
 
 fn lease_majority_settings() -> SplitBrainResolverSettings {
@@ -167,7 +188,7 @@ fn downing_provider_decide_delegates_to_core_hook() {
 }
 
 #[test]
-fn downing_provider_decide_with_membership_snapshot_routes_trait_path_to_lease_backend() {
+fn downing_provider_decide_context_routes_trait_path_to_lease_backend() {
   let calls = counter();
   let closed = counter();
   let calls_for_factory = calls.clone();
@@ -182,14 +203,43 @@ fn downing_provider_decide_with_membership_snapshot_routes_trait_path_to_lease_b
     });
   provider.start().expect("provider starts");
   let mut downing_provider: Box<dyn DowningProvider> = Box::new(provider);
-  let input = DowningInput::FailureObservation(FailureObservation::new(
-    "node-c:2552",
-    FailureObservationKind::Unreachable,
-    TimerInstant::zero(Duration::from_millis(1)),
-  ));
 
-  let decision = downing_provider.decide_with_membership_snapshot(&input, &majority_snapshot());
+  let decision = downing_provider.decide_context(&majority_context());
 
   assert_eq!(decision, Ok(DowningDecision::Keep));
   assert_eq!(calls.with_read(|calls| *calls), 1);
+}
+
+#[test]
+fn downing_provider_decide_context_preserves_unstable_duration() {
+  let mut provider = StdSplitBrainResolverProvider::new(SplitBrainResolverSettings::new(
+    Duration::from_secs(20),
+    SplitBrainResolverStrategy::KeepMajority,
+    Duration::from_secs(30),
+  ));
+  provider.start().expect("provider starts");
+  let mut downing_provider: Box<dyn DowningProvider> = Box::new(provider);
+  let context = majority_context_at(
+    TimerInstant::from_ticks(21_000, Duration::from_millis(1)),
+    TimerInstant::zero(Duration::from_millis(1)),
+  );
+
+  let decision = downing_provider.decide_context(&context);
+
+  assert_eq!(decision, Ok(DowningDecision::Keep));
+}
+
+#[test]
+fn downing_provider_decide_context_preserves_local_reachability_observer() {
+  let mut provider = StdSplitBrainResolverProvider::new(SplitBrainResolverSettings::new(
+    Duration::ZERO,
+    SplitBrainResolverStrategy::KeepMajority,
+    Duration::from_secs(30),
+  ));
+  provider.start().expect("provider starts");
+  let mut downing_provider: Box<dyn DowningProvider> = Box::new(provider);
+
+  let decision = downing_provider.decide_context(&multi_observer_context_with_local_observer());
+
+  assert_eq!(decision, Ok(DowningDecision::Keep));
 }

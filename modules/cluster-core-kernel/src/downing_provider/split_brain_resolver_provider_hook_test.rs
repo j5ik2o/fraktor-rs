@@ -101,6 +101,18 @@ fn provider_hook_maps_explicit_down_without_membership_snapshot() {
 }
 
 #[test]
+fn provider_hook_downing_provider_decide_context_uses_membership_context() {
+  let settings =
+    SplitBrainResolverSettings::new(Duration::ZERO, SplitBrainResolverStrategy::KeepMajority, Duration::from_secs(30));
+  let mut hook = SplitBrainResolverProviderHook::new(settings);
+  let downing_provider: &mut dyn DowningProvider = &mut hook;
+
+  let decision = downing_provider.decide_context(&majority_context());
+
+  assert_eq!(decision, Ok(DowningDecision::Keep));
+}
+
+#[test]
 fn provider_hook_prioritizes_explicit_down_before_lease_backend_failure() {
   let settings =
     SplitBrainResolverSettings::new(Duration::ZERO, SplitBrainResolverStrategy::LeaseMajority, Duration::from_secs(30));

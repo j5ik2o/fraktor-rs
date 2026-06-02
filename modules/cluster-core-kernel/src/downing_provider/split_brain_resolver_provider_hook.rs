@@ -109,6 +109,10 @@ impl SplitBrainResolverProviderHook {
 impl DowningProvider for SplitBrainResolverProviderHook {
   fn decide(&mut self, input: &DowningInput) -> Result<DowningDecision, ClusterProviderError> {
     let context = DowningDecisionContext::from_downing_input(input, Self::evaluation_time());
-    self.decide_context(&context)
+    SplitBrainResolverProviderHook::decide_context(self, &context)
+  }
+
+  fn decide_context(&mut self, context: &DowningDecisionContext) -> Result<DowningDecision, ClusterProviderError> {
+    SplitBrainResolverProviderHook::decide_context(self, context)
   }
 }

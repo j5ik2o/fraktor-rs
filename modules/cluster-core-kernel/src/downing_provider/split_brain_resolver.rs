@@ -204,8 +204,14 @@ impl SplitBrainResolver {
       return defer(strategy, NO_ACTIVE_MEMBERS);
     }
     let has_tie = partition.has_tie();
-    let retained_partition = partition.reachable;
-    let downing_targets = partition.non_reachable;
+    let threshold = partition.active_count() / 2 + 1;
+    let (retained_partition, downing_targets) = if has_tie || partition.reachable.len() >= threshold {
+      (partition.reachable, partition.non_reachable)
+    } else if partition.non_reachable.len() >= threshold {
+      (partition.non_reachable, partition.reachable)
+    } else {
+      return defer(strategy, "no partition satisfies majority quorum");
+    };
 
     match lease_port.acquire_majority(context) {
       | LeaseAcquisitionOutcome::Acquired => {

@@ -32,7 +32,7 @@ pub use split_brain_resolver_provider_hook::SplitBrainResolverProviderHook;
 pub use split_brain_resolver_settings::SplitBrainResolverSettings;
 pub use split_brain_resolver_strategy::SplitBrainResolverStrategy;
 
-use crate::{ClusterProviderError, membership::MembershipSnapshot};
+use crate::ClusterProviderError;
 
 /// Strategy hook invoked before a member is downed.
 pub trait DowningProvider: Send + Sync {
@@ -43,16 +43,16 @@ pub trait DowningProvider: Send + Sync {
   /// Returns [`ClusterProviderError`] when the strategy cannot decide.
   fn decide(&mut self, input: &DowningInput) -> Result<DowningDecision, ClusterProviderError>;
 
-  /// Decides how cluster core should handle the downing input with current membership state.
+  /// Decides how cluster core should handle a fully prepared decision context.
   ///
   /// # Errors
   ///
   /// Returns [`ClusterProviderError`] when the strategy cannot decide.
-  fn decide_with_membership_snapshot(
-    &mut self,
-    input: &DowningInput,
-    _snapshot: &MembershipSnapshot,
-  ) -> Result<DowningDecision, ClusterProviderError> {
-    self.decide(input)
+  fn decide_context(&mut self, context: &DowningDecisionContext) -> Result<DowningDecision, ClusterProviderError> {
+    if let Some(authority) = context.explicit_down_authority() {
+      self.decide(&DowningInput::explicit_down(authority))
+    } else {
+      Ok(DowningDecision::Defer)
+    }
   }
 }
