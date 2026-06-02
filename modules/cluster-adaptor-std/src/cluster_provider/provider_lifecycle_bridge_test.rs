@@ -249,20 +249,14 @@ fn provider_lifecycle_bridge_refreshes_discovery_after_member_start() {
     events.iter().filter(|event| matches!(event, ClusterEvent::TopologyUpdated { .. })).collect();
   assert_eq!(backend_probe.call_count(), 2);
   assert_eq!(provider.with_read(|provider| provider.member_count()), 2);
-  assert_eq!(topology_events.len(), 3);
+  assert_eq!(topology_events.len(), 2);
   assert!(matches!(
     topology_events[1],
     ClusterEvent::TopologyUpdated { update }
     if update.joined == vec![String::from("node-c")]
-      && update.left.is_empty()
-      && update.members == vec![String::from("node-a"), String::from("node-b"), String::from("node-c")]
-  ));
-  assert!(matches!(
-    topology_events[2],
-    ClusterEvent::TopologyUpdated { update }
-    if update.joined.is_empty()
       && update.left == vec![String::from("node-b")]
       && update.members == vec![String::from("node-a"), String::from("node-c")]
+      && update.observed_at == TimerInstant::from_ticks(2, Duration::from_secs(1))
   ));
 }
 
@@ -281,9 +275,40 @@ fn provider_lifecycle_bridge_propagates_backend_failure_without_destroying_topol
 
   assert!(matches!(
     result,
-    Err(ClusterProviderError::StartMemberFailed(ref reason)) if reason == "backend unavailable"
+    Err(ClusterProviderError::JoinFailed(ref reason)) if reason == "backend unavailable"
   ));
   assert_eq!(provider.with_read(|provider| provider.member_count()), 1);
+}
+
+#[test]
+fn provider_lifecycle_bridge_preserves_discovery_observation_time_after_no_delta_poll() {
+  let event_stream = EventStreamShared::default();
+  let (subscriber_impl, _subscription) = subscribe_recorder(&event_stream);
+  let provider = wrap_local_cluster_provider(LocalClusterProvider::new(event_stream, block_list(), "node-a"));
+  let backend = CountingDiscoveryBackend::new("test-discovery", Vec::from([String::from("node-b")]));
+  let backend_probe = backend.clone();
+  let mut bridge = ProviderLifecycleBridge::new(
+    provider.downgrade(),
+    seed_input("node-a", Vec::new()),
+    GenericDiscoveryAdapter::new(backend),
+    mapper(),
+  );
+
+  bridge.start_member().expect("member lifecycle should start");
+  bridge.refresh_discovery().expect("unchanged discovery should not publish");
+  backend_probe.replace_authorities(Vec::from([String::from("node-b"), String::from("node-c")]));
+  bridge.refresh_discovery().expect("changed discovery should publish");
+
+  let events = subscriber_impl.events();
+  let topology_events: Vec<&ClusterEvent> =
+    events.iter().filter(|event| matches!(event, ClusterEvent::TopologyUpdated { .. })).collect();
+  assert_eq!(topology_events.len(), 2);
+  assert!(matches!(
+    topology_events[1],
+    ClusterEvent::TopologyUpdated { update }
+    if update.joined == vec![String::from("node-c")]
+      && update.observed_at == TimerInstant::from_ticks(3, Duration::from_secs(1))
+  ));
 }
 
 #[test]
@@ -310,6 +335,32 @@ fn provider_lifecycle_bridge_ignores_self_authority_from_discovery_delta() {
   assert!(!events.iter().any(|event| matches!(
     event,
     ClusterEvent::TopologyUpdated { update } if update.left == vec![String::from("node-a")]
+  )));
+}
+
+#[test]
+fn provider_lifecycle_bridge_keeps_seed_authority_when_discovery_delta_leaves_it() {
+  let event_stream = EventStreamShared::default();
+  let (subscriber_impl, _subscription) = subscribe_recorder(&event_stream);
+  let provider = wrap_local_cluster_provider(LocalClusterProvider::new(event_stream, block_list(), "node-a"));
+  let backend = CountingDiscoveryBackend::new("test-discovery", Vec::from([String::from("node-b")]));
+  let backend_probe = backend.clone();
+  let mut bridge = ProviderLifecycleBridge::new(
+    provider.downgrade(),
+    seed_input("node-a", Vec::from(["node-b"])),
+    GenericDiscoveryAdapter::new(backend),
+    mapper(),
+  );
+
+  bridge.start_member().expect("member lifecycle should start");
+  backend_probe.replace_authorities(Vec::new());
+  bridge.refresh_discovery().expect("seed leave should be ignored");
+
+  let events = subscriber_impl.events();
+  assert_eq!(provider.with_read(|provider| provider.member_count()), 2);
+  assert!(!events.iter().any(|event| matches!(
+    event,
+    ClusterEvent::TopologyUpdated { update } if update.left == vec![String::from("node-b")]
   )));
 }
 

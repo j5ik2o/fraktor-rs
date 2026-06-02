@@ -98,7 +98,7 @@ fn generic_discovery_adapter_converts_backend_failure_to_observable_discovery_re
   assert_eq!(result.source_identity(), Some("fake-poller"));
   assert_eq!(result.observed_at(), Some(observed_at(42)));
   assert!(
-    matches!(result, DiscoveryResult::Failed(_, _, ClusterProviderError::StartMemberFailed(ref reason)) if reason == "backend unavailable")
+    matches!(result, DiscoveryResult::Failed(_, _, ClusterProviderError::JoinFailed(ref reason)) if reason == "backend unavailable")
   );
   assert!(result.to_authorities().is_empty());
 }

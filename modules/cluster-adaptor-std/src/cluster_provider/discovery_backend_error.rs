@@ -40,6 +40,6 @@ impl Error for DiscoveryBackendError {}
 
 impl From<DiscoveryBackendError> for ClusterProviderError {
   fn from(error: DiscoveryBackendError) -> Self {
-    ClusterProviderError::start_member(error.reason())
+    ClusterProviderError::join(error.reason())
   }
 }

@@ -8,7 +8,7 @@ use fraktor_cluster_core_kernel_rs::{
     SeedNodeProcess,
   },
   extension::ClusterProviderError,
-  topology::TopologyUpdate,
+  topology::{ClusterTopology, TopologyUpdate},
 };
 use fraktor_utils_core_rs::{sync::SharedAccess, time::TimerInstant};
 
@@ -115,14 +115,14 @@ where
       return Ok(());
     }
 
-    let provider = self.provider.upgrade().ok_or_else(|| ClusterProviderError::start_member("provider unavailable"))?;
+    let provider = self.provider.upgrade().ok_or_else(|| ClusterProviderError::join("provider unavailable"))?;
     let observed_at = self.next_observed_at();
     if let Some(result) = self.discovery_adapter.poll(observed_at) {
       if let Some(error) = result.error() {
         return Err(error.clone());
       }
       if let Some(update) = self.topology_mapper.apply(&result) {
-        Self::apply_topology_update(&provider, &update, self.seed_input.advertised_authority())?;
+        Self::apply_topology_update(&provider, &update, &self.seed_input)?;
       }
     }
     Ok(())
@@ -147,20 +147,33 @@ where
   fn apply_topology_update(
     provider: &LocalClusterProviderShared,
     update: &TopologyUpdate,
-    local_authority: &str,
+    seed_input: &SeedNodeInput,
   ) -> Result<(), ClusterProviderError> {
-    for authority in update.joined.iter() {
-      if authority == local_authority {
-        continue;
-      }
-      provider.with_write(|provider| provider.join(authority.as_str()))?;
+    let local_authority = seed_input.advertised_authority();
+    let joined: Vec<_> =
+      update.joined.iter().filter(|authority| authority.as_str() != local_authority).cloned().collect();
+    let left: Vec<_> = update
+      .left
+      .iter()
+      .filter(|authority| authority.as_str() != local_authority && !seed_input.seed_authorities().contains(authority))
+      .cloned()
+      .collect();
+    let dead: Vec<_> = update.dead.iter().filter(|authority| authority.as_str() != local_authority).cloned().collect();
+    if joined.is_empty() && left.is_empty() && dead.is_empty() {
+      return Ok(());
     }
-    for authority in update.left.iter() {
-      if authority == local_authority {
-        continue;
-      }
-      provider.with_write(|provider| provider.leave(authority.as_str()))?;
-    }
+
+    let topology = ClusterTopology::new(update.topology.hash(), joined.clone(), left.clone(), dead.clone());
+    let filtered = TopologyUpdate::new(
+      topology,
+      update.members.clone(),
+      joined,
+      left,
+      dead,
+      update.blocked.clone(),
+      update.observed_at,
+    );
+    provider.with_write(|provider| provider.apply_topology_update(&filtered));
     Ok(())
   }
 
