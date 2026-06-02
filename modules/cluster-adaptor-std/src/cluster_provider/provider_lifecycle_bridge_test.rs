@@ -1,16 +1,19 @@
+use alloc::boxed::Box;
 use std::{
   string::{String, ToString},
   time::Duration,
   vec::Vec,
 };
 
-use fraktor_actor_core_kernel_rs::event::stream::EventStreamShared;
+use fraktor_actor_core_kernel_rs::event::stream::{
+  EventStreamEvent, EventStreamShared, EventStreamSubscriber, EventStreamSubscriberShared, EventStreamSubscription,
+};
 use fraktor_cluster_core_kernel_rs::{
   cluster_provider::{DiscoveryTopologyMapper, LocalClusterProvider, LocalClusterProviderWeak, SeedNodeInput},
-  topology::BlockListProvider,
+  topology::{BlockListProvider, ClusterEvent},
 };
 use fraktor_utils_core_rs::{
-  sync::{ArcShared, SharedAccess, SpinSyncMutex},
+  sync::{ArcShared, SharedAccess, SharedLock, SpinSyncMutex},
   time::TimerInstant,
 };
 
@@ -24,6 +27,32 @@ struct EmptyBlockList;
 impl BlockListProvider for EmptyBlockList {
   fn blocked_members(&self) -> Vec<String> {
     Vec::new()
+  }
+}
+
+#[derive(Clone)]
+struct RecordingClusterEvents {
+  events: ArcShared<SpinSyncMutex<Vec<ClusterEvent>>>,
+}
+
+impl RecordingClusterEvents {
+  fn new() -> Self {
+    Self { events: ArcShared::new(SpinSyncMutex::new(Vec::new())) }
+  }
+
+  fn events(&self) -> Vec<ClusterEvent> {
+    self.events.lock().clone()
+  }
+}
+
+impl EventStreamSubscriber for RecordingClusterEvents {
+  fn on_event(&mut self, event: &EventStreamEvent) {
+    if let EventStreamEvent::Extension { name, payload } = event
+      && name == "cluster"
+      && let Some(cluster_event) = payload.payload().downcast_ref::<ClusterEvent>()
+    {
+      self.events.lock().push(cluster_event.clone());
+    }
   }
 }
 
@@ -59,6 +88,15 @@ fn block_list() -> ArcShared<dyn BlockListProvider> {
   ArcShared::new(EmptyBlockList)
 }
 
+fn subscribe_recorder(event_stream: &EventStreamShared) -> (RecordingClusterEvents, EventStreamSubscription) {
+  let subscriber_impl = RecordingClusterEvents::new();
+  let subscriber = EventStreamSubscriberShared::from_shared_lock(SharedLock::new_with_driver::<SpinSyncMutex<_>>(
+    Box::new(subscriber_impl.clone()),
+  ));
+  let subscription = event_stream.subscribe(&subscriber);
+  (subscriber_impl, subscription)
+}
+
 fn seed_input(advertised_authority: &str, seed_authorities: Vec<&str>) -> SeedNodeInput {
   SeedNodeInput::new(String::from(advertised_authority), seed_authorities.into_iter().map(String::from).collect())
 }
@@ -69,6 +107,33 @@ fn mapper() -> DiscoveryTopologyMapper {
 
 fn observed_at() -> TimerInstant {
   TimerInstant::from_ticks(1, Duration::from_secs(1))
+}
+
+#[test]
+fn provider_lifecycle_bridge_seed_input_publishes_topology_update() {
+  let event_stream = EventStreamShared::default();
+  let (subscriber_impl, _subscription) = subscribe_recorder(&event_stream);
+  let provider = wrap_local_cluster_provider(LocalClusterProvider::new(event_stream, block_list(), "node-a"));
+  let backend = CountingDiscoveryBackend::new("test-discovery", Vec::new());
+  let mut bridge = ProviderLifecycleBridge::new(
+    provider.downgrade(),
+    seed_input("node-a", Vec::from(["node-a", "node-b"])),
+    GenericDiscoveryAdapter::new(backend),
+    mapper(),
+  );
+
+  bridge.start_member().expect("member lifecycle should start");
+
+  let events = subscriber_impl.events();
+  let topology_events: Vec<&ClusterEvent> =
+    events.iter().filter(|event| matches!(event, ClusterEvent::TopologyUpdated { .. })).collect();
+  assert_eq!(topology_events.len(), 1);
+  assert!(matches!(
+    topology_events[0],
+    ClusterEvent::TopologyUpdated { update }
+    if update.joined == vec![String::from("node-b")]
+      && update.members == vec![String::from("node-a"), String::from("node-b")]
+  ));
 }
 
 #[test]

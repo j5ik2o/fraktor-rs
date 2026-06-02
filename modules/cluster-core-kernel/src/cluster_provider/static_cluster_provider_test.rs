@@ -123,6 +123,32 @@ fn start_client_also_publishes_static_topology() {
 }
 
 #[test]
+fn start_member_uses_only_configured_static_topology_contract() {
+  let event_stream = EventStreamShared::default();
+  let block_list: ArcShared<dyn BlockListProvider> = ArcShared::new(EmptyBlockList);
+
+  let (subscriber_impl, _subscription) = subscribe_recorder(&event_stream);
+
+  let static_topology = ClusterTopology::new(210, vec![String::from("node-static")], vec![], Vec::new());
+  let mut provider =
+    StaticClusterProvider::new(event_stream, block_list, "node-a").with_static_topology(static_topology);
+
+  provider.start_member().unwrap();
+
+  let events = subscriber_impl.events();
+  assert_eq!(events.len(), 1);
+  assert!(events.iter().all(|event| matches!(event, ClusterEvent::TopologyUpdated { .. })));
+  assert!(matches!(
+    &events[0],
+    ClusterEvent::TopologyUpdated { update }
+    if update.joined == vec![String::from("node-static")]
+      && update.members == vec![String::from("node-static"), String::from("node-a")]
+      && update.left.is_empty()
+      && update.blocked.is_empty()
+  ));
+}
+
+#[test]
 fn topology_includes_blocked_members_from_block_list_provider() {
   let event_stream = EventStreamShared::default();
   let block_list: ArcShared<dyn BlockListProvider> =

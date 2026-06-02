@@ -38,7 +38,7 @@
   - _Boundary: ProviderLifecycleBridge, GenericDiscoveryAdapter_
   - _Depends: 1, 4_
 
-- [ ] 6. 既存 Local / static / AWS ECS provider との interop を確認する
+- [x] 6. 既存 Local / static / AWS ECS provider との interop を確認する
   - Local provider の seed node input が SeedNodeProcess bridge を通じて topology update になることを確認する。
   - Static provider が discovery polling を開始しない既存 contract を維持することを確認する。
   - AWS ECS provider の existing polling behavior を壊さず、generic mapping contract と矛盾しないことを確認する。

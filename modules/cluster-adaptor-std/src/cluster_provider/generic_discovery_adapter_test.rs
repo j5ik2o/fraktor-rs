@@ -4,12 +4,21 @@ use std::{
 };
 
 use fraktor_cluster_core_kernel_rs::{
-  cluster_provider::{DiscoveredAuthority, DiscoveryResult},
+  cluster_provider::{DiscoveredAuthority, DiscoveryResult, DiscoveryTopologyMapper},
   extension::ClusterProviderError,
+  topology::BlockListProvider,
 };
-use fraktor_utils_core_rs::time::TimerInstant;
+use fraktor_utils_core_rs::{sync::ArcShared, time::TimerInstant};
 
 use crate::cluster_provider::{DiscoveryBackend, DiscoveryBackendError, GenericDiscoveryAdapter};
+
+struct EmptyBlockList;
+
+impl BlockListProvider for EmptyBlockList {
+  fn blocked_members(&self) -> Vec<String> {
+    Vec::new()
+  }
+}
 
 struct FakeDiscoveryBackend {
   source_identity: String,
@@ -38,6 +47,10 @@ impl DiscoveryBackend for FakeDiscoveryBackend {
 
 fn observed_at(ticks: u64) -> TimerInstant {
   TimerInstant::from_ticks(ticks, Duration::from_secs(1))
+}
+
+fn mapper() -> DiscoveryTopologyMapper {
+  DiscoveryTopologyMapper::new(ArcShared::new(EmptyBlockList))
 }
 
 fn assert_authority(authority: &DiscoveredAuthority, expected_authority: &str, expected_source: &str) {
@@ -88,4 +101,22 @@ fn generic_discovery_adapter_converts_backend_failure_to_observable_discovery_re
     matches!(result, DiscoveryResult::Failed(_, _, ClusterProviderError::StartMemberFailed(ref reason)) if reason == "backend unavailable")
   );
   assert!(result.to_authorities().is_empty());
+}
+
+#[test]
+fn generic_discovery_adapter_keeps_aws_ecs_style_authorities_compatible_with_topology_mapping() {
+  let backend = FakeDiscoveryBackend::successful(
+    "aws-ecs",
+    Vec::from([String::from("10.0.1.12:8080"), String::from("10.0.1.12:8080")]),
+  );
+  let mut adapter = GenericDiscoveryAdapter::new(backend);
+  let mut mapper = mapper();
+
+  let result = adapter.discover(observed_at(42));
+  let update = mapper.apply(&result).expect("aws ecs style authority should publish topology");
+
+  assert_eq!(update.joined, vec![String::from("10.0.1.12:8080")]);
+  assert_eq!(update.members, update.joined);
+  assert!(update.left.is_empty());
+  assert!(update.blocked.is_empty());
 }
