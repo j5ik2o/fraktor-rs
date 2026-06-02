@@ -1,6 +1,6 @@
 # cluster モジュール ギャップ分析
 
-更新日: 2026-06-01 (cluster-gossip-heartbeat-protocol evidence reflected)
+更新日: 2026-06-02 (cluster-downing-sbr-decision-model evidence reflected)
 
 ## 位置づけ
 
@@ -74,7 +74,7 @@ fraktor-rs 側はスキル指定の `pub` 系抽出で、型 204 件 (core-kerne
 | panic 系スタブ | 0 件 |
 | 機能 placeholder / TODO | 0 件 |
 
-cluster は、membership table、gossip dissemination、full gossip state merge / tombstone / seen digest、dedicated heartbeat evidence、failure detector registry、downing provider boundary、typed cluster facade、Grain/Placement/Identity、PubSub broker、UDP gossip transport などの基礎部品はかなり揃っている。一方で Pekko comparison の範囲で見ると、Split Brain Resolver の実行ロジック、cluster singleton/client、Pekko sharding の public API、Distributed Data/CRDT が大きく未実装である。
+cluster は、membership table、gossip dissemination、full gossip state merge / tombstone / seen digest、dedicated heartbeat evidence、failure detector registry、downing/SBR decision model、typed cluster facade、Grain/Placement/Identity、PubSub broker、UDP gossip transport などの基礎部品はかなり揃っている。一方で Pekko comparison の範囲で見ると、SBR runtime actor / down execution loop、cluster singleton/client、Pekko sharding の public API、Distributed Data/CRDT が大きく未実装である。
 
 旧版は raw Scala 宣言数をサマリーに置きつつ、`cluster-metrics` を混ぜ、`ShardedDaemonProcess` や typed API を YAGNI で n/a にしていた。固定スコープ版では、JVM 固有以外の public runtime contract を comparison gap として保持する。ただし、直近の implementation backlog は cluster Grain runtime roadmap 側で管理する。
 
@@ -83,7 +83,7 @@ cluster は、membership table、gossip dissemination、full gossip state merge 
 | 層 | Pekko 対応範囲 | fraktor-rs 現状 | 評価 |
 |----|----------------|-----------------|------|
 | core / membership | `Cluster`, `Member`, `MemberStatus`, `CurrentClusterState`, `ClusterEvent`, `Gossip`, `Reachability` | `ClusterExtension`, `ClusterApi`, `NodeRecord`, `NodeStatus`, `CurrentClusterState`, `MembershipCoordinator`, `GossipDisseminationCoordinator`, `ReachabilityMatrix`, `GossipStateModel`, `HeartbeatProtocolState`, `CrossDcHeartbeat` | UniqueAddress、data center、WeaklyUp、reachability matrix、gossip envelope、full gossip merge / tombstone / seen digest、dedicated heartbeat evidence の core contract はある。seed process は限定的 |
-| core / downing | `DowningProvider`, `NoDowning`, SBR | `DowningProvider`, `DowningInput`, `DowningDecision`, `FailureObservation`, `IndirectConnectionEvidence`, `NoopDowningProvider`, `SplitBrainResolverSettings`, `SplitBrainResolverStrategy` | downing input boundary は indirect evidence を受け取れるが、SBR 実行 actor / strategy 判定は未実装 |
+| core / downing | `DowningProvider`, `NoDowning`, SBR | `DowningProvider`, `DowningInput`, `DowningDecisionContext`, `DowningStrategyDecision`, `DowningDecisionTrace`, `FailureObservation`, `IndirectConnectionEvidence`, `NoopDowningProvider`, `SplitBrainResolver`, `LeaseMajorityPort`, `SplitBrainResolverProviderHook` | core decision model は SBR strategy と lease majority outcome を評価できる。SBR runtime actor / reachability change subscription / down execution loop は未実装 |
 | core / typed | typed `Cluster`, command, subscription, singleton, sharding typed API | `modules/cluster-core-typed` に typed `Cluster` / command / state subscription / self events / setup がある | typed Cluster の薄い facade はあるが、singleton / sharding typed API は未実装 |
 | core / virtual actor | `ClusterSharding`, `EntityRef`, `EntityTypeKey`, `ShardRegion`, coordinator | `GrainRef`, `GrainKey`, `VirtualActorRegistry`, `PlacementCoordinatorCore`, `PartitionIdentityLookup` | protoactor-go style の同等機能は強いが Pekko public API と remember/rebalance が不足 |
 | core / distributed state | `DistributedData`, `Replicator`, CRDT 型群 | なし | 未実装 |
@@ -118,17 +118,17 @@ cluster は、membership table、gossip dissemination、full gossip state merge 
 
 実装済みとして扱うもの: `MembershipTable`、`MembershipDelta`、`MembershipVersion`、`VectorClock`、`DefaultFailureDetectorRegistry`、`MembershipCoordinator::poll` による suspect/dead 遷移、`GossipEnvelope`、`GossipStateModel`、`HeartbeatProtocolState`、`CrossDcHeartbeat`、logical envelope handoff、`TokioGossipTransport`。
 
-### 3. Downing / Split Brain Resolver　✅ 実装済み 7/8 (88%)
+### 3. Downing / Split Brain Resolver　✅ decision model 実装済み / runtime actor remaining
 
 | Pekko API / 契約 | Pekko 参照 | fraktor-rs 対応 | 実装先層 | 難易度 | 備考 |
 |------------------|------------|-----------------|----------|--------|------|
-| `SplitBrainResolver` | `SplitBrainResolver.scala:50`, `SplitBrainResolver.scala:160` | 未対応 | core + std | hard | stable-after、責任ノード、reachability 変化監視、down 実行がない |
-| `DowningStrategy` / decision model | `DowningStrategy.scala:34`, `DowningStrategy.scala:70` | 部分実装 | core/downing_provider | hard | `SplitBrainResolverStrategy` の識別子はあるが、KeepMajority / StaticQuorum / KeepOldest / LeaseMajority の判定モデルがない |
-| `SplitBrainResolverProvider` | `SplitBrainResolverProvider.scala` | baseline 契約済み | core/downing_provider + core/extension | easy | full SBR provider ではなく provider compatibility metadata / factory surface のみ。`DowningProviderCompatibility::provider_key`、`sbr_settings_identity`、`ClusterExtensionInstaller::with_downing_provider_factory` を `downing_provider_compatibility` / `cluster_extension_installer` / `noop_downing_provider` tests で確認。SBR 実行 actor、strategy evaluator、lease majority は downstream `cluster-downing-sbr-decision-model` / future work |
-| lease-based majority | `DowningStrategy.scala:602` | 未対応 | core + std | hard | lease abstraction / coordination integration がない |
-| indirect connection handling | `DowningStrategy.scala:245` | evidence contract 実装済み | core/membership + core/downing_provider | medium | `ReachabilityMatrix::indirect_evidence_for` と `IndirectConnectionEvidence` が direct / indirect observation、observer aggregate status、direct-only fallback を表現する。`DowningInput::IndirectConnectionEvidence` は evidence を渡すだけで、`NoopDowningProvider` は decision を実行せず `Defer`。SBR strategy 判定は未実装 |
+| `SplitBrainResolver` | `SplitBrainResolver.scala:50`, `SplitBrainResolver.scala:160` | core evaluator 実装済み | core/downing_provider + std/provider | hard | `SplitBrainResolver` が `DowningDecisionContext` を評価し、KeepMajority / StaticQuorum / KeepOldest / DownAll / LeaseMajority の trace 付き decision を返す。stable-after は pending trace、down-all timeout は all-down trace として観測できる。SBR runtime actor、責任ノード選択、reachability 変化監視、provider からの実 down loop は未実装 |
+| `DowningStrategy` / decision model | `DowningStrategy.scala:34`, `DowningStrategy.scala:70` | core decision model 実装済み | core/downing_provider | hard | `DowningStrategyDecision` と `DowningDecisionTrace` が keep/down/defer/all-down、retained partition、downing targets、tie-break、stable-after、down-all timeout、lease outcome を保持する。tests: `downing_strategy_decision`, `split_brain_resolver` |
+| `SplitBrainResolverProvider` | `SplitBrainResolverProvider.scala` | provider-facing binding 実装済み | core/downing_provider + std/provider | easy | `SplitBrainResolverProviderHook` が provider key、SBR settings、strategy identity を compatibility metadata として公開し、trace decision を `DowningDecision` / `ClusterProviderError` に変換する。`StdSplitBrainResolverProvider` は lifecycle start 時に hook と lease backend adapter を構成し、stop/drop で backend state を close する。tests: `split_brain_resolver_provider_hook`, `split_brain_resolver_provider` |
+| lease-based majority | `DowningStrategy.scala:602` | port contract + std binding 実装済み | core/downing_provider + std/provider | hard | `LeaseMajorityPort` / `LeaseAcquisitionOutcome` が acquired、denied、unavailable、unknown、backend missing を区別し、`SplitBrainResolver::decide_with_lease` が lease acquired の場合だけ majority partition を keep する。std 側は `StdLeaseMajorityBackend` を provider lifecycle 内で所有する。concrete coordination backend / retry / network I/O は未実装 |
+| indirect connection handling | `DowningStrategy.scala:245` | evidence contract + decision input 実装済み | core/membership + core/downing_provider | medium | `ReachabilityMatrix::indirect_evidence_for` と `IndirectConnectionEvidence` が direct / indirect observation、observer aggregate status、direct-only fallback を表現する。`DowningDecisionContext` は `DowningInput::IndirectConnectionEvidence` を SBR evaluation input に変換できる |
 
-実装済みとして扱うもの: `DowningProvider` trait、`DowningInput` / `DowningDecision` / `FailureObservation` / `IndirectConnectionEvidence`、`NoopDowningProvider`、`SplitBrainResolverSettings`、`SplitBrainResolverStrategy`、明示 `ClusterApi::down` hook、downing provider / SBR settings の join compatibility。
+実装済みとして扱うもの: `DowningProvider` trait、`DowningInput` / `DowningDecision` / `DowningDecisionContext` / `DowningStrategyDecision` / `DowningDecisionTrace`、`FailureObservation` / `IndirectConnectionEvidence`、`NoopDowningProvider`、`SplitBrainResolverSettings` / `SplitBrainResolverStrategy` / `SplitBrainResolver`、`LeaseMajorityPort` / `LeaseAcquisitionOutcome`、`SplitBrainResolverProviderHook`、`StdSplitBrainResolverProvider`、明示 `ClusterApi::down` hook、downing provider / SBR settings の join compatibility。
 
 ### 4. Cluster router pool / group　✅ 実装済み 6/6 (100%)
 
@@ -247,12 +247,11 @@ cluster は、membership table、gossip dissemination、full gossip state merge 
 
 | 項目 | 実装先層 | 状態 | 根拠 / evidence |
 |------|----------|------|-----------------|
-| `SplitBrainResolverProvider` | core/downing_provider + core/extension | baseline 契約済み | provider compatibility metadata / factory surface のみ。`DowningProviderCompatibility::provider_key`、`sbr_settings_identity`、`ClusterExtensionInstaller::with_downing_provider_factory`。tests: `downing_provider_compatibility`, `cluster_extension_installer`, `noop_downing_provider` |
 | config compatibility full key set | core/config | baseline 実装済み | `ClusterCompatibilityKeyCatalog`、`JoinCompatibilityComposition`、`ClusterExtensionConfig::check_join_compatibility`。tests: `cluster_compatibility_key`, `join_compatibility` |
 | `remotePathOf` | core/extension | 実装済み | `ClusterApi::remote_path_of`。tests: `remote_path_of_*` |
 | transport lifecycle bridge retention | std/provider | 実装済み | `subscribe_remoting_events`、`EventStreamSubscription`、weak provider retention。tests: `local_cluster_provider_ext` |
 
-上記は cluster-active-compatibility-baseline の完了 evidence であり、次の項目を完了扱いにしない: seed process / discovery provider、downing decision model / SBR execution / lease majority、pubsub mediator / serialization / cluster message serializer、Deferred Pekko concepts。特に `SplitBrainResolverProvider` は provider metadata と factory surface の baseline に限定し、SBR 実行 actor、strategy evaluator、lease majority は downstream `cluster-downing-sbr-decision-model` / future work に残す。
+上記は cluster-active-compatibility-baseline の完了 evidence であり、次の項目を完了扱いにしない: seed process / discovery provider、pubsub mediator / serialization / cluster message serializer、Deferred Pekko concepts。`SplitBrainResolverProvider` は下の `cluster-downing-sbr-decision-model` evidence に移動した。
 
 ### Completed active follow-up: membership / reachability model
 
@@ -264,7 +263,7 @@ cluster は、membership table、gossip dissemination、full gossip state merge 
 | `Reachability` matrix | core/membership | core contract 実装済み | `ReachabilityMatrix` / `ReachabilityRecord` / `ReachabilitySnapshot` が observer / subject / status / version、reachable prune、terminated precedence、aggregate status、snapshot propagation を保持。tests: `reachability_matrix::*`, `reachability_snapshot_tracks_failure_detector_and_heartbeat_receipt` |
 | indirect connection handling | core/membership + core/downing_provider | evidence contract 実装済み | `IndirectConnectionEvidence` と `DowningInput::IndirectConnectionEvidence` が partial connectivity evidence を渡す。downing decision、lease majority、SBR strategy は実行しない。tests: `indirect_connection_evidence::*` |
 
-この completed table は `cluster-membership-reachability-model` の core contract evidence だけを表す。次の責務は未完了のまま downstream spec に残す: SplitBrainResolver / DowningStrategy / lease-based majority、SeedNodeProcess / generic discovery adapter、DistributedPubSubMediator / topic registry gossip、cluster message serializer contract、Deferred Pekko concepts。
+この completed table は `cluster-membership-reachability-model` の core contract evidence だけを表す。次の責務は未完了のまま downstream / future scope に残す: SBR runtime actor、provider からの実 down execution loop、concrete lease coordination backend、SeedNodeProcess / generic discovery adapter、DistributedPubSubMediator / topic registry gossip、cluster message serializer contract、Deferred Pekko concepts。
 
 ### Completed active follow-up: gossip / heartbeat protocol
 
@@ -275,7 +274,19 @@ cluster は、membership table、gossip dissemination、full gossip state merge 
 | dedicated cluster heartbeat protocol | core/membership | core protocol 実装済み | `HeartbeatProtocolState`、`HeartbeatRequest`、`HeartbeatResponse`、`HeartbeatEvidence` が sequence number、request/response 照合、first / regular timeout evidence を扱う。tests: `heartbeat_tick_generates_sequence_per_peer`, `heartbeat_request_roundtrip_produces_reachable_evidence`, `first_and_regular_heartbeat_timeouts_are_observable` |
 | `CrossDcClusterHeartbeat` | core/membership | core evidence 実装済み | `CrossDcHeartbeat`、`CrossDcHeartbeatRequest`、`CrossDcHeartbeatResponse`、`CrossDcHeartbeatEvidence` が data center pair 付き cross-DC liveness evidence と target change を扱う。tests: `cross_dc_*` |
 
-この completed table は `cluster-gossip-heartbeat-protocol` の evidence だけを表す。次の責務は未完了のまま downstream spec に残す: SplitBrainResolver / DowningStrategy / lease-based majority、SeedNodeProcess / generic discovery adapter、DistributedPubSubMediator / topic registry gossip、cluster message serializer contract、versioned transport handoff / serde-postcard envelope bytes、Deferred Pekko concepts。
+この completed table は `cluster-gossip-heartbeat-protocol` の evidence だけを表す。次の責務は未完了のまま downstream / future scope に残す: SBR runtime actor、provider からの実 down execution loop、concrete lease coordination backend、SeedNodeProcess / generic discovery adapter、DistributedPubSubMediator / topic registry gossip、cluster message serializer contract、versioned transport handoff / serde-postcard envelope bytes、Deferred Pekko concepts。
+
+### Completed active follow-up: downing / SBR decision model
+
+| 項目 | 実装先層 | 状態 | 根拠 / evidence |
+|------|----------|------|-----------------|
+| Downing evaluation input | core/downing_provider | core contract 実装済み | `DowningDecisionContext` が membership snapshot、reachability evidence、evaluation time、explicit down input を保持し、evidence 不足時の defer reason を生成する。tests: `downing_decision_context::*` |
+| `DowningStrategy` / decision model | core/downing_provider | core decision model 実装済み | `DowningStrategyDecision` と `DowningDecisionTrace` が keep/down/defer/all-down、retained partition、downing targets、tie-break、stable-after、down-all timeout、lease outcome を保持する。tests: `downing_strategy_decision::*` |
+| `SplitBrainResolver` | core/downing_provider | core evaluator 実装済み | `SplitBrainResolver` が KeepMajority、StaticQuorum、KeepOldest、DownAll、LeaseMajority を `DowningDecisionContext` から評価し、member state を変更せず trace 付き decision を返す。tests: `split_brain_resolver::*` |
+| lease-based majority | core/downing_provider + std/provider | port contract + std binding 実装済み | `LeaseMajorityPort` / `LeaseAcquisitionOutcome` と `StdLeaseMajorityBackend` が lease outcome を core vocabulary へ変換し、`StdSplitBrainResolverProvider` が lifecycle 内で backend を所有する。tests: `lease_majority_port`, `lease_acquisition_outcome`, `split_brain_resolver_provider` |
+| provider-facing SBR integration | core/downing_provider + std/provider | provider binding 実装済み | `SplitBrainResolverProviderHook` が compatibility metadata と decision/error mapping を提供し、`StdSplitBrainResolverProvider` が start/stop/drop lifecycle で hook と backend adapter を管理する。tests: `split_brain_resolver_provider_hook`, `split_brain_resolver_provider` |
+
+この completed table は `cluster-downing-sbr-decision-model` の evidence だけを表す。次の責務は未完了のまま downstream / future scope に残す: SBR runtime actor、責任ノード選択、reachability 変化監視、provider からの実 down execution loop、concrete lease coordination backend、SeedNodeProcess / generic discovery adapter、DistributedPubSubMediator / topic registry gossip、cluster message serializer contract、Deferred Pekko concepts。
 
 ### Active comparison follow-up: medium
 
@@ -291,9 +302,6 @@ cluster は、membership table、gossip dissemination、full gossip state merge 
 
 | 項目 | 実装先層 | 根拠 |
 |------|----------|------|
-| `SplitBrainResolver` | core + std | カテゴリ3 |
-| `DowningStrategy` / decision model | core/downing_provider | カテゴリ3 |
-| lease-based majority | core + std | カテゴリ3 |
 | topic registry gossip / delta collection | core/pub_sub + membership | カテゴリ7 |
 | cluster message serializer contract | std/wire + actor-core serialization | カテゴリ10 |
 
@@ -359,7 +367,7 @@ cluster は、membership table、gossip dissemination、full gossip state merge 
 
 ## まとめ
 
-cluster は membership、gossip / heartbeat contract、downing provider boundary、typed Cluster facade、Grain/Placement/Identity、PubSub、std UDP gossip transport という fraktor-rs 独自の基礎は強い。一方で、Pekko comparison の固定スコープ全体としては SBR 実行ロジック、singleton/client/receptionist、Distributed Data/CRDT、Pekko sharding public API が大きく未実装で、現時点の比較カバレッジは中程度である。
+cluster は membership、gossip / heartbeat contract、downing/SBR decision model、typed Cluster facade、Grain/Placement/Identity、PubSub、std UDP gossip transport という fraktor-rs 独自の基礎は強い。一方で、Pekko comparison の固定スコープ全体としては SBR runtime actor / down execution loop、singleton/client/receptionist、Distributed Data/CRDT、Pekko sharding public API が大きく未実装で、現時点の比較カバレッジは中程度である。
 
 Pekko 概念を将来採用するなら、低コストで comparison gap を縮めやすいのは、`PrepareForFullClusterShutdown` command、基本 CRDT、std `ClusterApi` wrapper の再公開である。join config compatibility の checker composition、membership/reachability model、gossip/heartbeat protocol の core contract は契約化済み。router role/max-per-node 設定は、Pekko public API parity ではなく現行 router contract の拡張として実装済み。ただし、残りの実装には個別の OpenSpec change が必要であり、現在の Grain runtime roadmap の直近優先度とは分けて扱う。
 

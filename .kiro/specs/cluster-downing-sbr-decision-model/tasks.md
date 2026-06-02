@@ -68,7 +68,7 @@
   - _Requirements: 1.5, 5.1, 5.2, 5.3, 5.4_
   - _Boundary: ScopeGuard_
   - _Depends: 4.2_
-- [ ] 5.2 downing/SBR follow-up の evidence を更新して targeted verification を通す
+- [x] 5.2 downing/SBR follow-up の evidence を更新して targeted verification を通す
   - gap analysis の更新を downing/SBR decision model、SplitBrainResolver、DowningStrategy、lease-based majority、provider-facing SBR integration に限定する。
   - 対象 crate の unit tests と必要な no-std / dylint check が通る状態にする。
   - generated evidence と test result から active follow-up の完了範囲が追跡できる状態にする。
