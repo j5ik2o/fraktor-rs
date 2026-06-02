@@ -117,10 +117,13 @@ where
 
     let provider = self.provider.upgrade().ok_or_else(|| ClusterProviderError::start_member("provider unavailable"))?;
     let observed_at = self.next_observed_at();
-    if let Some(result) = self.discovery_adapter.poll(observed_at)
-      && let Some(update) = self.topology_mapper.apply(&result)
-    {
-      Self::apply_topology_update(&provider, &update)?;
+    if let Some(result) = self.discovery_adapter.poll(observed_at) {
+      if let Some(error) = result.error() {
+        return Err(error.clone());
+      }
+      if let Some(update) = self.topology_mapper.apply(&result) {
+        Self::apply_topology_update(&provider, &update)?;
+      }
     }
     Ok(())
   }

@@ -93,6 +93,26 @@ impl DiscoveryBackend for CountingDiscoveryBackend {
   }
 }
 
+struct FailingDiscoveryBackend {
+  source_identity: String,
+}
+
+impl FailingDiscoveryBackend {
+  fn new(source_identity: &str) -> Self {
+    Self { source_identity: source_identity.to_string() }
+  }
+}
+
+impl DiscoveryBackend for FailingDiscoveryBackend {
+  fn source_identity(&self) -> &str {
+    self.source_identity.as_str()
+  }
+
+  fn discover(&mut self) -> Result<Vec<String>, DiscoveryBackendError> {
+    Err(DiscoveryBackendError::temporary("backend unavailable"))
+  }
+}
+
 fn block_list() -> ArcShared<dyn BlockListProvider> {
   ArcShared::new(EmptyBlockList)
 }
@@ -222,6 +242,26 @@ fn provider_lifecycle_bridge_refreshes_discovery_after_member_start() {
       && update.left == vec![String::from("node-b")]
       && update.members == vec![String::from("node-a"), String::from("node-c")]
   ));
+}
+
+#[test]
+fn provider_lifecycle_bridge_propagates_backend_failure_without_destroying_topology() {
+  let event_stream = EventStreamShared::default();
+  let provider = wrap_local_cluster_provider(LocalClusterProvider::new(event_stream, block_list(), "node-a"));
+  let mut bridge = ProviderLifecycleBridge::new(
+    provider.downgrade(),
+    seed_input("node-a", Vec::new()),
+    GenericDiscoveryAdapter::new(FailingDiscoveryBackend::new("test-discovery")),
+    mapper(),
+  );
+
+  let result = bridge.start_member();
+
+  assert!(matches!(
+    result,
+    Err(ClusterProviderError::StartMemberFailed(ref reason)) if reason == "backend unavailable"
+  ));
+  assert_eq!(provider.with_read(|provider| provider.member_count()), 1);
 }
 
 #[test]
