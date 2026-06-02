@@ -41,4 +41,25 @@ impl ReachabilitySnapshot {
     }
     aggregate
   }
+
+  /// Returns true when the snapshot contains row evidence for the observer.
+  #[must_use]
+  pub fn has_observer(&self, observer: &UniqueAddress) -> bool {
+    self.observer_versions.contains_key(observer)
+  }
+
+  /// Returns the status observed by one observer for a subject.
+  #[must_use]
+  pub fn observed_status(&self, observer: &UniqueAddress, subject: &UniqueAddress) -> Option<ReachabilityStatus> {
+    if !self.has_observer(observer) {
+      return None;
+    }
+    Some(
+      self
+        .records
+        .iter()
+        .find(|record| &record.observer == observer && &record.subject == subject)
+        .map_or(ReachabilityStatus::Reachable, |record| record.status),
+    )
+  }
 }

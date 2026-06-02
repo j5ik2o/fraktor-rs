@@ -30,6 +30,8 @@ fn split_brain_resolver_settings_preserve_active_strategy_and_durations() {
   assert_eq!(settings.stable_after(), Duration::from_secs(20));
   assert_eq!(settings.active_strategy(), SplitBrainResolverStrategy::KeepMajority);
   assert_eq!(settings.down_all_when_unstable(), Duration::from_secs(15));
+  assert_eq!(settings.static_quorum_size(), None);
+  assert_eq!(settings.with_static_quorum_size(3).static_quorum_size(), Some(3));
 }
 
 #[test]
@@ -61,6 +63,24 @@ fn downing_provider_compatibility_preserves_split_brain_resolver_settings() {
 }
 
 #[test]
+fn non_static_quorum_identity_ignores_static_quorum_size() {
+  let settings = SplitBrainResolverSettings::new(
+    Duration::from_secs(20),
+    SplitBrainResolverStrategy::KeepMajority,
+    Duration::from_secs(15),
+  )
+  .with_static_quorum_size(3);
+
+  let compatibility =
+    DowningProviderCompatibility::new("split-brain-resolver").with_split_brain_resolver_settings(settings);
+
+  assert_eq!(
+    compatibility.sbr_settings_identity(),
+    Some("stable-after-nanos=20000000000;active-strategy=keep-majority;down-all-when-unstable-nanos=15000000000")
+  );
+}
+
+#[test]
 #[should_panic(expected = "downing provider compatibility key must not be empty")]
 fn downing_provider_compatibility_rejects_empty_provider_key() {
   let _compatibility = DowningProviderCompatibility::new("");
@@ -70,15 +90,18 @@ fn downing_provider_compatibility_rejects_empty_provider_key() {
 fn split_brain_resolver_settings_identity_uses_strategy_identifier_and_durations() {
   let settings = SplitBrainResolverSettings::new(
     Duration::from_millis(2500),
-    SplitBrainResolverStrategy::LeaseMajority,
+    SplitBrainResolverStrategy::StaticQuorum,
     Duration::from_millis(750),
-  );
+  )
+  .with_static_quorum_size(3);
 
   let compatibility =
     DowningProviderCompatibility::new("split-brain-resolver").with_split_brain_resolver_settings(settings);
 
   assert_eq!(
     compatibility.sbr_settings_identity(),
-    Some("stable-after-nanos=2500000000;active-strategy=lease-majority;down-all-when-unstable-nanos=750000000")
+    Some(
+      "stable-after-nanos=2500000000;active-strategy=static-quorum;down-all-when-unstable-nanos=750000000;static-quorum-size=3"
+    )
   );
 }
