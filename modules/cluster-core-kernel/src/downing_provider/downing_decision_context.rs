@@ -153,15 +153,9 @@ impl DowningDecisionContext {
   /// Returns elapsed unstable duration at evaluation time.
   #[must_use]
   pub fn unstable_duration(&self) -> Duration {
-    if self.evaluation_time.resolution() != self.unstable_since.resolution()
-      || self.evaluation_time.ticks() < self.unstable_since.ticks()
-    {
-      return Duration::ZERO;
-    }
-    ticks_to_duration(
-      self.evaluation_time.ticks().saturating_sub(self.unstable_since.ticks()),
-      self.evaluation_time.resolution(),
-    )
+    let evaluation_duration = ticks_to_duration(self.evaluation_time.ticks(), self.evaluation_time.resolution());
+    let unstable_since_duration = ticks_to_duration(self.unstable_since.ticks(), self.unstable_since.resolution());
+    evaluation_duration.saturating_sub(unstable_since_duration)
   }
 
   /// Returns the membership snapshot when this context was built from membership state.

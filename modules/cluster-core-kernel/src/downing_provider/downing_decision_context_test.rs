@@ -170,6 +170,25 @@ fn unstable_since_tracks_elapsed_membership_instability() {
 }
 
 #[test]
+fn unstable_duration_normalizes_mixed_timer_resolutions() {
+  let subject = unique("subject", 1);
+  let observer = unique("observer", 2);
+  let mut reachability = ReachabilityMatrix::new();
+  reachability.reachable(observer, subject.clone());
+  let snapshot = MembershipSnapshot::new_with_reachability(
+    MembershipVersion::new(1),
+    vec![node_record(subject, DataCenter::new("dc-east"), "node-a", NodeStatus::Up)],
+    reachability.snapshot(),
+  );
+  let evaluation_time = TimerInstant::from_ticks(2, Duration::from_secs(1));
+
+  let context = DowningDecisionContext::from_membership_snapshot(snapshot, evaluation_time)
+    .with_unstable_since(TimerInstant::from_ticks(500, Duration::from_millis(1)));
+
+  assert_eq!(context.unstable_duration(), Duration::from_millis(1500));
+}
+
+#[test]
 fn reachable_observer_version_counts_as_reachability_evidence() {
   let observer = unique("observer", 1);
   let subject = unique("subject", 2);

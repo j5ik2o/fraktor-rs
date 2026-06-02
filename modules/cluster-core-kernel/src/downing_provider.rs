@@ -50,7 +50,13 @@ pub trait DowningProvider: Send + Sync {
   /// Returns [`ClusterProviderError`] when the strategy cannot decide.
   fn decide_context(&mut self, context: &DowningDecisionContext) -> Result<DowningDecision, ClusterProviderError> {
     if let Some(authority) = context.explicit_down_authority() {
-      self.decide(&DowningInput::explicit_down(authority))
+      return self.decide(&DowningInput::explicit_down(authority));
+    }
+    if let Some(observation) = context.failure_observation() {
+      return self.decide(&DowningInput::FailureObservation(observation.clone()));
+    }
+    if let Some(indirect_connection_evidence) = context.indirect_connection_evidence() {
+      self.decide(&DowningInput::IndirectConnectionEvidence(indirect_connection_evidence.clone()))
     } else {
       Ok(DowningDecision::Defer)
     }

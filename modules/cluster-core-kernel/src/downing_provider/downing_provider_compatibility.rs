@@ -2,7 +2,7 @@
 
 use alloc::{format, string::String};
 
-use super::SplitBrainResolverSettings;
+use super::{SplitBrainResolverSettings, SplitBrainResolverStrategy};
 
 pub(crate) const NOOP_DOWNING_PROVIDER_KEY: &str = "noop";
 const EMPTY_DOWNING_PROVIDER_KEY_REASON: &str = "downing provider compatibility key must not be empty";
@@ -68,7 +68,9 @@ fn format_sbr_settings_identity(settings: SplitBrainResolverSettings) -> String 
     settings.active_strategy().as_str(),
     settings.down_all_when_unstable().as_nanos()
   );
-  if let Some(size) = settings.static_quorum_size() {
+  if let (SplitBrainResolverStrategy::StaticQuorum, Some(size)) =
+    (settings.active_strategy(), settings.static_quorum_size())
+  {
     identity.push_str(";static-quorum-size=");
     identity.push_str(&format!("{size}"));
   }
