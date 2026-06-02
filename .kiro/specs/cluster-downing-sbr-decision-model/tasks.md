@@ -52,7 +52,7 @@
   - _Requirements: 4.1, 4.2, 4.4, 4.5_
   - _Boundary: SplitBrainResolverProviderHook_
   - _Depends: 2.2, 3.2_
-- [ ] 4.2 std provider lifecycle と lease backend binding を追加する
+- [x] 4.2 std provider lifecycle と lease backend binding を追加する
   - std provider が lifecycle start 時に SBR hook と lease backend adapter を構成する。
   - stop/drop 時に pending lease operation と provider-owned state が残らないことを test で確認する。
   - std 側が strategy semantics を再実装せず core hook へ委譲していることを review 可能な構造にする。
