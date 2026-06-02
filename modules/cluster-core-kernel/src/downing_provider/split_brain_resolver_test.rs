@@ -44,6 +44,10 @@ fn context(snapshot: MembershipSnapshot) -> DowningDecisionContext {
   DowningDecisionContext::from_membership_snapshot(snapshot, TimerInstant::zero(Duration::from_millis(1)))
 }
 
+fn context_with_observer(snapshot: MembershipSnapshot, observer: UniqueAddress) -> DowningDecisionContext {
+  context(snapshot).with_reachability_observer(observer)
+}
+
 #[test]
 fn keep_majority_keeps_reachable_majority_partition() {
   let node_a = record("node-a", 1, NodeStatus::Up, 1);
@@ -68,6 +72,57 @@ fn keep_majority_keeps_reachable_majority_partition() {
   assert_eq!(decision.trace().strategy(), SplitBrainResolverStrategy::KeepMajority);
   assert_eq!(decision.retained_partition(), &[node_a.unique_address.clone(), node_b.unique_address.clone()]);
   assert_eq!(decision.downing_targets(), slice::from_ref(&node_c.unique_address));
+}
+
+#[test]
+fn keep_majority_defers_when_multi_observer_partition_lacks_local_observer() {
+  let node_a = record("node-a", 1, NodeStatus::Up, 1);
+  let node_b = record("node-b", 2, NodeStatus::Up, 2);
+  let mut reachability = ReachabilityMatrix::new();
+  reachability.unreachable(node_a.unique_address.clone(), node_b.unique_address.clone());
+  reachability.unreachable(node_b.unique_address.clone(), node_a.unique_address.clone());
+  let snapshot = MembershipSnapshot::new_with_reachability(
+    MembershipVersion::new(10),
+    vec![node_a, node_b],
+    reachability.snapshot(),
+  );
+  let resolver = SplitBrainResolver::new(SplitBrainResolverSettings::new(
+    Duration::ZERO,
+    SplitBrainResolverStrategy::KeepMajority,
+    Duration::from_secs(30),
+  ));
+
+  let decision = resolver.decide(&context(snapshot));
+
+  assert_eq!(decision.simple_decision(), DowningDecision::Defer);
+  assert_eq!(
+    decision.trace().reason(),
+    "local reachability observer is required for multi-observer membership evaluation"
+  );
+}
+
+#[test]
+fn keep_majority_uses_local_observer_partition_for_symmetric_split() {
+  let node_a = record("node-a", 1, NodeStatus::Up, 1);
+  let node_b = record("node-b", 2, NodeStatus::Up, 2);
+  let mut reachability = ReachabilityMatrix::new();
+  reachability.unreachable(node_a.unique_address.clone(), node_b.unique_address.clone());
+  reachability.unreachable(node_b.unique_address.clone(), node_a.unique_address.clone());
+  let snapshot = MembershipSnapshot::new_with_reachability(
+    MembershipVersion::new(10),
+    vec![node_a.clone(), node_b],
+    reachability.snapshot(),
+  );
+  let resolver = SplitBrainResolver::new(SplitBrainResolverSettings::new(
+    Duration::ZERO,
+    SplitBrainResolverStrategy::KeepMajority,
+    Duration::from_secs(30),
+  ));
+
+  let decision = resolver.decide(&context_with_observer(snapshot, node_a.unique_address));
+
+  assert_eq!(decision.simple_decision(), DowningDecision::Defer);
+  assert_eq!(decision.trace().tie_break_rule(), Some("reachable and non-reachable partitions have equal size"));
 }
 
 #[test]

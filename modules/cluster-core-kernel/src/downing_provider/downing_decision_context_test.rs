@@ -43,7 +43,7 @@ fn membership_context_preserves_member_evidence_and_evaluation_time() {
   let mut reachability = ReachabilityMatrix::new();
   reachability.unreachable(observer.clone(), weakly_up_member.clone());
   reachability.reachable(indirect_observer, weakly_up_member.clone());
-  reachability.terminated(observer, terminated_member.clone());
+  reachability.terminated(observer.clone(), terminated_member.clone());
   let indirect_evidence =
     reachability.indirect_evidence_for(&weakly_up_member).expect("indirect reachability evidence");
   let snapshot = MembershipSnapshot::new_with_reachability(
@@ -57,15 +57,63 @@ fn membership_context_preserves_member_evidence_and_evaluation_time() {
     snapshot,
     indirect_evidence,
     evaluation_time,
-  );
+  )
+  .with_reachability_observer(observer.clone());
 
   assert_eq!(context.evaluation_time(), evaluation_time);
+  assert_eq!(context.reachability_observer(), Some(&observer));
   assert_eq!(context.indirect_connection_evidence().expect("indirect evidence").subject, weakly_up_member);
   assert_eq!(context.member_record(&weakly_up_member).expect("weakly-up member").status, NodeStatus::WeaklyUp);
   assert_eq!(context.member_record(&weakly_up_member).expect("weakly-up member").data_center, east);
   assert_eq!(context.reachability_status(&weakly_up_member), Some(ReachabilityStatus::Unreachable));
   assert_eq!(context.member_record(&terminated_member).expect("terminated member").data_center, west);
   assert_eq!(context.reachability_status(&terminated_member), Some(ReachabilityStatus::Terminated));
+  assert_eq!(context.defer_reason(), None);
+}
+
+#[test]
+fn multi_observer_membership_requires_reachability_observer() {
+  let observer_a = unique("observer-a", 1);
+  let observer_b = unique("observer-b", 2);
+  let subject = unique("subject", 3);
+  let mut reachability = ReachabilityMatrix::new();
+  reachability.unreachable(observer_a.clone(), subject.clone());
+  reachability.reachable(observer_b, subject.clone());
+  let snapshot = MembershipSnapshot::new_with_reachability(
+    MembershipVersion::new(1),
+    vec![node_record(subject, DataCenter::new("dc-east"), "node-a", NodeStatus::Up)],
+    reachability.snapshot(),
+  );
+
+  let context =
+    DowningDecisionContext::from_membership_snapshot(snapshot, TimerInstant::zero(Duration::from_millis(100)));
+
+  assert!(context.requires_reachability_observer());
+  assert_eq!(
+    context.defer_reason(),
+    Some("local reachability observer is required for multi-observer membership evaluation")
+  );
+}
+
+#[test]
+fn reachability_observer_reads_local_row_before_aggregate_status() {
+  let observer_a = unique("observer-a", 1);
+  let observer_b = unique("observer-b", 2);
+  let subject = unique("subject", 3);
+  let mut reachability = ReachabilityMatrix::new();
+  reachability.unreachable(observer_a, subject.clone());
+  reachability.reachable(observer_b.clone(), subject.clone());
+  let snapshot = MembershipSnapshot::new_with_reachability(
+    MembershipVersion::new(1),
+    vec![node_record(subject.clone(), DataCenter::new("dc-east"), "node-a", NodeStatus::Up)],
+    reachability.snapshot(),
+  );
+
+  let context =
+    DowningDecisionContext::from_membership_snapshot(snapshot, TimerInstant::zero(Duration::from_millis(100)))
+      .with_reachability_observer(observer_b);
+
+  assert_eq!(context.reachability_status(&subject), Some(ReachabilityStatus::Reachable));
   assert_eq!(context.defer_reason(), None);
 }
 

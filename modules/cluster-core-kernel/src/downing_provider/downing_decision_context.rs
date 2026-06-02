@@ -13,6 +13,8 @@ use super::{DowningInput, FailureObservation};
 use crate::membership::{IndirectConnectionEvidence, MembershipSnapshot, NodeRecord, ReachabilityStatus};
 
 const MISSING_REACHABILITY_EVIDENCE: &str = "reachability evidence is required for membership evaluation";
+const LOCAL_REACHABILITY_OBSERVER_REQUIRED: &str =
+  "local reachability observer is required for multi-observer membership evaluation";
 
 /// Immutable input snapshot consumed by downing and split-brain evaluation.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -30,6 +32,7 @@ impl DowningDecisionContext {
         snapshot,
         indirect_connection_evidence: None,
         failure_observation: None,
+        reachability_observer: None,
       },
       evaluation_time,
     }
@@ -47,6 +50,7 @@ impl DowningDecisionContext {
         snapshot,
         indirect_connection_evidence: Some(indirect_connection_evidence),
         failure_observation: None,
+        reachability_observer: None,
       },
       evaluation_time,
     }
@@ -84,6 +88,7 @@ impl DowningDecisionContext {
           snapshot,
           indirect_connection_evidence: None,
           failure_observation: Some(observation.clone()),
+          reachability_observer: None,
         },
         evaluation_time,
       },
@@ -92,6 +97,7 @@ impl DowningDecisionContext {
           snapshot,
           indirect_connection_evidence: Some(indirect_connection_evidence.clone()),
           failure_observation: None,
+          reachability_observer: None,
         },
         evaluation_time,
       },
@@ -102,6 +108,15 @@ impl DowningDecisionContext {
   #[must_use]
   pub fn from_explicit_down(authority: &str, evaluation_time: TimerInstant) -> Self {
     Self { input: DowningDecisionContextInput::ExplicitDown { authority: String::from(authority) }, evaluation_time }
+  }
+
+  /// Returns this context with a local reachability observer for partition evaluation.
+  #[must_use]
+  pub fn with_reachability_observer(mut self, observer: UniqueAddress) -> Self {
+    if let DowningDecisionContextInput::Membership { reachability_observer, .. } = &mut self.input {
+      *reachability_observer = Some(observer);
+    }
+    self
   }
 
   /// Returns the time attached to this evaluation input.
@@ -148,6 +163,17 @@ impl DowningDecisionContext {
     }
   }
 
+  /// Returns the observer whose reachability row should be used for membership partitioning.
+  #[must_use]
+  pub const fn reachability_observer(&self) -> Option<&UniqueAddress> {
+    match &self.input {
+      | DowningDecisionContextInput::Membership { reachability_observer, .. } => reachability_observer.as_ref(),
+      | DowningDecisionContextInput::ExplicitDown { .. }
+      | DowningDecisionContextInput::FailureObservation { .. }
+      | DowningDecisionContextInput::IndirectConnectionEvidence { .. } => None,
+    }
+  }
+
   /// Returns the explicit down authority when this context came from an explicit command.
   #[must_use]
   pub const fn explicit_down_authority(&self) -> Option<&str> {
@@ -170,6 +196,9 @@ impl DowningDecisionContext {
   #[must_use]
   pub fn reachability_status(&self, unique_address: &UniqueAddress) -> Option<ReachabilityStatus> {
     let snapshot = self.membership_snapshot()?;
+    if let Some(observer) = self.reachability_observer() {
+      return snapshot.reachability.observed_status(observer, unique_address);
+    }
     Some(snapshot.reachability.aggregate_status(unique_address))
   }
 
@@ -177,10 +206,17 @@ impl DowningDecisionContext {
   #[must_use]
   pub fn requires_reachability_evidence(&self) -> bool {
     match &self.input {
-      | DowningDecisionContextInput::Membership { snapshot, indirect_connection_evidence, .. } => {
-        snapshot.reachability.records.is_empty()
-          && snapshot.reachability.observer_versions.is_empty()
-          && indirect_connection_evidence.is_none()
+      | DowningDecisionContextInput::Membership {
+        snapshot,
+        indirect_connection_evidence,
+        reachability_observer,
+        ..
+      } => {
+        let lacks_reachability =
+          snapshot.reachability.records.is_empty() && snapshot.reachability.observer_versions.is_empty();
+        let lacks_observer_row =
+          reachability_observer.as_ref().is_some_and(|observer| !snapshot.reachability.has_observer(observer));
+        (lacks_reachability && indirect_connection_evidence.is_none()) || lacks_observer_row
       },
       | DowningDecisionContextInput::FailureObservation { .. } => true,
       | DowningDecisionContextInput::ExplicitDown { .. }
@@ -188,10 +224,29 @@ impl DowningDecisionContext {
     }
   }
 
+  /// Returns true when more than one observer row exists but no local observer was selected.
+  #[must_use]
+  pub fn requires_reachability_observer(&self) -> bool {
+    match &self.input {
+      | DowningDecisionContextInput::Membership { snapshot, reachability_observer, .. } => {
+        reachability_observer.is_none() && snapshot.reachability.observer_versions.len() > 1
+      },
+      | DowningDecisionContextInput::ExplicitDown { .. }
+      | DowningDecisionContextInput::FailureObservation { .. }
+      | DowningDecisionContextInput::IndirectConnectionEvidence { .. } => false,
+    }
+  }
+
   /// Returns a defer reason when the context has insufficient evidence for membership evaluation.
   #[must_use]
   pub fn defer_reason(&self) -> Option<&'static str> {
-    if self.requires_reachability_evidence() { Some(MISSING_REACHABILITY_EVIDENCE) } else { None }
+    if self.requires_reachability_evidence() {
+      Some(MISSING_REACHABILITY_EVIDENCE)
+    } else if self.requires_reachability_observer() {
+      Some(LOCAL_REACHABILITY_OBSERVER_REQUIRED)
+    } else {
+      None
+    }
   }
 }
 
@@ -201,6 +256,7 @@ enum DowningDecisionContextInput {
     snapshot:                     MembershipSnapshot,
     indirect_connection_evidence: Option<IndirectConnectionEvidence>,
     failure_observation:          Option<FailureObservation>,
+    reachability_observer:        Option<UniqueAddress>,
   },
   ExplicitDown {
     authority: String,
