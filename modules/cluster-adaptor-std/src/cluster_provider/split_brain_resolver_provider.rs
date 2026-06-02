@@ -29,13 +29,14 @@ pub struct StdSplitBrainResolverProvider {
   hook:            Option<SplitBrainResolverProviderHook>,
   lease_backend_f: Option<LeaseBackendFactory>,
   lease_backend:   Option<Box<dyn StdLeaseMajorityBackend>>,
+  stopped:         bool,
 }
 
 impl StdSplitBrainResolverProvider {
   /// Creates a stopped provider with SBR settings.
   #[must_use]
   pub const fn new(settings: SplitBrainResolverSettings) -> Self {
-    Self { settings, hook: None, lease_backend_f: None, lease_backend: None }
+    Self { settings, hook: None, lease_backend_f: None, lease_backend: None, stopped: false }
   }
 
   /// Configures a lease backend factory used when the provider starts.
@@ -68,8 +69,8 @@ impl StdSplitBrainResolverProvider {
     if self.is_started() {
       return Err(ClusterProviderError::down(ALREADY_STARTED));
     }
-    self.hook = Some(SplitBrainResolverProviderHook::new(self.settings));
-    self.lease_backend = self.lease_backend_f.as_ref().map(|factory| factory());
+    self.activate();
+    self.stopped = false;
     Ok(())
   }
 
@@ -83,6 +84,7 @@ impl StdSplitBrainResolverProvider {
       return Err(ClusterProviderError::down(NOT_STARTED));
     }
     self.close_active();
+    self.stopped = true;
     Ok(())
   }
 
@@ -107,15 +109,33 @@ impl StdSplitBrainResolverProvider {
       lease_backend.close();
     }
   }
+
+  fn activate(&mut self) {
+    self.hook = Some(SplitBrainResolverProviderHook::new(self.settings));
+    self.lease_backend = self.lease_backend_f.as_ref().map(|factory| factory());
+  }
+
+  fn ensure_started_for_downing_provider(&mut self) -> Result<(), ClusterProviderError> {
+    if self.is_started() {
+      return Ok(());
+    }
+    if self.stopped {
+      return Err(ClusterProviderError::down(NOT_STARTED));
+    }
+    self.activate();
+    Ok(())
+  }
 }
 
 impl DowningProvider for StdSplitBrainResolverProvider {
   fn decide(&mut self, input: &DowningInput) -> Result<DowningDecision, ClusterProviderError> {
+    self.ensure_started_for_downing_provider()?;
     let context = DowningDecisionContext::from_downing_input(input, Self::evaluation_time());
     StdSplitBrainResolverProvider::decide_context(self, &context)
   }
 
   fn decide_context(&mut self, context: &DowningDecisionContext) -> Result<DowningDecision, ClusterProviderError> {
+    self.ensure_started_for_downing_provider()?;
     StdSplitBrainResolverProvider::decide_context(self, context)
   }
 }

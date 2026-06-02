@@ -43,7 +43,7 @@ impl SplitBrainResolverProviderHook {
     settings: SplitBrainResolverSettings,
     compatibility: DowningProviderCompatibility,
   ) -> Result<Self, ClusterProviderError> {
-    if compatibility != Self::expected_compatibility(settings) {
+    if !Self::compatibility_matches(settings, &compatibility) {
       return Err(ClusterProviderError::down(COMPATIBILITY_MISMATCH));
     }
 
@@ -92,6 +92,12 @@ impl SplitBrainResolverProviderHook {
 
   fn expected_compatibility(settings: SplitBrainResolverSettings) -> DowningProviderCompatibility {
     DowningProviderCompatibility::new(SPLIT_BRAIN_RESOLVER_PROVIDER_KEY).with_split_brain_resolver_settings(settings)
+  }
+
+  fn compatibility_matches(settings: SplitBrainResolverSettings, compatibility: &DowningProviderCompatibility) -> bool {
+    let expected = Self::expected_compatibility(settings);
+    compatibility.provider_key() == expected.provider_key()
+      && compatibility.sbr_settings_identity() == expected.sbr_settings_identity()
   }
 
   const fn evaluation_time() -> TimerInstant {

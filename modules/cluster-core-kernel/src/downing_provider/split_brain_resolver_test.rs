@@ -41,7 +41,14 @@ fn record(host: &str, uid: u64, status: NodeStatus, join_version: u64) -> NodeRe
 }
 
 fn context(snapshot: MembershipSnapshot) -> DowningDecisionContext {
-  DowningDecisionContext::from_membership_snapshot(snapshot, TimerInstant::zero(Duration::from_millis(1)))
+  let observer = if snapshot.reachability.observer_versions.len() == 1 {
+    snapshot.reachability.observer_versions.keys().next().cloned()
+  } else {
+    None
+  };
+  let context =
+    DowningDecisionContext::from_membership_snapshot(snapshot, TimerInstant::zero(Duration::from_millis(1)));
+  if let Some(observer) = observer { context.with_reachability_observer(observer) } else { context }
 }
 
 fn context_with_observer(snapshot: MembershipSnapshot, observer: UniqueAddress) -> DowningDecisionContext {
@@ -49,7 +56,13 @@ fn context_with_observer(snapshot: MembershipSnapshot, observer: UniqueAddress) 
 }
 
 fn context_at(snapshot: MembershipSnapshot, evaluation_time: TimerInstant) -> DowningDecisionContext {
-  DowningDecisionContext::from_membership_snapshot(snapshot, evaluation_time)
+  let observer = if snapshot.reachability.observer_versions.len() == 1 {
+    snapshot.reachability.observer_versions.keys().next().cloned()
+  } else {
+    None
+  };
+  let context = DowningDecisionContext::from_membership_snapshot(snapshot, evaluation_time);
+  if let Some(observer) = observer { context.with_reachability_observer(observer) } else { context }
 }
 
 #[test]
@@ -99,10 +112,7 @@ fn keep_majority_defers_when_multi_observer_partition_lacks_local_observer() {
   let decision = resolver.decide(&context(snapshot));
 
   assert_eq!(decision.simple_decision(), DowningDecision::Defer);
-  assert_eq!(
-    decision.trace().reason(),
-    "local reachability observer is required for multi-observer membership evaluation"
-  );
+  assert_eq!(decision.trace().reason(), "local reachability observer is required for observed membership evaluation");
 }
 
 #[test]
@@ -541,7 +551,7 @@ fn lease_majority_consults_lease_when_partitions_are_tied() {
 }
 
 #[test]
-fn lease_majority_acquired_retains_non_reachable_majority_partition() {
+fn lease_majority_downs_local_observer_when_non_reachable_majority_would_be_retained() {
   let node_a = record("node-a", 1, NodeStatus::Up, 1);
   let node_b = record("node-b", 2, NodeStatus::Up, 2);
   let node_c = record("node-c", 3, NodeStatus::Up, 3);
@@ -562,11 +572,11 @@ fn lease_majority_acquired_retains_non_reachable_majority_partition() {
 
   let decision = resolver.decide_with_lease(&context(snapshot), &mut lease);
 
-  assert_eq!(decision.simple_decision(), DowningDecision::Keep);
-  assert_eq!(decision.trace().lease_outcome(), Some(LeaseAcquisitionOutcome::Acquired));
-  assert_eq!(decision.retained_partition(), &[node_b.unique_address.clone(), node_c.unique_address.clone()]);
+  assert_eq!(decision.simple_decision(), DowningDecision::Down);
+  assert_eq!(decision.trace().lease_outcome(), None);
+  assert!(decision.retained_partition().is_empty());
   assert_eq!(decision.downing_targets(), slice::from_ref(&node_a.unique_address));
-  assert_eq!(lease.calls, 1);
+  assert_eq!(lease.calls, 0);
 }
 
 #[test]

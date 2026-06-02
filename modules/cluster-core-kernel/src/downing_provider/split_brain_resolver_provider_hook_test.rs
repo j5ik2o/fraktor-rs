@@ -50,10 +50,11 @@ fn majority_context() -> DowningDecisionContext {
   reachability.unreachable(node_a.unique_address.clone(), node_c.unique_address.clone());
   let snapshot = MembershipSnapshot::new_with_reachability(
     MembershipVersion::new(10),
-    vec![node_a, node_b, node_c],
+    vec![node_a.clone(), node_b, node_c],
     reachability.snapshot(),
   );
   DowningDecisionContext::from_membership_snapshot(snapshot, TimerInstant::zero(Duration::from_millis(1)))
+    .with_reachability_observer(node_a.unique_address)
 }
 
 fn minority_observer_context() -> DowningDecisionContext {
@@ -103,6 +104,18 @@ fn provider_hook_rejects_mismatched_metadata() {
 
   assert!(matches!(err, ClusterProviderError::DownFailed(_)));
   assert!(err.reason().contains("split-brain-resolver compatibility metadata mismatch"));
+}
+
+#[test]
+fn provider_hook_accepts_identity_compatible_non_static_quorum_metadata() {
+  let settings =
+    SplitBrainResolverSettings::new(Duration::ZERO, SplitBrainResolverStrategy::KeepMajority, Duration::from_secs(30));
+  let compatibility = DowningProviderCompatibility::new("split-brain-resolver")
+    .with_split_brain_resolver_settings(settings.with_static_quorum_size(3));
+
+  let hook = SplitBrainResolverProviderHook::from_compatibility(settings, compatibility);
+
+  assert!(hook.is_ok());
 }
 
 #[test]

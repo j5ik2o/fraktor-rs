@@ -75,11 +75,15 @@ fn majority_snapshot() -> MembershipSnapshot {
 }
 
 fn majority_context() -> DowningDecisionContext {
+  let node_a = record("node-a", 1, NodeStatus::Up, 1);
   DowningDecisionContext::from_membership_snapshot(majority_snapshot(), TimerInstant::zero(Duration::from_millis(1)))
+    .with_reachability_observer(node_a.unique_address)
 }
 
 fn majority_context_at(evaluation_time: TimerInstant, unstable_since: TimerInstant) -> DowningDecisionContext {
+  let node_a = record("node-a", 1, NodeStatus::Up, 1);
   DowningDecisionContext::from_membership_snapshot(majority_snapshot(), evaluation_time)
+    .with_reachability_observer(node_a.unique_address)
     .with_unstable_since(unstable_since)
 }
 
@@ -208,6 +212,28 @@ fn downing_provider_decide_context_routes_trait_path_to_lease_backend() {
 
   assert_eq!(decision, Ok(DowningDecision::Keep));
   assert_eq!(calls.with_read(|calls| *calls), 1);
+}
+
+#[test]
+fn downing_provider_trait_path_starts_factory_provider_lazily() {
+  let calls = counter();
+  let closed = counter();
+  let calls_for_factory = calls.clone();
+  let closed_for_factory = closed.clone();
+  let provider = StdSplitBrainResolverProvider::new(lease_majority_settings()).with_lease_backend_factory(move || {
+    Box::new(RecordingLeaseBackend::new(
+      LeaseAcquisitionOutcome::Acquired,
+      calls_for_factory.clone(),
+      closed_for_factory.clone(),
+    ))
+  });
+  let mut downing_provider: Box<dyn DowningProvider> = Box::new(provider);
+
+  let decision = downing_provider.decide_context(&majority_context());
+
+  assert_eq!(decision, Ok(DowningDecision::Keep));
+  assert_eq!(calls.with_read(|calls| *calls), 1);
+  assert_eq!(closed.with_read(|closed| *closed), 0);
 }
 
 #[test]

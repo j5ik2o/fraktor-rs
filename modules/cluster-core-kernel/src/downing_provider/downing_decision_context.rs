@@ -15,7 +15,7 @@ use crate::membership::{IndirectConnectionEvidence, MembershipSnapshot, NodeReco
 
 const MISSING_REACHABILITY_EVIDENCE: &str = "reachability evidence is required for membership evaluation";
 const LOCAL_REACHABILITY_OBSERVER_REQUIRED: &str =
-  "local reachability observer is required for multi-observer membership evaluation";
+  "local reachability observer is required for observed membership evaluation";
 
 /// Immutable input snapshot consumed by downing and split-brain evaluation.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -260,12 +260,12 @@ impl DowningDecisionContext {
     }
   }
 
-  /// Returns true when more than one observer row exists but no local observer was selected.
+  /// Returns true when observed reachability exists but no local observer was selected.
   #[must_use]
   pub fn requires_reachability_observer(&self) -> bool {
     match &self.input {
       | DowningDecisionContextInput::Membership { snapshot, reachability_observer, .. } => {
-        reachability_observer.is_none() && snapshot.reachability.observer_versions.len() > 1
+        reachability_observer.is_none() && !snapshot.reachability.observer_versions.is_empty()
       },
       | DowningDecisionContextInput::ExplicitDown { .. }
       | DowningDecisionContextInput::FailureObservation { .. }
