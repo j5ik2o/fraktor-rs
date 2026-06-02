@@ -107,7 +107,13 @@ fn static_quorum_uses_configured_fixed_quorum() {
 fn static_quorum_without_configured_size_defers() {
   let node_a = record("node-a", 1, NodeStatus::Up, 1);
   let node_b = record("node-b", 2, NodeStatus::Up, 2);
-  let snapshot = MembershipSnapshot::new(MembershipVersion::new(10), vec![node_a, node_b]);
+  let mut reachability = ReachabilityMatrix::new();
+  reachability.reachable(node_a.unique_address.clone(), node_b.unique_address.clone());
+  let snapshot = MembershipSnapshot::new_with_reachability(
+    MembershipVersion::new(10),
+    vec![node_a, node_b],
+    reachability.snapshot(),
+  );
   let resolver = SplitBrainResolver::new(SplitBrainResolverSettings::new(
     Duration::ZERO,
     SplitBrainResolverStrategy::StaticQuorum,
@@ -118,6 +124,30 @@ fn static_quorum_without_configured_size_defers() {
 
   assert_eq!(decision.simple_decision(), DowningDecision::Defer);
   assert_eq!(decision.trace().strategy(), SplitBrainResolverStrategy::StaticQuorum);
+  assert_eq!(decision.trace().reason(), "static quorum size is not configured");
+}
+
+#[test]
+fn static_quorum_with_zero_size_defers() {
+  let node_a = record("node-a", 1, NodeStatus::Up, 1);
+  let node_b = record("node-b", 2, NodeStatus::Up, 2);
+  let mut reachability = ReachabilityMatrix::new();
+  reachability.reachable(node_a.unique_address.clone(), node_b.unique_address.clone());
+  let snapshot = MembershipSnapshot::new_with_reachability(
+    MembershipVersion::new(10),
+    vec![node_a, node_b],
+    reachability.snapshot(),
+  );
+  let resolver = SplitBrainResolver::new(
+    SplitBrainResolverSettings::new(Duration::ZERO, SplitBrainResolverStrategy::StaticQuorum, Duration::from_secs(30))
+      .with_static_quorum_size(0),
+  );
+
+  let decision = resolver.decide(&context(snapshot));
+
+  assert_eq!(decision.simple_decision(), DowningDecision::Defer);
+  assert_eq!(decision.trace().strategy(), SplitBrainResolverStrategy::StaticQuorum);
+  assert_eq!(decision.trace().reason(), "static quorum size must be greater than zero");
 }
 
 #[test]
