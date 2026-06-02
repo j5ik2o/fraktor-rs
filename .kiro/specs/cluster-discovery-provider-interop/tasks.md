@@ -47,7 +47,7 @@
   - _Boundary: SeedNodeProcessBridge, GenericDiscoveryAdapter_
   - _Depends: 3, 5_
 
-- [ ] 7. 隣接 spec の scope を吸収していないことを検証する
+- [x] 7. 隣接 spec の scope を吸収していないことを検証する
   - membership reachability、WeaklyUp、gossip heartbeat、downing/SBR、pubsub、serialization の実装をこの feature に含めていないことを差分で確認する。
   - discovery result の source identity が placement / membership policy の入力になっていないことを確認する。
   - 完了時には provider/discovery interop の boundary が roadmap の downstream spec と分離されたままになる。
