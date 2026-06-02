@@ -22,7 +22,7 @@
   - _Boundary: DiscoveryTopologyMapper_
   - _Depends: 2_
 
-- [ ] 4. std generic discovery backend contract を追加する
+- [x] 4. std generic discovery backend contract を追加する
   - std adaptor 側で backend execution を表す trait と observable failure error を定義する。
   - polling または subscription の入力が `DiscoveryResult` に変換されることを fake backend test で確認する。
   - 完了時には特定 cloud provider に依存しない discovery backend bridge を追加できる。
