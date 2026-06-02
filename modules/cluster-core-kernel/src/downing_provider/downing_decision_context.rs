@@ -238,6 +238,9 @@ impl DowningDecisionContext {
     if let Some(observer) = self.reachability_observer() {
       return snapshot.reachability.observed_status(observer, unique_address);
     }
+    if self.indirect_connection_evidence().is_some_and(|evidence| &evidence.subject == unique_address) {
+      return Some(ReachabilityStatus::Unreachable);
+    }
     Some(snapshot.reachability.aggregate_status(unique_address))
   }
 

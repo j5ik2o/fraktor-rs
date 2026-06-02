@@ -203,21 +203,14 @@ impl SplitBrainResolver {
     if partition.active_count() == 0 {
       return defer(strategy, NO_ACTIVE_MEMBERS);
     }
-    let threshold = partition.active_count() / 2 + 1;
-    let (retained_partition, downing_targets) = if partition.has_tie() || partition.reachable.len() >= threshold {
-      (partition.reachable, partition.non_reachable)
-    } else if partition.non_reachable.len() >= threshold {
-      (partition.non_reachable, partition.reachable)
-    } else {
-      return defer(strategy, "no partition satisfies majority quorum");
-    };
+    let has_tie = partition.has_tie();
+    let retained_partition = partition.reachable;
+    let downing_targets = partition.non_reachable;
 
     match lease_port.acquire_majority(context) {
-      | LeaseAcquisitionOutcome::Acquired => DowningStrategyDecision::keep(
-        DowningDecisionTrace::from_lease_outcome(strategy, LeaseAcquisitionOutcome::Acquired),
-        retained_partition,
-        downing_targets,
-      ),
+      | LeaseAcquisitionOutcome::Acquired => {
+        DowningStrategyDecision::keep(lease_acquired_trace(strategy, has_tie), retained_partition, downing_targets)
+      },
       | outcome @ (LeaseAcquisitionOutcome::Denied
       | LeaseAcquisitionOutcome::Unavailable
       | LeaseAcquisitionOutcome::Unknown
@@ -255,6 +248,11 @@ impl SplitBrainResolver {
       targets,
     )
   }
+}
+
+fn lease_acquired_trace(strategy: SplitBrainResolverStrategy, has_tie: bool) -> DowningDecisionTrace {
+  let trace = DowningDecisionTrace::from_lease_outcome(strategy, LeaseAcquisitionOutcome::Acquired);
+  if has_tie { trace.with_tie_break(String::from(MAJORITY_TIE)) } else { trace }
 }
 
 fn defer(strategy: SplitBrainResolverStrategy, reason: &str) -> DowningStrategyDecision {

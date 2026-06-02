@@ -284,6 +284,35 @@ fn stable_after_elapsed_evaluates_strategy() {
 }
 
 #[test]
+fn majority_uses_indirect_evidence_subject_as_non_reachable_partition() {
+  let node_a = record("node-a", 1, NodeStatus::Up, 1);
+  let node_b = record("node-b", 2, NodeStatus::Up, 2);
+  let node_c = record("node-c", 3, NodeStatus::Up, 3);
+  let mut evidence_source = ReachabilityMatrix::new();
+  evidence_source.unreachable(node_a.unique_address.clone(), node_c.unique_address.clone());
+  evidence_source.reachable(node_b.unique_address.clone(), node_c.unique_address.clone());
+  let indirect_evidence = evidence_source.indirect_evidence_for(&node_c.unique_address).expect("indirect evidence");
+  let snapshot =
+    MembershipSnapshot::new(MembershipVersion::new(10), vec![node_a.clone(), node_b.clone(), node_c.clone()]);
+  let resolver = SplitBrainResolver::new(SplitBrainResolverSettings::new(
+    Duration::ZERO,
+    SplitBrainResolverStrategy::KeepMajority,
+    Duration::from_secs(30),
+  ));
+  let context = DowningDecisionContext::from_membership_snapshot_with_indirect_evidence(
+    snapshot,
+    indirect_evidence,
+    TimerInstant::zero(Duration::from_millis(1)),
+  );
+
+  let decision = resolver.decide(&context);
+
+  assert_eq!(decision.simple_decision(), DowningDecision::Keep);
+  assert_eq!(decision.retained_partition(), &[node_a.unique_address.clone(), node_b.unique_address.clone()]);
+  assert_eq!(decision.downing_targets(), slice::from_ref(&node_c.unique_address));
+}
+
+#[test]
 fn keep_oldest_retains_partition_containing_oldest_member() {
   let node_a = record("node-a", 1, NodeStatus::Up, 10);
   let node_b = record("node-b", 2, NodeStatus::Up, 1);
@@ -463,8 +492,38 @@ fn lease_majority_consults_lease_when_partitions_are_tied() {
 
   assert_eq!(decision.simple_decision(), DowningDecision::Keep);
   assert_eq!(decision.trace().lease_outcome(), Some(LeaseAcquisitionOutcome::Acquired));
+  assert_eq!(decision.trace().tie_break_rule(), Some("reachable and non-reachable partitions have equal size"));
   assert_eq!(decision.retained_partition(), slice::from_ref(&node_a.unique_address));
   assert_eq!(decision.downing_targets(), slice::from_ref(&node_b.unique_address));
+  assert_eq!(lease.calls, 1);
+}
+
+#[test]
+fn lease_majority_acquired_retains_local_reachable_partition_even_when_non_reachable_has_majority() {
+  let node_a = record("node-a", 1, NodeStatus::Up, 1);
+  let node_b = record("node-b", 2, NodeStatus::Up, 2);
+  let node_c = record("node-c", 3, NodeStatus::Up, 3);
+  let mut reachability = ReachabilityMatrix::new();
+  reachability.unreachable(node_a.unique_address.clone(), node_b.unique_address.clone());
+  reachability.unreachable(node_a.unique_address.clone(), node_c.unique_address.clone());
+  let snapshot = MembershipSnapshot::new_with_reachability(
+    MembershipVersion::new(10),
+    vec![node_a.clone(), node_b.clone(), node_c.clone()],
+    reachability.snapshot(),
+  );
+  let resolver = SplitBrainResolver::new(SplitBrainResolverSettings::new(
+    Duration::ZERO,
+    SplitBrainResolverStrategy::LeaseMajority,
+    Duration::from_secs(30),
+  ));
+  let mut lease = StaticLeasePort { outcome: LeaseAcquisitionOutcome::Acquired, calls: 0 };
+
+  let decision = resolver.decide_with_lease(&context(snapshot), &mut lease);
+
+  assert_eq!(decision.simple_decision(), DowningDecision::Keep);
+  assert_eq!(decision.trace().lease_outcome(), Some(LeaseAcquisitionOutcome::Acquired));
+  assert_eq!(decision.retained_partition(), slice::from_ref(&node_a.unique_address));
+  assert_eq!(decision.downing_targets(), &[node_b.unique_address.clone(), node_c.unique_address.clone()]);
   assert_eq!(lease.calls, 1);
 }
 
