@@ -2,8 +2,9 @@
 
 use std::string::ToString;
 
-use fraktor_cluster_core_kernel_rs::cluster_provider::{
-  DiscoveredAuthority, DiscoveryResult, LocalClusterProviderWeak,
+use fraktor_cluster_core_kernel_rs::{
+  cluster_provider::{DiscoveredAuthority, DiscoveryResult, LocalClusterProviderWeak},
+  extension::ClusterProviderError,
 };
 use fraktor_utils_core_rs::time::TimerInstant;
 
@@ -69,6 +70,9 @@ where
     let source_identity = self.backend.source_identity().to_string();
     match self.backend.discover() {
       | Ok(authorities) if authorities.is_empty() => DiscoveryResult::empty(source_identity, observed_at),
+      | Ok(authorities) if authorities.iter().any(|authority| !Self::is_valid_authority(authority)) => {
+        DiscoveryResult::failed(source_identity, observed_at, ClusterProviderError::join("invalid discovery authority"))
+      },
       | Ok(authorities) => DiscoveryResult::discovered(
         authorities
           .into_iter()
@@ -77,5 +81,9 @@ where
       ),
       | Err(error) => DiscoveryResult::failed(source_identity, observed_at, error.into()),
     }
+  }
+
+  fn is_valid_authority(authority: &str) -> bool {
+    !authority.is_empty() && !authority.chars().any(char::is_whitespace)
   }
 }

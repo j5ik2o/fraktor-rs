@@ -137,7 +137,6 @@ fn start_member_uses_only_configured_static_topology_contract() {
 
   let events = subscriber_impl.events();
   assert_eq!(events.len(), 1);
-  assert!(events.iter().all(|event| matches!(event, ClusterEvent::TopologyUpdated { .. })));
   assert!(matches!(
     &events[0],
     ClusterEvent::TopologyUpdated { update }

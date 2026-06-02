@@ -5,7 +5,7 @@ use core::time::Duration;
 
 use fraktor_utils_core_rs::{sync::ArcShared, time::TimerInstant};
 
-use super::DiscoveryResult;
+use super::{DiscoveredAuthority, DiscoveryResult};
 use crate::{BlockListProvider, ClusterTopology, TopologyUpdate};
 
 #[cfg(test)]
@@ -52,7 +52,7 @@ impl DiscoveryTopologyMapper {
       left,
       Vec::new(),
       self.block_list_provider.blocked_members(),
-      Self::observed_at(self.version),
+      Self::observed_at(result, self.version),
     ))
   }
 
@@ -74,7 +74,10 @@ impl DiscoveryTopologyMapper {
     previous.iter().filter(|authority| !current.contains(authority)).cloned().collect()
   }
 
-  const fn observed_at(version: u64) -> TimerInstant {
-    TimerInstant::from_ticks(version, Duration::from_secs(1))
+  fn observed_at(result: &DiscoveryResult, version: u64) -> TimerInstant {
+    result
+      .observed_at()
+      .or_else(|| result.authorities().first().map(DiscoveredAuthority::observed_at))
+      .unwrap_or_else(|| TimerInstant::from_ticks(version, Duration::from_secs(1)))
   }
 }

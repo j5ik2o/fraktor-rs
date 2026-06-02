@@ -104,6 +104,24 @@ fn generic_discovery_adapter_converts_backend_failure_to_observable_discovery_re
 }
 
 #[test]
+fn generic_discovery_adapter_rejects_invalid_backend_authorities() {
+  let backend = FakeDiscoveryBackend::successful(
+    "fake-poller",
+    Vec::from([String::from("valid-node"), String::from("invalid node")]),
+  );
+  let mut adapter = GenericDiscoveryAdapter::new(backend);
+
+  let result = adapter.discover(observed_at(42));
+
+  assert!(result.is_failed());
+  assert!(matches!(
+    result,
+    DiscoveryResult::Failed(_, _, ClusterProviderError::JoinFailed(ref reason)) if reason == "invalid discovery authority"
+  ));
+  assert!(result.to_authorities().is_empty());
+}
+
+#[test]
 fn generic_discovery_adapter_keeps_aws_ecs_style_authorities_compatible_with_topology_mapping() {
   let backend = FakeDiscoveryBackend::successful(
     "aws-ecs",

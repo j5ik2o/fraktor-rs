@@ -62,6 +62,7 @@ fn discovered_authorities_publish_only_joined_delta_and_deduplicate_authority() 
   assert_eq!(update.members, update.joined);
   assert_eq!(update.topology.joined(), &update.joined);
   assert_eq!(update.topology.left(), &update.left);
+  assert_eq!(update.observed_at, observed_at(10));
 }
 
 #[test]
@@ -83,6 +84,7 @@ fn refresh_publishes_only_joined_and_left_authority_delta() {
   assert_eq!(update.joined, vec![String::from("node-c.example:7331")]);
   assert_eq!(update.left, vec![String::from("node-a.example:7331")]);
   assert_eq!(update.members, vec![String::from("node-b.example:7331"), String::from("node-c.example:7331")]);
+  assert_eq!(update.observed_at, observed_at(11));
 }
 
 #[test]
@@ -118,6 +120,7 @@ fn failed_discovery_returns_no_update_and_preserves_previous_topology() {
   assert!(update.joined.is_empty());
   assert_eq!(update.left, vec![String::from("node-a.example:7331")]);
   assert!(update.members.is_empty());
+  assert_eq!(update.observed_at, observed_at(12));
 }
 
 #[test]

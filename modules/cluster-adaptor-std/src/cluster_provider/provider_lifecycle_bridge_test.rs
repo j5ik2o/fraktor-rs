@@ -10,6 +10,7 @@ use fraktor_actor_core_kernel_rs::event::stream::{
 };
 use fraktor_cluster_core_kernel_rs::{
   cluster_provider::{DiscoveryTopologyMapper, LocalClusterProvider, LocalClusterProviderWeak, SeedNodeInput},
+  extension::ClusterProviderError,
   topology::{BlockListProvider, ClusterEvent},
 };
 use fraktor_utils_core_rs::{
@@ -32,16 +33,16 @@ impl BlockListProvider for EmptyBlockList {
 
 #[derive(Clone)]
 struct RecordingClusterEvents {
-  events: ArcShared<SpinSyncMutex<Vec<ClusterEvent>>>,
+  events: SharedLock<Vec<ClusterEvent>>,
 }
 
 impl RecordingClusterEvents {
   fn new() -> Self {
-    Self { events: ArcShared::new(SpinSyncMutex::new(Vec::new())) }
+    Self { events: SharedLock::new_with_driver::<SpinSyncMutex<_>>(Vec::new()) }
   }
 
   fn events(&self) -> Vec<ClusterEvent> {
-    self.events.lock().clone()
+    self.events.with_read(|events| events.clone())
   }
 }
 
@@ -51,7 +52,7 @@ impl EventStreamSubscriber for RecordingClusterEvents {
       && name == "cluster"
       && let Some(cluster_event) = payload.payload().downcast_ref::<ClusterEvent>()
     {
-      self.events.lock().push(cluster_event.clone());
+      self.events.with_write(|events| events.push(cluster_event.clone()));
     }
   }
 }
@@ -59,17 +60,25 @@ impl EventStreamSubscriber for RecordingClusterEvents {
 #[derive(Clone)]
 struct CountingDiscoveryBackend {
   source_identity: String,
-  authorities:     Vec<String>,
-  calls:           ArcShared<SpinSyncMutex<usize>>,
+  authorities:     SharedLock<Vec<String>>,
+  calls:           SharedLock<usize>,
 }
 
 impl CountingDiscoveryBackend {
   fn new(source_identity: &str, authorities: Vec<String>) -> Self {
-    Self { source_identity: source_identity.to_string(), authorities, calls: ArcShared::new(SpinSyncMutex::new(0)) }
+    Self {
+      source_identity: source_identity.to_string(),
+      authorities:     SharedLock::new_with_driver::<SpinSyncMutex<_>>(authorities),
+      calls:           SharedLock::new_with_driver::<SpinSyncMutex<_>>(0),
+    }
   }
 
   fn call_count(&self) -> usize {
-    *self.calls.lock()
+    self.calls.with_read(|calls| *calls)
+  }
+
+  fn replace_authorities(&self, authorities: Vec<String>) {
+    self.authorities.with_write(|current| *current = authorities);
   }
 }
 
@@ -79,8 +88,8 @@ impl DiscoveryBackend for CountingDiscoveryBackend {
   }
 
   fn discover(&mut self) -> Result<Vec<String>, DiscoveryBackendError> {
-    *self.calls.lock() += 1;
-    Ok(self.authorities.clone())
+    self.calls.with_write(|calls| *calls += 1);
+    Ok(self.authorities.with_read(|authorities| authorities.clone()))
   }
 }
 
@@ -151,6 +160,68 @@ fn provider_lifecycle_bridge_member_start_joins_seed_and_discovery_authorities()
   bridge.start_member().expect("member lifecycle should start");
 
   assert_eq!(provider.with_read(|provider| provider.member_count()), 3);
+}
+
+#[test]
+fn provider_lifecycle_bridge_validates_seed_before_provider_start() {
+  let event_stream = EventStreamShared::default();
+  let provider = wrap_local_cluster_provider(LocalClusterProvider::new(event_stream, block_list(), "node-a"));
+  let backend = CountingDiscoveryBackend::new("test-discovery", Vec::new());
+  let mut bridge = ProviderLifecycleBridge::new(
+    provider.downgrade(),
+    seed_input("node-a", Vec::from(["invalid seed"])),
+    GenericDiscoveryAdapter::new(backend),
+    mapper(),
+  );
+
+  let result = bridge.start_member();
+
+  assert!(matches!(
+    result,
+    Err(ClusterProviderError::JoinFailed(ref reason)) if reason == "invalid seed authority"
+  ));
+  assert_eq!(provider.with_read(|provider| provider.member_count()), 0);
+  assert!(!provider.with_read(|provider| provider.is_started()));
+}
+
+#[test]
+fn provider_lifecycle_bridge_refreshes_discovery_after_member_start() {
+  let event_stream = EventStreamShared::default();
+  let (subscriber_impl, _subscription) = subscribe_recorder(&event_stream);
+  let provider = wrap_local_cluster_provider(LocalClusterProvider::new(event_stream, block_list(), "node-a"));
+  let backend = CountingDiscoveryBackend::new("test-discovery", Vec::from([String::from("node-b")]));
+  let backend_probe = backend.clone();
+  let mut bridge = ProviderLifecycleBridge::new(
+    provider.downgrade(),
+    seed_input("node-a", Vec::new()),
+    GenericDiscoveryAdapter::new(backend),
+    mapper(),
+  );
+
+  bridge.start_member().expect("member lifecycle should start");
+  backend_probe.replace_authorities(Vec::from([String::from("node-c")]));
+  bridge.refresh_discovery().expect("discovery refresh should apply delta");
+
+  let events = subscriber_impl.events();
+  let topology_events: Vec<&ClusterEvent> =
+    events.iter().filter(|event| matches!(event, ClusterEvent::TopologyUpdated { .. })).collect();
+  assert_eq!(backend_probe.call_count(), 2);
+  assert_eq!(provider.with_read(|provider| provider.member_count()), 2);
+  assert_eq!(topology_events.len(), 3);
+  assert!(matches!(
+    topology_events[1],
+    ClusterEvent::TopologyUpdated { update }
+    if update.joined == vec![String::from("node-c")]
+      && update.left.is_empty()
+      && update.members == vec![String::from("node-a"), String::from("node-b"), String::from("node-c")]
+  ));
+  assert!(matches!(
+    topology_events[2],
+    ClusterEvent::TopologyUpdated { update }
+    if update.joined.is_empty()
+      && update.left == vec![String::from("node-b")]
+      && update.members == vec![String::from("node-a"), String::from("node-c")]
+  ));
 }
 
 #[test]

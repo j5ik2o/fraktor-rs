@@ -77,21 +77,15 @@ where
       return Ok(());
     }
 
+    let seed_joins = self.seed_process.start_member(&self.seed_input)?;
     let provider = self.provider.upgrade().ok_or_else(|| ClusterProviderError::start_member("provider unavailable"))?;
     provider.with_write(ClusterProvider::start_member)?;
 
-    let seed_joins = self.seed_process.start_member(&self.seed_input)?;
     for authority in seed_joins {
       provider.with_write(|provider| provider.join(authority.as_str()))?;
     }
 
-    let observed_at = self.next_observed_at();
-    if let Some(result) = self.discovery_adapter.poll(observed_at)
-      && let Some(update) = self.topology_mapper.apply(&result)
-    {
-      Self::apply_topology_update(&provider, &update)?;
-    }
-    Ok(())
+    self.refresh_discovery()
   }
 
   /// Starts client lifecycle without producing full member self-registration.
@@ -108,6 +102,26 @@ where
     provider.with_write(ClusterProvider::start_client)?;
     let seed_joins = self.seed_process.start_client(&self.seed_input)?;
     debug_assert!(seed_joins.is_empty());
+    Ok(())
+  }
+
+  /// Polls discovery and applies any joined/left topology delta.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`ClusterProviderError`] when provider join/leave application fails.
+  pub fn refresh_discovery(&mut self) -> Result<(), ClusterProviderError> {
+    if self.is_shutdown {
+      return Ok(());
+    }
+
+    let provider = self.provider.upgrade().ok_or_else(|| ClusterProviderError::start_member("provider unavailable"))?;
+    let observed_at = self.next_observed_at();
+    if let Some(result) = self.discovery_adapter.poll(observed_at)
+      && let Some(update) = self.topology_mapper.apply(&result)
+    {
+      Self::apply_topology_update(&provider, &update)?;
+    }
     Ok(())
   }
 
