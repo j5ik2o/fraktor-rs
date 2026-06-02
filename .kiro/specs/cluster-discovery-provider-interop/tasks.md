@@ -14,7 +14,7 @@
   - _Requirements: 2.1, 2.2, 2.4, 4.2_
   - _Boundary: DiscoveredAuthority, DiscoveryResult_
 
-- [ ] 3. DiscoveryTopologyMapper を追加する
+- [x] 3. DiscoveryTopologyMapper を追加する
   - discovery result から joined / left の差分だけを topology update として生成する。
   - duplicate authority の dedup、failure 時に既存 topology を破壊しないこと、block list contract を維持することを unit test で確認する。
   - 完了時には static seed / generic discovery / AWS ECS result が同じ topology update contract に変換される。

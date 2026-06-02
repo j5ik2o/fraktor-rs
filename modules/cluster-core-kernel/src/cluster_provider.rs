@@ -9,6 +9,8 @@ use crate::extension::ClusterProviderError;
 mod discovered_authority;
 /// Provider-neutral discovery outcome value.
 mod discovery_result;
+/// Discovery result to topology delta mapper.
+mod discovery_topology_mapper;
 /// Local cluster provider for membership-aware scenarios.
 mod local_cluster_provider_generic;
 /// Shared wrapper for LocalClusterProvider implementations.
@@ -26,6 +28,7 @@ mod static_cluster_provider;
 
 pub use discovered_authority::DiscoveredAuthority;
 pub use discovery_result::DiscoveryResult;
+pub use discovery_topology_mapper::DiscoveryTopologyMapper;
 pub use local_cluster_provider_generic::LocalClusterProvider;
 pub use local_cluster_provider_shared_generic::LocalClusterProviderShared;
 pub use local_cluster_provider_weak::LocalClusterProviderWeak;
