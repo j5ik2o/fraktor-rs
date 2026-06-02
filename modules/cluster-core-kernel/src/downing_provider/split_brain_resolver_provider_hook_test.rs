@@ -185,5 +185,5 @@ fn provider_hook_with_lease_returns_down_when_local_observer_is_downing_target()
   let decision = hook.decide_context_with_lease(&minority_observer_context(), &mut lease_port);
 
   assert_eq!(decision, Ok(DowningDecision::Down));
-  assert_eq!(lease_port.calls, 1);
+  assert_eq!(lease_port.calls, 0);
 }

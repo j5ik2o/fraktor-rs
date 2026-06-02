@@ -24,6 +24,7 @@ const NON_REACHABLE_STATIC_QUORUM_SELECTED: &str = "non-reachable static quorum 
 const OLDEST_PARTITION_SELECTED: &str = "oldest member partition selected";
 const MAJORITY_TIE: &str = "reachable and non-reachable partitions have equal size";
 const STATIC_QUORUM_TIE: &str = "reachable and non-reachable partitions both satisfy static quorum";
+const LOCAL_OBSERVER_DOWNING_TARGET: &str = "local observer is selected for downing";
 const STATIC_QUORUM_SIZE_MISSING: &str = "static quorum size is not configured";
 const STATIC_QUORUM_SIZE_ZERO: &str = "static quorum size must be greater than zero";
 const EXPLICIT_DOWN_SELECTED: &str = "explicit down command selected";
@@ -61,7 +62,9 @@ impl SplitBrainResolver {
         Vec::new(),
       );
     }
-    if let Some(reason) = context.defer_reason() {
+    if strategy != SplitBrainResolverStrategy::DownAll
+      && let Some(reason) = context.defer_reason()
+    {
       return defer(strategy, reason);
     }
     if self.settings.stable_after() > Duration::ZERO && context.unstable_duration() < self.settings.stable_after() {
@@ -222,6 +225,12 @@ impl SplitBrainResolver {
     } else {
       return defer(strategy, "no partition satisfies majority quorum");
     };
+    if context.reachability_observer().is_some_and(|observer| downing_targets.iter().any(|target| target == observer)) {
+      return DowningStrategyDecision::down(
+        DowningDecisionTrace::majority_partition(strategy, String::from(LOCAL_OBSERVER_DOWNING_TARGET)),
+        downing_targets,
+      );
+    }
 
     match lease_port.acquire_majority(context) {
       | LeaseAcquisitionOutcome::Acquired => {
@@ -243,13 +252,13 @@ impl SplitBrainResolver {
 
   fn decide_down_all(&self, context: &DowningDecisionContext) -> DowningStrategyDecision {
     let strategy = SplitBrainResolverStrategy::DownAll;
-    let Some(partition) = PartitionEvaluation::from_context(context) else {
+    let Some(snapshot) = context.membership_snapshot() else {
       return defer(strategy, MEMBERSHIP_REQUIRED);
     };
-    if partition.active_count() == 0 {
+    let targets = active_member_addresses(snapshot.entries.as_slice());
+    if targets.is_empty() {
       return defer(strategy, NO_ACTIVE_MEMBERS);
     }
-    let targets = partition.all_active_members();
     let timeout = self.settings.down_all_when_unstable();
     if timeout > Duration::ZERO && context.unstable_duration() < timeout {
       return DowningStrategyDecision::defer(DowningDecisionTrace::down_all_pending(
@@ -299,6 +308,10 @@ fn oldest_active_member(records: &[NodeRecord]) -> Option<&NodeRecord> {
   oldest
 }
 
+fn active_member_addresses(records: &[NodeRecord]) -> Vec<UniqueAddress> {
+  records.iter().filter(|record| record.status.is_active()).map(|record| record.unique_address.clone()).collect()
+}
+
 struct PartitionEvaluation {
   reachable:     Vec<UniqueAddress>,
   non_reachable: Vec<UniqueAddress>,
@@ -328,9 +341,5 @@ impl PartitionEvaluation {
 
   const fn has_tie(&self) -> bool {
     self.reachable.len() == self.non_reachable.len()
-  }
-
-  fn all_active_members(self) -> Vec<UniqueAddress> {
-    self.reachable.into_iter().chain(self.non_reachable).collect()
   }
 }
