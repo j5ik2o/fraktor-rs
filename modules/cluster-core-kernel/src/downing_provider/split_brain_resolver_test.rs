@@ -6,10 +6,23 @@ use fraktor_utils_core_rs::time::TimerInstant;
 
 use crate::{
   downing_provider::{
-    DowningDecision, DowningDecisionContext, SplitBrainResolver, SplitBrainResolverSettings, SplitBrainResolverStrategy,
+    DowningDecision, DowningDecisionContext, LeaseAcquisitionOutcome, LeaseMajorityPort, SplitBrainResolver,
+    SplitBrainResolverSettings, SplitBrainResolverStrategy,
   },
   membership::{DataCenter, MembershipSnapshot, MembershipVersion, NodeRecord, NodeStatus, ReachabilityMatrix},
 };
+
+struct StaticLeasePort {
+  outcome: LeaseAcquisitionOutcome,
+  calls:   usize,
+}
+
+impl LeaseMajorityPort for StaticLeasePort {
+  fn acquire_majority(&mut self, _context: &DowningDecisionContext) -> LeaseAcquisitionOutcome {
+    self.calls += 1;
+    self.outcome
+  }
+}
 
 fn unique(host: &str, uid: u64) -> UniqueAddress {
   UniqueAddress::new(Address::new("cluster", host, 2552), uid)
@@ -202,4 +215,84 @@ fn down_all_returns_all_down_when_timeout_is_elapsed() {
   assert_eq!(decision.trace().strategy(), SplitBrainResolverStrategy::DownAll);
   assert_eq!(decision.downing_targets(), &[node_a.unique_address.clone(), node_b.unique_address.clone()]);
   assert!(decision.is_all_down());
+}
+
+#[test]
+fn lease_majority_keeps_majority_partition_only_when_lease_is_acquired() {
+  let node_a = record("node-a", 1, NodeStatus::Up, 1);
+  let node_b = record("node-b", 2, NodeStatus::Up, 2);
+  let node_c = record("node-c", 3, NodeStatus::Up, 3);
+  let mut reachability = ReachabilityMatrix::new();
+  reachability.unreachable(node_a.unique_address.clone(), node_c.unique_address.clone());
+  let snapshot = MembershipSnapshot::new_with_reachability(
+    MembershipVersion::new(10),
+    vec![node_a.clone(), node_b.clone(), node_c.clone()],
+    reachability.snapshot(),
+  );
+  let resolver = SplitBrainResolver::new(SplitBrainResolverSettings::new(
+    Duration::ZERO,
+    SplitBrainResolverStrategy::LeaseMajority,
+    Duration::from_secs(30),
+  ));
+  let mut lease = StaticLeasePort { outcome: LeaseAcquisitionOutcome::Acquired, calls: 0 };
+
+  let decision = resolver.decide_with_lease(&context(snapshot), &mut lease);
+
+  assert_eq!(decision.simple_decision(), DowningDecision::Keep);
+  assert_eq!(decision.trace().strategy(), SplitBrainResolverStrategy::LeaseMajority);
+  assert_eq!(decision.trace().lease_outcome(), Some(LeaseAcquisitionOutcome::Acquired));
+  assert_eq!(decision.retained_partition(), &[node_a.unique_address.clone(), node_b.unique_address.clone()]);
+  assert_eq!(decision.downing_targets(), slice::from_ref(&node_c.unique_address));
+  assert_eq!(lease.calls, 1);
+}
+
+#[test]
+fn lease_majority_defers_when_lease_is_not_acquired() {
+  let node_a = record("node-a", 1, NodeStatus::Up, 1);
+  let node_b = record("node-b", 2, NodeStatus::Up, 2);
+  let node_c = record("node-c", 3, NodeStatus::Up, 3);
+  let mut reachability = ReachabilityMatrix::new();
+  reachability.unreachable(node_a.unique_address.clone(), node_c.unique_address.clone());
+  let snapshot = MembershipSnapshot::new_with_reachability(
+    MembershipVersion::new(10),
+    vec![node_a, node_b, node_c],
+    reachability.snapshot(),
+  );
+  let resolver = SplitBrainResolver::new(SplitBrainResolverSettings::new(
+    Duration::ZERO,
+    SplitBrainResolverStrategy::LeaseMajority,
+    Duration::from_secs(30),
+  ));
+  let mut lease = StaticLeasePort { outcome: LeaseAcquisitionOutcome::Denied, calls: 0 };
+
+  let decision = resolver.decide_with_lease(&context(snapshot), &mut lease);
+
+  assert_eq!(decision.simple_decision(), DowningDecision::Defer);
+  assert_eq!(decision.trace().lease_outcome(), Some(LeaseAcquisitionOutcome::Denied));
+  assert!(decision.retained_partition().is_empty());
+  assert!(decision.downing_targets().is_empty());
+  assert_eq!(lease.calls, 1);
+}
+
+#[test]
+fn lease_majority_without_backend_defers_with_backend_missing_outcome() {
+  let node_a = record("node-a", 1, NodeStatus::Up, 1);
+  let node_b = record("node-b", 2, NodeStatus::Up, 2);
+  let mut reachability = ReachabilityMatrix::new();
+  reachability.reachable(node_a.unique_address.clone(), node_b.unique_address.clone());
+  let snapshot = MembershipSnapshot::new_with_reachability(
+    MembershipVersion::new(10),
+    vec![node_a, node_b],
+    reachability.snapshot(),
+  );
+  let resolver = SplitBrainResolver::new(SplitBrainResolverSettings::new(
+    Duration::ZERO,
+    SplitBrainResolverStrategy::LeaseMajority,
+    Duration::from_secs(30),
+  ));
+
+  let decision = resolver.decide(&context(snapshot));
+
+  assert_eq!(decision.simple_decision(), DowningDecision::Defer);
+  assert_eq!(decision.trace().lease_outcome(), Some(LeaseAcquisitionOutcome::BackendMissing));
 }

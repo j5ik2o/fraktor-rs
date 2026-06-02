@@ -36,7 +36,7 @@
   - outcome ごとの decision trace mapping を unit test で確認する。
   - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.5_
   - _Boundary: LeaseMajorityPort_
-- [ ] 3.2 `LeaseMajority` strategy を SBR evaluator に接続する
+- [x] 3.2 `LeaseMajority` strategy を SBR evaluator に接続する
   - lease acquired の場合だけ majority partition を keep decision にする。
   - denied、unavailable、unknown、backend missing の場合は observable reason を持つ defer/failure にする。
   - lease majority tests で member state を変更せず decision だけが返ることを確認する。

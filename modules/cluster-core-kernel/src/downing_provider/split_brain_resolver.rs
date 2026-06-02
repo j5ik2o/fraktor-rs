@@ -10,8 +10,8 @@ use core::time::Duration;
 use fraktor_remote_core_rs::address::UniqueAddress;
 
 use super::{
-  DowningDecisionContext, DowningDecisionTrace, DowningStrategyDecision, SplitBrainResolverSettings,
-  SplitBrainResolverStrategy,
+  DowningDecisionContext, DowningDecisionTrace, DowningStrategyDecision, LeaseAcquisitionOutcome, LeaseMajorityPort,
+  SplitBrainResolverSettings, SplitBrainResolverStrategy,
 };
 use crate::membership::{NodeRecord, ReachabilityStatus};
 
@@ -25,7 +25,6 @@ const MAJORITY_TIE: &str = "reachable and non-reachable partitions have equal si
 const STABLE_AFTER_PENDING: &str = "membership has not been stable for the required duration";
 const DOWN_ALL_PENDING: &str = "down-all timeout has not elapsed";
 const DOWN_ALL_ELAPSED: &str = "down-all timeout elapsed";
-const LEASE_BACKEND_MISSING: &str = "lease majority port is not configured";
 
 /// Evaluates Split Brain Resolver settings against a downing context.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -66,11 +65,35 @@ impl SplitBrainResolver {
       | SplitBrainResolverStrategy::KeepMajority => {
         Self::decide_majority(context, strategy, REACHABLE_MAJORITY_SELECTED)
       },
-      | SplitBrainResolverStrategy::LeaseMajority => defer(strategy, LEASE_BACKEND_MISSING),
+      | SplitBrainResolverStrategy::LeaseMajority => Self::defer_lease_outcome(LeaseAcquisitionOutcome::BackendMissing),
       | SplitBrainResolverStrategy::StaticQuorum => Self::decide_majority(context, strategy, STATIC_QUORUM_SELECTED),
       | SplitBrainResolverStrategy::KeepOldest => Self::decide_oldest(context),
       | SplitBrainResolverStrategy::DownAll => self.decide_down_all(context),
     }
+  }
+
+  /// Evaluates LeaseMajority with an explicit lease port.
+  #[must_use]
+  pub fn decide_with_lease(
+    &self,
+    context: &DowningDecisionContext,
+    lease_port: &mut dyn LeaseMajorityPort,
+  ) -> DowningStrategyDecision {
+    if self.settings.active_strategy() != SplitBrainResolverStrategy::LeaseMajority {
+      return self.decide(context);
+    }
+    if let Some(reason) = context.defer_reason() {
+      return defer(SplitBrainResolverStrategy::LeaseMajority, reason);
+    }
+    if self.settings.stable_after() > Duration::ZERO {
+      return DowningStrategyDecision::defer(DowningDecisionTrace::stable_after_pending(
+        SplitBrainResolverStrategy::LeaseMajority,
+        self.settings.stable_after(),
+        String::from(STABLE_AFTER_PENDING),
+      ));
+    }
+
+    Self::decide_lease_majority(context, lease_port)
   }
 
   fn decide_majority(
@@ -118,6 +141,52 @@ impl SplitBrainResolver {
     } else {
       keep_partition(strategy, OLDEST_PARTITION_SELECTED, partition.non_reachable, partition.reachable)
     }
+  }
+
+  fn decide_lease_majority(
+    context: &DowningDecisionContext,
+    lease_port: &mut dyn LeaseMajorityPort,
+  ) -> DowningStrategyDecision {
+    let strategy = SplitBrainResolverStrategy::LeaseMajority;
+    let Some(partition) = PartitionEvaluation::from_context(context) else {
+      return defer(strategy, MEMBERSHIP_REQUIRED);
+    };
+    if partition.active_count() == 0 {
+      return defer(strategy, NO_ACTIVE_MEMBERS);
+    }
+    if partition.has_tie() {
+      return DowningStrategyDecision::defer(
+        DowningDecisionTrace::defer(strategy, String::from(MAJORITY_TIE)).with_tie_break(String::from(MAJORITY_TIE)),
+      );
+    }
+
+    let threshold = partition.active_count() / 2 + 1;
+    let (retained_partition, downing_targets) = if partition.reachable.len() >= threshold {
+      (partition.reachable, partition.non_reachable)
+    } else if partition.non_reachable.len() >= threshold {
+      (partition.non_reachable, partition.reachable)
+    } else {
+      return defer(strategy, "no partition satisfies majority quorum");
+    };
+
+    match lease_port.acquire_majority(context) {
+      | LeaseAcquisitionOutcome::Acquired => DowningStrategyDecision::keep(
+        DowningDecisionTrace::from_lease_outcome(strategy, LeaseAcquisitionOutcome::Acquired),
+        retained_partition,
+        downing_targets,
+      ),
+      | outcome @ (LeaseAcquisitionOutcome::Denied
+      | LeaseAcquisitionOutcome::Unavailable
+      | LeaseAcquisitionOutcome::Unknown
+      | LeaseAcquisitionOutcome::BackendMissing) => Self::defer_lease_outcome(outcome),
+    }
+  }
+
+  fn defer_lease_outcome(outcome: LeaseAcquisitionOutcome) -> DowningStrategyDecision {
+    DowningStrategyDecision::defer(DowningDecisionTrace::from_lease_outcome(
+      SplitBrainResolverStrategy::LeaseMajority,
+      outcome,
+    ))
   }
 
   fn decide_down_all(&self, context: &DowningDecisionContext) -> DowningStrategyDecision {
