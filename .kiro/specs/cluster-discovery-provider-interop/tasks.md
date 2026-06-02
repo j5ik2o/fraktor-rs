@@ -30,7 +30,7 @@
   - _Boundary: GenericDiscoveryAdapter_
   - _Depends: 2, 3_
 
-- [ ] 5. provider lifecycle bridge を実装する
+- [x] 5. provider lifecycle bridge を実装する
   - member start では seed/discovery を join input に変換し、client start では full member 自己登録を生成しないようにする。
   - shutdown で polling/subscription が停止し、provider を strong reference で生存させないことを std test で確認する。
   - 完了時には provider lifecycle と discovery lifecycle の停止境界が観測できる。

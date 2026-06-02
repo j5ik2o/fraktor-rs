@@ -1,0 +1,143 @@
+//! Provider lifecycle bridge for seed and discovery input.
+
+use std::time::Duration;
+
+use fraktor_cluster_core_kernel_rs::{
+  cluster_provider::{
+    ClusterProvider, DiscoveryTopologyMapper, LocalClusterProviderShared, LocalClusterProviderWeak, SeedNodeInput,
+    SeedNodeProcess,
+  },
+  extension::ClusterProviderError,
+  topology::TopologyUpdate,
+};
+use fraktor_utils_core_rs::{sync::SharedAccess, time::TimerInstant};
+
+use super::{DiscoveryBackend, GenericDiscoveryAdapter};
+
+#[cfg(test)]
+#[path = "provider_lifecycle_bridge_test.rs"]
+mod tests;
+
+/// Bridges provider start/shutdown with seed and discovery lifecycle.
+pub struct ProviderLifecycleBridge<B> {
+  provider:          LocalClusterProviderWeak,
+  seed_process:      SeedNodeProcess,
+  seed_input:        SeedNodeInput,
+  discovery_adapter: GenericDiscoveryAdapter<B>,
+  topology_mapper:   DiscoveryTopologyMapper,
+  is_shutdown:       bool,
+}
+
+impl<B> ProviderLifecycleBridge<B> {
+  /// Creates a provider lifecycle bridge.
+  #[must_use]
+  pub fn new(
+    provider: LocalClusterProviderWeak,
+    seed_input: SeedNodeInput,
+    mut discovery_adapter: GenericDiscoveryAdapter<B>,
+    topology_mapper: DiscoveryTopologyMapper,
+  ) -> Self {
+    discovery_adapter.attach_provider(provider.clone());
+    Self {
+      provider,
+      seed_process: SeedNodeProcess::new(),
+      seed_input,
+      discovery_adapter,
+      topology_mapper,
+      is_shutdown: false,
+    }
+  }
+
+  /// Returns whether the bridge has been shut down.
+  #[must_use]
+  pub const fn is_shutdown(&self) -> bool {
+    self.is_shutdown
+  }
+
+  /// Returns whether the weak provider handle can still be upgraded.
+  #[must_use]
+  pub fn provider_is_alive(&self) -> bool {
+    self.provider.upgrade().is_some()
+  }
+}
+
+impl<B> ProviderLifecycleBridge<B>
+where
+  B: DiscoveryBackend,
+{
+  /// Starts member lifecycle and applies seed/discovery join input.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`ClusterProviderError`] when provider startup or join input application fails.
+  pub fn start_member(&mut self) -> Result<(), ClusterProviderError> {
+    if self.is_shutdown {
+      return Ok(());
+    }
+
+    let provider = self.provider.upgrade().ok_or_else(|| ClusterProviderError::start_member("provider unavailable"))?;
+    provider.with_write(ClusterProvider::start_member)?;
+
+    let seed_joins = self.seed_process.start_member(&self.seed_input)?;
+    for authority in seed_joins {
+      provider.with_write(|provider| provider.join(authority.as_str()))?;
+    }
+
+    if let Some(result) = self.discovery_adapter.poll(Self::observed_at())
+      && let Some(update) = self.topology_mapper.apply(&result)
+    {
+      Self::apply_topology_update(&provider, &update)?;
+    }
+    Ok(())
+  }
+
+  /// Starts client lifecycle without producing full member self-registration.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`ClusterProviderError`] when provider client startup or seed validation fails.
+  pub fn start_client(&mut self) -> Result<(), ClusterProviderError> {
+    if self.is_shutdown {
+      return Ok(());
+    }
+
+    let provider = self.provider.upgrade().ok_or_else(|| ClusterProviderError::start_client("provider unavailable"))?;
+    provider.with_write(ClusterProvider::start_client)?;
+    let seed_joins = self.seed_process.start_client(&self.seed_input)?;
+    debug_assert!(seed_joins.is_empty());
+    Ok(())
+  }
+
+  /// Shuts down provider, seed, and discovery lifecycle.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`ClusterProviderError`] when seed or provider shutdown fails.
+  pub fn shutdown(&mut self, graceful: bool) -> Result<(), ClusterProviderError> {
+    self.seed_process.shutdown()?;
+    self.discovery_adapter.shutdown();
+    self.is_shutdown = true;
+
+    if let Some(provider) = self.provider.upgrade() {
+      provider.with_write(|provider| provider.shutdown(graceful))?;
+    }
+    Ok(())
+  }
+
+  fn apply_topology_update(
+    provider: &LocalClusterProviderShared,
+    update: &TopologyUpdate,
+  ) -> Result<(), ClusterProviderError> {
+    for authority in update.joined.iter() {
+      provider.with_write(|provider| provider.join(authority.as_str()))?;
+    }
+    for authority in update.left.iter() {
+      provider.with_write(|provider| provider.leave(authority.as_str()))?;
+    }
+    Ok(())
+  }
+
+  const fn observed_at() -> TimerInstant {
+    TimerInstant::from_ticks(1, Duration::from_secs(1))
+  }
+}
