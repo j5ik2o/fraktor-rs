@@ -10,8 +10,8 @@ use fraktor_utils_core_rs::time::TimerInstant;
 
 use super::{
   DowningDecision, DowningDecisionContext, DowningDecisionTrace, DowningInput, DowningProvider,
-  DowningProviderCompatibility, LeaseAcquisitionOutcome, LeaseMajorityPort, SplitBrainResolver,
-  SplitBrainResolverSettings,
+  DowningProviderCompatibility, DowningStrategyDecision, LeaseAcquisitionOutcome, LeaseMajorityPort,
+  SplitBrainResolver, SplitBrainResolverSettings,
 };
 use crate::ClusterProviderError;
 
@@ -68,7 +68,7 @@ impl SplitBrainResolverProviderHook {
     }
     let strategy_decision = self.resolver.decide(context);
     Self::map_trace(strategy_decision.trace())?;
-    Ok(strategy_decision.simple_decision())
+    Ok(Self::provider_decision(context, &strategy_decision))
   }
 
   /// Decides from a prebuilt context with a lease backend port.
@@ -87,7 +87,7 @@ impl SplitBrainResolverProviderHook {
     }
     let strategy_decision = self.resolver.decide_with_lease(context, lease_port);
     Self::map_trace(strategy_decision.trace())?;
-    Ok(strategy_decision.simple_decision())
+    Ok(Self::provider_decision(context, &strategy_decision))
   }
 
   fn expected_compatibility(settings: SplitBrainResolverSettings) -> DowningProviderCompatibility {
@@ -103,6 +103,19 @@ impl SplitBrainResolverProviderHook {
       return Err(ClusterProviderError::down(trace.reason()));
     }
     Ok(())
+  }
+
+  fn provider_decision(
+    context: &DowningDecisionContext,
+    strategy_decision: &DowningStrategyDecision,
+  ) -> DowningDecision {
+    if context
+      .reachability_observer()
+      .is_some_and(|observer| strategy_decision.downing_targets().iter().any(|target| target == observer))
+    {
+      return DowningDecision::Down;
+    }
+    strategy_decision.simple_decision()
   }
 }
 

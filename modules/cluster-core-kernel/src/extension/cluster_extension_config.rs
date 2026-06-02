@@ -269,8 +269,7 @@ fn split_brain_resolver_settings_are_compatible(
 ) -> bool {
   local.downing_provider.provider_key() != SPLIT_BRAIN_RESOLVER_PROVIDER_KEY
     || joining.downing_provider.provider_key() != SPLIT_BRAIN_RESOLVER_PROVIDER_KEY
-    || local.downing_provider.split_brain_resolver_settings()
-      == joining.downing_provider.split_brain_resolver_settings()
+    || local.downing_provider.sbr_settings_identity() == joining.downing_provider.sbr_settings_identity()
 }
 
 fn normalize_roles(mut roles: Vec<String>) -> Vec<String> {

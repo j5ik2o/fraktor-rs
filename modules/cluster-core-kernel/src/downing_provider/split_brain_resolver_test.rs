@@ -134,15 +134,11 @@ fn static_quorum_uses_configured_fixed_quorum() {
   let node_a = record("node-a", 1, NodeStatus::Up, 1);
   let node_b = record("node-b", 2, NodeStatus::WeaklyUp, 2);
   let node_c = record("node-c", 3, NodeStatus::Up, 3);
-  let node_d = record("node-d", 4, NodeStatus::Up, 4);
-  let node_e = record("node-e", 5, NodeStatus::Up, 5);
   let mut reachability = ReachabilityMatrix::new();
   reachability.unreachable(node_a.unique_address.clone(), node_c.unique_address.clone());
-  reachability.unreachable(node_a.unique_address.clone(), node_d.unique_address.clone());
-  reachability.unreachable(node_a.unique_address.clone(), node_e.unique_address.clone());
   let snapshot = MembershipSnapshot::new_with_reachability(
     MembershipVersion::new(10),
-    vec![node_a.clone(), node_b.clone(), node_c.clone(), node_d.clone(), node_e.clone()],
+    vec![node_a.clone(), node_b.clone(), node_c.clone()],
     reachability.snapshot(),
   );
   let resolver = SplitBrainResolver::new(
@@ -155,11 +151,7 @@ fn static_quorum_uses_configured_fixed_quorum() {
   assert_eq!(decision.simple_decision(), DowningDecision::Keep);
   assert_eq!(decision.trace().strategy(), SplitBrainResolverStrategy::StaticQuorum);
   assert_eq!(decision.retained_partition(), &[node_a.unique_address.clone(), node_b.unique_address.clone()]);
-  assert_eq!(decision.downing_targets(), &[
-    node_c.unique_address.clone(),
-    node_d.unique_address.clone(),
-    node_e.unique_address.clone()
-  ]);
+  assert_eq!(decision.downing_targets(), slice::from_ref(&node_c.unique_address));
 }
 
 #[test]
@@ -207,6 +199,35 @@ fn static_quorum_with_zero_size_defers() {
   assert_eq!(decision.simple_decision(), DowningDecision::Defer);
   assert_eq!(decision.trace().strategy(), SplitBrainResolverStrategy::StaticQuorum);
   assert_eq!(decision.trace().reason(), "static quorum size must be greater than zero");
+}
+
+#[test]
+fn static_quorum_defers_when_both_partitions_satisfy_quorum() {
+  let node_a = record("node-a", 1, NodeStatus::Up, 1);
+  let node_b = record("node-b", 2, NodeStatus::Up, 2);
+  let node_c = record("node-c", 3, NodeStatus::Up, 3);
+  let node_d = record("node-d", 4, NodeStatus::Up, 4);
+  let mut reachability = ReachabilityMatrix::new();
+  reachability.unreachable(node_a.unique_address.clone(), node_c.unique_address.clone());
+  reachability.unreachable(node_a.unique_address.clone(), node_d.unique_address.clone());
+  let snapshot = MembershipSnapshot::new_with_reachability(
+    MembershipVersion::new(10),
+    vec![node_a.clone(), node_b, node_c, node_d],
+    reachability.snapshot(),
+  );
+  let resolver = SplitBrainResolver::new(
+    SplitBrainResolverSettings::new(Duration::ZERO, SplitBrainResolverStrategy::StaticQuorum, Duration::from_secs(30))
+      .with_static_quorum_size(2),
+  );
+
+  let decision = resolver.decide(&context_with_observer(snapshot, node_a.unique_address));
+
+  assert_eq!(decision.simple_decision(), DowningDecision::Defer);
+  assert_eq!(decision.trace().strategy(), SplitBrainResolverStrategy::StaticQuorum);
+  assert_eq!(
+    decision.trace().tie_break_rule(),
+    Some("reachable and non-reachable partitions both satisfy static quorum")
+  );
 }
 
 #[test]

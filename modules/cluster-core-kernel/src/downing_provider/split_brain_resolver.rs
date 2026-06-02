@@ -23,6 +23,7 @@ const STATIC_QUORUM_SELECTED: &str = "reachable static quorum partition selected
 const NON_REACHABLE_STATIC_QUORUM_SELECTED: &str = "non-reachable static quorum partition selected";
 const OLDEST_PARTITION_SELECTED: &str = "oldest member partition selected";
 const MAJORITY_TIE: &str = "reachable and non-reachable partitions have equal size";
+const STATIC_QUORUM_TIE: &str = "reachable and non-reachable partitions both satisfy static quorum";
 const STATIC_QUORUM_SIZE_MISSING: &str = "static quorum size is not configured";
 const STATIC_QUORUM_SIZE_ZERO: &str = "static quorum size must be greater than zero";
 const EXPLICIT_DOWN_SELECTED: &str = "explicit down command selected";
@@ -177,10 +178,19 @@ impl SplitBrainResolver {
       return defer(strategy, NO_ACTIVE_MEMBERS);
     }
 
-    if partition.reachable.len() >= quorum_size {
+    let reachable_satisfies_quorum = partition.reachable.len() >= quorum_size;
+    let non_reachable_satisfies_quorum = partition.non_reachable.len() >= quorum_size;
+    if reachable_satisfies_quorum && non_reachable_satisfies_quorum {
+      return DowningStrategyDecision::defer(
+        DowningDecisionTrace::defer(strategy, String::from(STATIC_QUORUM_TIE))
+          .with_tie_break(String::from(STATIC_QUORUM_TIE)),
+      );
+    }
+
+    if reachable_satisfies_quorum {
       return keep_partition(strategy, STATIC_QUORUM_SELECTED, partition.reachable, partition.non_reachable);
     }
-    if partition.non_reachable.len() >= quorum_size {
+    if non_reachable_satisfies_quorum {
       return keep_partition(
         strategy,
         NON_REACHABLE_STATIC_QUORUM_SELECTED,

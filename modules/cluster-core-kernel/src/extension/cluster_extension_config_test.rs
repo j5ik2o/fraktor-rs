@@ -244,6 +244,26 @@ fn join_compatibility_accepts_same_sbr_settings() {
 }
 
 #[test]
+fn join_compatibility_ignores_static_quorum_size_for_non_static_quorum_strategy() {
+  let local_sbr = SplitBrainResolverSettings::new(
+    Duration::from_secs(20),
+    SplitBrainResolverStrategy::KeepMajority,
+    Duration::from_secs(15),
+  );
+  let joining_sbr = local_sbr.with_static_quorum_size(3);
+  let local = ClusterExtensionConfig::new().with_downing_provider_compatibility(
+    DowningProviderCompatibility::new("split-brain-resolver").with_split_brain_resolver_settings(local_sbr),
+  );
+  let joining = ClusterExtensionConfig::new().with_downing_provider_compatibility(
+    DowningProviderCompatibility::new("split-brain-resolver").with_split_brain_resolver_settings(joining_sbr),
+  );
+
+  let validation = local.check_join_compatibility(&joining);
+
+  assert_eq!(validation, ConfigValidation::Compatible);
+}
+
+#[test]
 fn join_compatibility_accepts_same_pubsub_config() {
   let shared = PubSubConfig::new(Duration::from_secs(4), Duration::from_secs(40));
   let local_topology =
