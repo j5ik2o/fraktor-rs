@@ -7,7 +7,7 @@
   - _Requirements: 1.1, 1.2, 1.3, 1.4, 1.5, 3.1, 3.2_
   - _Boundary: SeedNodeProcess_
 
-- [ ] 2. provider-neutral discovery result model を追加する
+- [x] 2. provider-neutral discovery result model を追加する
   - backend-neutral な discovered authority、source identity、observation time、empty result、failure result を表現する。
   - provider-specific metadata が placement / membership input として公開されないことを test で確認する。
   - 完了時には generic backend result を cluster core が読める最小 value contract に正規化できる。
