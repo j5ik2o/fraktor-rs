@@ -55,7 +55,7 @@
   - _Boundary: ScopeGuard_
   - _Depends: 6_
 
-- [ ] 8. gap analysis evidence と targeted verification を更新する
+- [x] 8. gap analysis evidence と targeted verification を更新する
   - `SeedNodeProcess` と generic discovery adapter の evidence だけを `docs/gap-analysis/cluster-gap-analysis.md` に反映する。
   - Deferred Pekko concepts と downstream spec 項目を完了扱いにしないことを確認する。
   - 対象 crate の unit tests / std tests / no-std check を実行し、provider/discovery interop の contract が同時に成立することを確認する。
