@@ -98,9 +98,9 @@ where
       return Ok(());
     }
 
+    let seed_joins = self.seed_process.start_client(&self.seed_input)?;
     let provider = self.provider.upgrade().ok_or_else(|| ClusterProviderError::start_client("provider unavailable"))?;
     provider.with_write(ClusterProvider::start_client)?;
-    let seed_joins = self.seed_process.start_client(&self.seed_input)?;
     debug_assert!(seed_joins.is_empty());
     Ok(())
   }
@@ -122,7 +122,7 @@ where
         return Err(error.clone());
       }
       if let Some(update) = self.topology_mapper.apply(&result) {
-        Self::apply_topology_update(&provider, &update)?;
+        Self::apply_topology_update(&provider, &update, self.seed_input.advertised_authority())?;
       }
     }
     Ok(())
@@ -147,11 +147,18 @@ where
   fn apply_topology_update(
     provider: &LocalClusterProviderShared,
     update: &TopologyUpdate,
+    local_authority: &str,
   ) -> Result<(), ClusterProviderError> {
     for authority in update.joined.iter() {
+      if authority == local_authority {
+        continue;
+      }
       provider.with_write(|provider| provider.join(authority.as_str()))?;
     }
     for authority in update.left.iter() {
+      if authority == local_authority {
+        continue;
+      }
       provider.with_write(|provider| provider.leave(authority.as_str()))?;
     }
     Ok(())

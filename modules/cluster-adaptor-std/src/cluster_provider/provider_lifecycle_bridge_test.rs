@@ -205,6 +205,28 @@ fn provider_lifecycle_bridge_validates_seed_before_provider_start() {
 }
 
 #[test]
+fn provider_lifecycle_bridge_validates_client_seed_before_provider_start() {
+  let event_stream = EventStreamShared::default();
+  let provider = wrap_local_cluster_provider(LocalClusterProvider::new(event_stream, block_list(), "node-a"));
+  let backend = CountingDiscoveryBackend::new("test-discovery", Vec::new());
+  let mut bridge = ProviderLifecycleBridge::new(
+    provider.downgrade(),
+    seed_input("node-a", Vec::from(["invalid seed"])),
+    GenericDiscoveryAdapter::new(backend),
+    mapper(),
+  );
+
+  let result = bridge.start_client();
+
+  assert!(matches!(
+    result,
+    Err(ClusterProviderError::JoinFailed(ref reason)) if reason == "invalid seed authority"
+  ));
+  assert_eq!(provider.with_read(|provider| provider.member_count()), 0);
+  assert!(!provider.with_read(|provider| provider.is_started()));
+}
+
+#[test]
 fn provider_lifecycle_bridge_refreshes_discovery_after_member_start() {
   let event_stream = EventStreamShared::default();
   let (subscriber_impl, _subscription) = subscribe_recorder(&event_stream);
@@ -262,6 +284,33 @@ fn provider_lifecycle_bridge_propagates_backend_failure_without_destroying_topol
     Err(ClusterProviderError::StartMemberFailed(ref reason)) if reason == "backend unavailable"
   ));
   assert_eq!(provider.with_read(|provider| provider.member_count()), 1);
+}
+
+#[test]
+fn provider_lifecycle_bridge_ignores_self_authority_from_discovery_delta() {
+  let event_stream = EventStreamShared::default();
+  let (subscriber_impl, _subscription) = subscribe_recorder(&event_stream);
+  let provider = wrap_local_cluster_provider(LocalClusterProvider::new(event_stream, block_list(), "node-a"));
+  let backend =
+    CountingDiscoveryBackend::new("test-discovery", Vec::from([String::from("node-a"), String::from("node-b")]));
+  let backend_probe = backend.clone();
+  let mut bridge = ProviderLifecycleBridge::new(
+    provider.downgrade(),
+    seed_input("node-a", Vec::new()),
+    GenericDiscoveryAdapter::new(backend),
+    mapper(),
+  );
+
+  bridge.start_member().expect("member lifecycle should start");
+  backend_probe.replace_authorities(Vec::from([String::from("node-b")]));
+  bridge.refresh_discovery().expect("self leave should be ignored");
+
+  let events = subscriber_impl.events();
+  assert_eq!(provider.with_read(|provider| provider.member_count()), 2);
+  assert!(!events.iter().any(|event| matches!(
+    event,
+    ClusterEvent::TopologyUpdated { update } if update.left == vec![String::from("node-a")]
+  )));
 }
 
 #[test]
