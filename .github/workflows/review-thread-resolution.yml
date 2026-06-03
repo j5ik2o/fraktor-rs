@@ -46,14 +46,62 @@ jobs:
           INPUT_PR_NUMBER: ${{ inputs.pr_number || '' }}
           IS_PR_ISSUE_COMMENT: ${{ github.event.issue.pull_request != null }}
           BASE_BRANCH: main
+          REQUIRED_CONTEXT: Check unresolved comments
         run: |
           set -euo pipefail
 
+          fetch_pr_head_sha() {
+            local pr_number="$1"
+            gh api "repos/${GITHUB_REPOSITORY}/pulls/${pr_number}" --jq '.head.sha'
+          }
+
           has_rust_changes() {
             local pr_number="$1"
-            gh api --paginate "repos/${GITHUB_REPOSITORY}/pulls/${pr_number}/files?per_page=100" \
-              --jq '.[] | .filename, (.previous_filename // empty)' \
-              | grep -Eq '\.rs$'
+            local changed_paths
+            if ! changed_paths="$(
+              gh api --paginate "repos/${GITHUB_REPOSITORY}/pulls/${pr_number}/files?per_page=100" \
+                --jq '.[] | .filename, (.previous_filename // empty)'
+            )"; then
+              return 2
+            fi
+
+            if printf '%s\n' "${changed_paths}" | grep -E '\.rs$' > /dev/null; then
+              return 0
+            fi
+
+            return 1
+          }
+
+          publish_non_rust_success() {
+            local pr_number="$1"
+            local expected_head_sha="$2"
+            local head_sha
+            local head_repo
+            local pr_metadata
+            if ! pr_metadata="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${pr_number}" --jq '"\(.head.sha)\t\(.head.repo.full_name)"')"; then
+              echo "::warning::Unable to fetch PR #${pr_number} head metadata; leaving ${REQUIRED_CONTEXT} unchanged."
+              return 0
+            fi
+
+            IFS=$'\t' read -r head_sha head_repo <<< "${pr_metadata}"
+            if [[ "${head_sha}" != "${expected_head_sha}" ]]; then
+              echo "::warning::PR #${pr_number} head changed from ${expected_head_sha} to ${head_sha}; leaving ${REQUIRED_CONTEXT} unchanged."
+              return 0
+            fi
+
+            if [[ "${head_repo}" != "${GITHUB_REPOSITORY}" ]]; then
+              echo "::notice::Skipping ${REQUIRED_CONTEXT} status publication for cross-repository PR #${pr_number}."
+              return 0
+            fi
+
+            if ! gh api "repos/${GITHUB_REPOSITORY}/statuses/${head_sha}" \
+              -f state=success \
+              -f context="${REQUIRED_CONTEXT}" \
+              -f description="Skipped for PR without Rust source changes." \
+              -f target_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" \
+              > /dev/null; then
+              echo "::warning::Unable to publish ${REQUIRED_CONTEXT} success for PR #${pr_number}."
+            fi
           }
 
           pr_candidates=()
@@ -72,8 +120,25 @@ jobs:
 
           selected=()
           for pr_number in "${pr_candidates[@]}"; do
-            if [[ "${pr_number}" =~ ^[0-9]+$ ]] && has_rust_changes "${pr_number}"; then
-              selected+=("${pr_number}")
+            if [[ "${pr_number}" =~ ^[0-9]+$ ]]; then
+              if ! head_sha="$(fetch_pr_head_sha "${pr_number}")"; then
+                echo "::warning::Unable to fetch PR #${pr_number} head SHA; leaving ${REQUIRED_CONTEXT} unchanged."
+                continue
+              fi
+
+              rust_change_result=0
+              has_rust_changes "${pr_number}" || rust_change_result=$?
+              case "${rust_change_result}" in
+                0)
+                  selected+=("${pr_number}")
+                  ;;
+                1)
+                  publish_non_rust_success "${pr_number}" "${head_sha}"
+                  ;;
+                *)
+                  echo "::warning::Unable to inspect PR #${pr_number} changed files; leaving ${REQUIRED_CONTEXT} unchanged."
+                  ;;
+              esac
             fi
           done
 
