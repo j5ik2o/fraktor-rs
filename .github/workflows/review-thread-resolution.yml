@@ -56,6 +56,18 @@ jobs:
               | grep -Eq '\.rs$'
           }
 
+          publish_non_rust_success() {
+            local pr_number="$1"
+            local head_sha
+            head_sha="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${pr_number}" --jq '.head.sha')"
+            gh api "repos/${GITHUB_REPOSITORY}/statuses/${head_sha}" \
+              -f state=success \
+              -f context="Check unresolved comments" \
+              -f description="Skipped for PR without Rust source changes." \
+              -f target_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" \
+              > /dev/null
+          }
+
           pr_candidates=()
           if [[ "${EVENT_NAME}" == "issue_comment" && "${IS_PR_ISSUE_COMMENT}" != "true" ]]; then
             pr_candidates=()
@@ -72,8 +84,12 @@ jobs:
 
           selected=()
           for pr_number in "${pr_candidates[@]}"; do
-            if [[ "${pr_number}" =~ ^[0-9]+$ ]] && has_rust_changes "${pr_number}"; then
-              selected+=("${pr_number}")
+            if [[ "${pr_number}" =~ ^[0-9]+$ ]]; then
+              if has_rust_changes "${pr_number}"; then
+                selected+=("${pr_number}")
+              else
+                publish_non_rust_success "${pr_number}"
+              fi
             fi
           done
 
