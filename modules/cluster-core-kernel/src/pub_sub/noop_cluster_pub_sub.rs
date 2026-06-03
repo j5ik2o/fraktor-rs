@@ -1,6 +1,15 @@
 //! No-op implementation of the ClusterPubSub trait.
 
-use super::{PubSubError, PubSubSubscriber, PubSubTopic, PublishAck, PublishRequest, cluster_pub_sub::ClusterPubSub};
+#[cfg(test)]
+#[path = "noop_cluster_pub_sub_test.rs"]
+mod tests;
+
+use fraktor_remote_core_rs::address::UniqueAddress;
+
+use super::{
+  MediatorCommand, MediatorCommandOutcome, PubSubError, PubSubSubscriber, PubSubTopic, PublishAck, PublishRequest,
+  cluster_pub_sub::ClusterPubSub,
+};
 use crate::TopologyUpdate;
 
 /// A no-op pub/sub that does nothing.
@@ -37,6 +46,15 @@ impl ClusterPubSub for NoopClusterPubSub {
 
   fn publish(&mut self, _request: PublishRequest) -> Result<PublishAck, PubSubError> {
     Ok(PublishAck::accepted())
+  }
+
+  fn apply_mediator_command(
+    &mut self,
+    _command: MediatorCommand,
+    _now_millis: u64,
+    _active_owners: &[UniqueAddress],
+  ) -> Result<MediatorCommandOutcome, PubSubError> {
+    Ok(MediatorCommandOutcome::Noop)
   }
 
   fn on_topology(&mut self, _update: &TopologyUpdate) {}

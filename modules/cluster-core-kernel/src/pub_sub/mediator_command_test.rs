@@ -26,6 +26,20 @@ fn path_key_uses_address_less_relative_actor_path() {
 }
 
 #[test]
+fn path_key_accepts_absolute_actor_selection() {
+  let key = MediatorPathKey::parse("/user/service").expect("path");
+
+  assert_eq!(key.as_str(), "/user/service");
+}
+
+#[test]
+fn path_key_accepts_relative_actor_selection() {
+  let key = MediatorPathKey::parse("../service").expect("path");
+
+  assert_eq!(key.as_str(), "/user/service");
+}
+
+#[test]
 fn path_command_rejects_invalid_path() {
   let error = MediatorCommand::try_put("", subscriber("actor-1")).expect_err("invalid path");
 
@@ -48,27 +62,57 @@ fn topic_commands_reject_empty_topic() {
 }
 
 #[test]
-fn payload_commands_reject_empty_payload() {
-  let error = MediatorCommand::try_publish(PubSubTopic::new("news"), PubSubEnvelope {
+fn payload_commands_accept_empty_serialized_bytes() {
+  let command = MediatorCommand::try_publish(PubSubTopic::new("news"), PubSubEnvelope {
     serializer_id: 41,
     type_name:     String::from("example.Message"),
     bytes:         vec![],
   })
+  .expect("empty serialized bytes");
+
+  assert!(matches!(command, MediatorCommand::Publish { .. }));
+}
+
+#[test]
+fn payload_commands_accept_builtin_serializer_id() {
+  let command = MediatorCommand::try_send(
+    "fraktor://sys/user/service",
+    PubSubEnvelope {
+      serializer_id: 4,
+      type_name:     String::from("alloc::string::String"),
+      bytes:         vec![1, 2, 3],
+    },
+    false,
+  )
+  .expect("builtin serializer id");
+
+  assert!(matches!(command, MediatorCommand::Send { .. }));
+}
+
+#[test]
+fn payload_commands_reject_zero_serializer_id() {
+  let error = MediatorCommand::try_send(
+    "fraktor://sys/user/service",
+    PubSubEnvelope { serializer_id: 0, type_name: String::from("example.Message"), bytes: vec![1, 2, 3] },
+    false,
+  )
   .expect_err("invalid payload");
 
   assert!(matches!(error, PubSubError::InvalidPayload { .. }));
 }
 
 #[test]
-fn payload_commands_reject_reserved_serializer_id() {
-  let error = MediatorCommand::try_send(
-    "fraktor://sys/user/service",
-    PubSubEnvelope { serializer_id: 40, type_name: String::from("example.Message"), bytes: vec![1, 2, 3] },
-    false,
-  )
-  .expect_err("invalid payload");
+fn remove_command_keeps_target_identity() {
+  let target = subscriber("actor-1");
+  let command = MediatorCommand::try_remove("fraktor://sys/user/service", target.clone()).expect("command");
 
-  assert!(matches!(error, PubSubError::InvalidPayload { .. }));
+  match command {
+    | MediatorCommand::Remove { path, target: actual } => {
+      assert_eq!(path.as_str(), "/user/service");
+      assert_eq!(actual, target);
+    },
+    | _ => panic!("unexpected command"),
+  }
 }
 
 #[test]
@@ -95,19 +139,19 @@ fn query_commands_keep_requested_shape() {
 }
 
 #[test]
-fn acknowledgement_reports_completed_subscription_operation() {
+fn acknowledgement_preserves_subscription_operation_fields() {
   let acknowledgement = MediatorAcknowledgement::SubscribeCompleted {
     topic:      PubSubTopic::new("news"),
     group:      Some(String::from("blue")),
     subscriber: subscriber("sub-1"),
   };
 
-  assert!(acknowledgement.is_completed());
+  assert!(matches!(acknowledgement, MediatorAcknowledgement::SubscribeCompleted { .. }));
 }
 
 #[test]
-fn query_result_reports_completed_snapshot() {
+fn query_result_preserves_snapshot_fields() {
   let result = MediatorQueryResult::CurrentTopics { topics: vec![PubSubTopic::new("news")] };
 
-  assert!(result.is_completed());
+  assert!(matches!(result, MediatorQueryResult::CurrentTopics { .. }));
 }

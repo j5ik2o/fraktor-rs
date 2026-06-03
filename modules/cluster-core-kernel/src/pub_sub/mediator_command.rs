@@ -6,8 +6,6 @@ mod tests;
 
 use alloc::string::String;
 
-use fraktor_actor_core_kernel_rs::serialization::SerializerId;
-
 use super::{MediatorPathKey, MediatorQuery, PubSubEnvelope, PubSubError, PubSubSubscriber, PubSubTopic};
 
 /// Command contract accepted by the distributed pub-sub mediator.
@@ -23,7 +21,9 @@ pub enum MediatorCommand {
   /// Removes a path registration.
   Remove {
     /// Canonical address-less path key.
-    path: MediatorPathKey,
+    path:   MediatorPathKey,
+    /// Registered target to remove.
+    target: PubSubSubscriber,
   },
   /// Subscribes a target to a topic.
   Subscribe {
@@ -87,8 +87,8 @@ impl MediatorCommand {
   /// # Errors
   ///
   /// Returns [`PubSubError::InvalidPath`] when `path` is not a canonical actor path.
-  pub fn try_remove(path: &str) -> Result<Self, PubSubError> {
-    Ok(Self::Remove { path: MediatorPathKey::parse(path)? })
+  pub fn try_remove(path: &str, target: PubSubSubscriber) -> Result<Self, PubSubError> {
+    Ok(Self::Remove { path: MediatorPathKey::parse(path)?, target })
   }
 
   /// Creates a validated `Subscribe` command.
@@ -175,13 +175,11 @@ impl MediatorCommand {
   }
 
   fn validate_payload(payload: &PubSubEnvelope) -> Result<(), PubSubError> {
-    SerializerId::try_from(payload.serializer_id)
-      .map_err(|_| PubSubError::InvalidPayload { reason: String::from("payload serializer_id is reserved") })?;
+    if payload.serializer_id == 0 {
+      return Err(PubSubError::InvalidPayload { reason: String::from("payload serializer_id must not be zero") });
+    }
     if payload.type_name.is_empty() {
       return Err(PubSubError::InvalidPayload { reason: String::from("payload type_name must not be empty") });
-    }
-    if payload.bytes.is_empty() {
-      return Err(PubSubError::InvalidPayload { reason: String::from("payload bytes must not be empty") });
     }
     Ok(())
   }

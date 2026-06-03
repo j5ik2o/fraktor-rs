@@ -90,6 +90,8 @@ impl GossipTransportHandoff {
       | 3 => Ok(GossipPayloadKind::HeartbeatRequest),
       | 4 => Ok(GossipPayloadKind::HeartbeatResponse),
       | 5 => Ok(GossipPayloadKind::CrossDcHeartbeat),
+      | 6 => Ok(GossipPayloadKind::PubSubRegistryStatus),
+      | 7 => Ok(GossipPayloadKind::PubSubRegistryDelta),
       | _ => Err(GossipTransportHandoffError::UnknownPayloadKind { tag }),
     }
   }

@@ -4,7 +4,7 @@
 #[path = "cluster_pub_sub_impl_test.rs"]
 mod tests;
 
-use alloc::{format, string::String, vec, vec::Vec};
+use alloc::{collections::BTreeMap, format, string::String, vec, vec::Vec};
 use core::time::Duration;
 
 use fraktor_actor_core_kernel_rs::{
@@ -12,6 +12,7 @@ use fraktor_actor_core_kernel_rs::{
   event::stream::{EventStreamEvent, EventStreamShared},
   serialization::{SerializationError, serialization_registry::SerializationRegistry},
 };
+use fraktor_remote_core_rs::address::{Address, UniqueAddress};
 use fraktor_utils_core_rs::{
   sync::{ArcShared, SharedAccess},
   time::TimerInstant,
@@ -22,9 +23,11 @@ use crate::{
   ClusterEvent, StartupMode, TopologyUpdate,
   grain::{KindRegistry, TOPIC_ACTOR_KIND},
   pub_sub::{
-    DeliverBatchRequest, DeliveryEndpointShared, DeliveryReport, PubSubBatch, PubSubBroker, PubSubConfig,
+    DeliverBatchRequest, DeliveryEndpointShared, DeliveryReport, DistributedPubSubMediatorState,
+    DistributedPubSubSettings, MediatorCommand, MediatorCommandOutcome, PubSubBatch, PubSubBroker, PubSubConfig,
     PubSubEnvelope, PubSubError, PubSubEvent, PubSubSubscriber, PubSubTopic, PubSubTopicOptions, PublishAck,
-    PublishOptions, PublishRejectReason, PublishRequest, SubscriberDeliveryReport,
+    PublishOptions, PublishRejectReason, PublishRequest, SubscriberDeliveryReport, TopicRegistryApplyOutcome,
+    TopicRegistryDelta, TopicRegistryDeltaCollector, TopicRegistryStatus,
   },
 };
 
@@ -34,15 +37,26 @@ use crate::{
 /// before starting. On start, it creates the topic for TopicActorKind and publishes
 /// events to EventStream.
 pub struct ClusterPubSubImpl {
-  event_stream:         EventStreamShared,
-  broker:               PubSubBroker,
-  has_topic_actor_kind: bool,
-  started:              bool,
-  advertised_address:   String,
-  pubsub_config:        PubSubConfig,
-  delivery_endpoint:    DeliveryEndpointShared,
-  registry:             ArcShared<SerializationRegistry>,
-  last_observed_at:     Option<TimerInstant>,
+  event_stream:           EventStreamShared,
+  broker:                 PubSubBroker,
+  has_topic_actor_kind:   bool,
+  started:                bool,
+  advertised_address:     String,
+  pubsub_config:          PubSubConfig,
+  delivery_endpoint:      DeliveryEndpointShared,
+  registry:               ArcShared<SerializationRegistry>,
+  last_observed_at:       Option<TimerInstant>,
+  mediator_clock_anchor:  Option<MediatorClockAnchor>,
+  last_mediator_now:      Option<u64>,
+  mediator_state:         DistributedPubSubMediatorState,
+  peer_statuses:          BTreeMap<UniqueAddress, TopicRegistryStatus>,
+  active_mediator_owners: Vec<UniqueAddress>,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct MediatorClockAnchor {
+  observed_at: TimerInstant,
+  now_millis:  u64,
 }
 
 impl ClusterPubSubImpl {
@@ -58,6 +72,8 @@ impl ClusterPubSubImpl {
     registry_snapshot: &KindRegistry,
   ) -> Self {
     let has_topic_actor_kind = registry_snapshot.contains(TOPIC_ACTOR_KIND);
+    let mediator_settings = DistributedPubSubSettings::default();
+    let mediator_owner = mediator_owner_from_address("pubsub");
     Self {
       event_stream,
       broker: PubSubBroker::new(),
@@ -68,6 +84,11 @@ impl ClusterPubSubImpl {
       delivery_endpoint,
       registry,
       last_observed_at: None,
+      mediator_clock_anchor: None,
+      last_mediator_now: None,
+      mediator_state: DistributedPubSubMediatorState::new(mediator_settings, mediator_owner),
+      peer_statuses: BTreeMap::new(),
+      active_mediator_owners: Vec::new(),
     }
   }
 
@@ -75,6 +96,15 @@ impl ClusterPubSubImpl {
   #[must_use]
   pub fn with_advertised_address(mut self, address: impl Into<String>) -> Self {
     self.advertised_address = address.into();
+    self.mediator_state.rebind_local_owner(mediator_owner_from_address(&self.advertised_address));
+    self
+  }
+
+  /// Creates a new PubSubImpl with custom distributed mediator settings.
+  #[must_use]
+  pub fn with_mediator_settings(mut self, settings: DistributedPubSubSettings) -> Self {
+    let local_owner = self.mediator_state.local_owner().clone();
+    self.mediator_state = DistributedPubSubMediatorState::new(settings, local_owner);
     self
   }
 
@@ -140,6 +170,62 @@ impl ClusterPubSubImpl {
       }
     }
     (local, remote)
+  }
+
+  fn rebind_mediator_owner_from_active_owners(&mut self, active_owners: &[UniqueAddress]) {
+    // Empty active owners means membership has not supplied an observation yet; delivery views still
+    // receive the same empty slice and expose no active buckets.
+    if let Some(owner) = mediator_owner_from_active_owners(&self.advertised_address, active_owners) {
+      self.mediator_state.rebind_local_owner(owner);
+      self.peer_statuses.remove(self.mediator_state.local_owner());
+    }
+  }
+
+  fn record_active_mediator_owners(&mut self, active_owners: &[UniqueAddress]) {
+    self.active_mediator_owners = active_owners.to_vec();
+    if self.active_mediator_owners.is_empty() {
+      return;
+    }
+
+    let local_owner = self.mediator_state.local_owner().clone();
+    self
+      .peer_statuses
+      .retain(|owner, _| owner != &local_owner && self.active_mediator_owners.iter().any(|active| active == owner));
+  }
+
+  fn active_peer_statuses(&self, update: &TopologyUpdate) -> Option<Vec<TopicRegistryStatus>> {
+    if update.members.len() <= 1 {
+      return Some(Vec::new());
+    }
+
+    let mut statuses = Vec::new();
+    for (owner, status) in &self.peer_statuses {
+      if owner != self.mediator_state.local_owner()
+        && owner_is_active_or_topology_member(owner, &self.active_mediator_owners, &update.members)
+      {
+        statuses.push(status.clone());
+      }
+    }
+    if statuses.is_empty() { None } else { Some(statuses) }
+  }
+
+  const fn record_mediator_now(&mut self, now_millis: u64) {
+    self.last_mediator_now = Some(now_millis);
+    if let Some(observed_at) = self.last_observed_at {
+      self.mediator_clock_anchor = Some(MediatorClockAnchor { observed_at, now_millis });
+    }
+  }
+
+  fn mediator_now_for_topology(&mut self, observed_at: TimerInstant) -> Option<u64> {
+    if let Some(anchor) = self.mediator_clock_anchor
+      && let Some(elapsed_millis) = elapsed_millis(anchor.observed_at, observed_at)
+    {
+      return Some(anchor.now_millis.saturating_add(elapsed_millis));
+    }
+
+    let now_millis = self.last_mediator_now?;
+    self.mediator_clock_anchor = Some(MediatorClockAnchor { observed_at, now_millis });
+    Some(now_millis)
   }
 
   fn deliver_group(
@@ -301,8 +387,66 @@ impl ClusterPubSub for ClusterPubSubImpl {
     Ok(PublishAck::accepted())
   }
 
+  fn mediator_settings(&self) -> DistributedPubSubSettings {
+    self.mediator_state.settings().clone()
+  }
+
+  fn mediator_status(&self) -> TopicRegistryStatus {
+    TopicRegistryStatus::from_buckets(&self.mediator_state.buckets())
+  }
+
+  fn record_mediator_peer_status(&mut self, owner: UniqueAddress, status: TopicRegistryStatus) {
+    if owner != *self.mediator_state.local_owner() {
+      self.peer_statuses.insert(owner, status);
+    }
+  }
+
+  fn collect_mediator_delta(&self, peer_status: &TopicRegistryStatus) -> TopicRegistryDelta {
+    TopicRegistryDeltaCollector::collect_delta(
+      peer_status,
+      &self.mediator_state.buckets(),
+      self.mediator_state.settings(),
+    )
+  }
+
+  fn apply_mediator_delta(
+    &mut self,
+    delta: &TopicRegistryDelta,
+    active_owners: &[UniqueAddress],
+  ) -> Vec<TopicRegistryApplyOutcome> {
+    self.rebind_mediator_owner_from_active_owners(active_owners);
+    self.record_active_mediator_owners(active_owners);
+    self.mediator_state.apply_delta(delta, active_owners)
+  }
+
+  fn apply_mediator_command(
+    &mut self,
+    command: MediatorCommand,
+    now_millis: u64,
+    active_owners: &[UniqueAddress],
+  ) -> Result<MediatorCommandOutcome, PubSubError> {
+    if !self.started {
+      return Err(PubSubError::NotStarted);
+    }
+    self.rebind_mediator_owner_from_active_owners(active_owners);
+    self.record_active_mediator_owners(active_owners);
+    self.record_mediator_now(now_millis);
+    self.mediator_state.apply_command(command, now_millis, active_owners)
+  }
+
   fn on_topology(&mut self, update: &TopologyUpdate) {
+    let mediator_now = self.mediator_now_for_topology(update.observed_at);
+    let active_mediator_owners = self.active_mediator_owners.clone();
+    let topology_members = update.members.clone();
     self.last_observed_at = Some(update.observed_at);
+    self.mediator_state.retain_remote_buckets_by_owner(|owner| {
+      owner_is_active_or_topology_member(owner, &active_mediator_owners, &topology_members)
+    });
+    if let Some(now_millis) = mediator_now
+      && let Some(peer_statuses) = self.active_peer_statuses(update)
+    {
+      self.mediator_state.prune_removed_entries(now_millis, &peer_statuses);
+    }
     for topic in self.broker.topics() {
       if let Ok(removed) =
         self.broker.remove_expired_suspended(&topic, update.observed_at, self.pubsub_config.suspended_ttl)
@@ -326,6 +470,73 @@ impl ClusterPubSub for ClusterPubSubImpl {
       }
     }
   }
+}
+
+fn elapsed_millis(start: TimerInstant, end: TimerInstant) -> Option<u64> {
+  if start.resolution() != end.resolution() {
+    return None;
+  }
+  let resolution_ns = start.resolution().as_nanos().max(1);
+  let ticks = end.ticks().saturating_sub(start.ticks());
+  let elapsed_ns = ticks.saturating_mul(u64::try_from(resolution_ns).unwrap_or(u64::MAX));
+  Some(elapsed_ns / 1_000_000)
+}
+
+fn mediator_owner_from_address(address: &str) -> UniqueAddress {
+  let (host, port) = address_host_port(address);
+  // UID 1 is an initialization placeholder; active membership rebinding replaces it before delivery
+  // selection.
+  UniqueAddress::new(Address::new("fraktor-cluster", host, port), 1)
+}
+
+fn mediator_owner_from_active_owners(
+  advertised_address: &str,
+  active_owners: &[UniqueAddress],
+) -> Option<UniqueAddress> {
+  let (host, port) = address_host_port(advertised_address);
+  active_owners
+    .iter()
+    .find(|owner| normalize_host(owner.address().host()) == host && owner.address().port() == port)
+    .cloned()
+}
+
+fn owner_is_active_or_topology_member(
+  owner: &UniqueAddress,
+  active_owners: &[UniqueAddress],
+  topology_members: &[String],
+) -> bool {
+  let topology_member = topology_members.iter().any(|member| owner_matches_member(owner, member));
+  if active_owners.is_empty() {
+    return topology_member;
+  }
+  topology_member && active_owners.iter().any(|active_owner| active_owner == owner)
+}
+
+fn owner_matches_member(owner: &UniqueAddress, member: &str) -> bool {
+  let (host, port) = address_host_port(member);
+  normalize_host(owner.address().host()) == host && (port == 0 || owner.address().port() == port)
+}
+
+fn address_host_port(address: &str) -> (String, u16) {
+  if let Some(bracketed) = address.strip_prefix('[')
+    && let Some((host, port_text)) = bracketed.split_once("]:")
+    && let Ok(port) = port_text.parse::<u16>()
+  {
+    return (String::from(normalize_host(host)), port);
+  }
+
+  if let Some((host, port_text)) = address.rsplit_once(':')
+    && !host.contains(':')
+    && let Ok(port) = port_text.parse::<u16>()
+  {
+    (String::from(host), port)
+  } else {
+    (String::from(address), 0)
+  }
+}
+
+fn normalize_host(host: &str) -> &str {
+  host.strip_prefix('[').and_then(|inner| inner.strip_suffix(']')).unwrap_or(host)
 }
 
 impl ClusterPubSubImpl {

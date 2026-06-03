@@ -15,4 +15,8 @@ pub enum GossipPayloadKind {
   HeartbeatResponse,
   /// Cross data center heartbeat payload.
   CrossDcHeartbeat,
+  /// Pub-sub registry owner-version status payload.
+  PubSubRegistryStatus,
+  /// Pub-sub registry bounded delta payload.
+  PubSubRegistryDelta,
 }

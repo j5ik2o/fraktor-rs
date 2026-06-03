@@ -26,11 +26,3 @@ pub enum MediatorAcknowledgement {
     subscriber: PubSubSubscriber,
   },
 }
-
-impl MediatorAcknowledgement {
-  /// Returns true when the acknowledgement represents a completed operation.
-  #[must_use]
-  pub const fn is_completed(&self) -> bool {
-    true
-  }
-}

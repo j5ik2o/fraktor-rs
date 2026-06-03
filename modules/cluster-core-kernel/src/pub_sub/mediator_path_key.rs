@@ -1,9 +1,12 @@
 //! Canonical address-less registry key for mediator path commands.
 
-use alloc::{format, string::String};
+use alloc::{format, string::String, vec::Vec};
 use core::fmt::{Display, Formatter, Result as FmtResult};
 
-use fraktor_actor_core_kernel_rs::actor::actor_path::ActorPathParser;
+use fraktor_actor_core_kernel_rs::actor::{
+  actor_path::{ActorPath, ActorPathParser, GuardianKind},
+  actor_selection::ActorSelectionResolver,
+};
 
 use super::PubSubError;
 
@@ -12,7 +15,7 @@ use super::PubSubError;
 pub struct MediatorPathKey(String);
 
 impl MediatorPathKey {
-  /// Parses a canonical actor path URI and keeps only the relative path representation.
+  /// Parses an actor path URI or selection and keeps only the relative path representation.
   ///
   /// # Errors
   ///
@@ -21,8 +24,7 @@ impl MediatorPathKey {
     if raw.is_empty() {
       return Err(PubSubError::InvalidPath { reason: String::from("path must not be empty") });
     }
-    let path = ActorPathParser::parse(raw)
-      .map_err(|error| PubSubError::InvalidPath { reason: format!("invalid actor path: {error:?}") })?;
+    let path = Self::resolve_path(raw)?;
     if path.segments().len() <= 1 {
       return Err(PubSubError::InvalidPath { reason: String::from("path must include a child segment") });
     }
@@ -34,6 +36,46 @@ impl MediatorPathKey {
   #[must_use]
   pub fn as_str(&self) -> &str {
     &self.0
+  }
+
+  fn resolve_path(raw: &str) -> Result<ActorPath, PubSubError> {
+    if raw.contains("://") {
+      return ActorPathParser::parse(raw)
+        .map_err(|error| PubSubError::InvalidPath { reason: format!("invalid actor path: {error:?}") });
+    }
+    if raw.starts_with('/') {
+      return Self::resolve_absolute(raw);
+    }
+    ActorSelectionResolver::resolve_relative(&Self::relative_base()?, raw)
+      .map_err(|error| PubSubError::InvalidPath { reason: format!("invalid actor selection: {error:?}") })
+  }
+
+  fn resolve_absolute(selection: &str) -> Result<ActorPath, PubSubError> {
+    let trimmed = selection.trim_start_matches('/');
+    let raw_segments = trimmed.split('/').filter(|segment| !segment.is_empty()).collect::<Vec<_>>();
+    let (guardian, skip_guardian) = match raw_segments.first().copied() {
+      | Some("system") => (GuardianKind::System, 1),
+      | Some("user") => (GuardianKind::User, 1),
+      | Some(_) => {
+        return Err(PubSubError::InvalidPath {
+          reason: format!("absolute actor selection must start with /user or /system: {selection}"),
+        });
+      },
+      | None => (GuardianKind::User, 0),
+    };
+    let mut path = ActorPath::root_with_guardian(guardian);
+    for segment in raw_segments.into_iter().skip(skip_guardian) {
+      path = path
+        .try_child(segment)
+        .map_err(|error| PubSubError::InvalidPath { reason: format!("invalid actor selection: {error:?}") })?;
+    }
+    Ok(path)
+  }
+
+  fn relative_base() -> Result<ActorPath, PubSubError> {
+    ActorPath::root()
+      .try_child("mediator")
+      .map_err(|error| PubSubError::InvalidPath { reason: format!("invalid mediator base path: {error:?}") })
   }
 }
 

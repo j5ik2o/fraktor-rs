@@ -20,11 +20,3 @@ pub enum MediatorQueryResult {
     count: usize,
   },
 }
-
-impl MediatorQueryResult {
-  /// Returns true when the query result is complete.
-  #[must_use]
-  pub const fn is_completed(&self) -> bool {
-    true
-  }
-}

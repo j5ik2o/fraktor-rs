@@ -64,7 +64,7 @@ impl ClusterPubSub for RecordingPubSub {
 fn make_registry() -> ArcShared<SerializationRegistry> {
   let setup = default_serialization_setup();
   let registry = ArcShared::new(SerializationRegistry::from_setup(&setup));
-  drop(register_defaults(&registry, |_name, _id| {}));
+  register_defaults(&registry, |_name, _id| {}).expect("register default serializers");
   registry
 }
 

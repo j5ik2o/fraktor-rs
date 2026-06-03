@@ -1,5 +1,9 @@
 //! no_std local delivery endpoint implementation.
 
+#[cfg(test)]
+#[path = "local_delivery_endpoint_generic_test.rs"]
+mod tests;
+
 use alloc::{format, vec::Vec};
 use core::any::TypeId;
 
@@ -63,15 +67,14 @@ fn deserialize_batch(
 ) -> Result<Vec<AnyMessage>, SerializationError> {
   let mut messages = Vec::with_capacity(batch.envelopes.len());
   for envelope in &batch.envelopes {
-    let serializer_id =
-      SerializerId::try_from(envelope.serializer_id).map_err(|_| SerializationError::invalid_format())?;
+    let serializer_id = SerializerId::from_raw(envelope.serializer_id);
     let serializer = registry.serializer_by_id(serializer_id)?;
     let value = if let Some(provider) = serializer.as_string_manifest() {
       provider.from_binary_with_manifest(&envelope.bytes, &envelope.type_name)?
     } else {
       serializer.from_binary(&envelope.bytes, None::<TypeId>)?
     };
-    messages.push(AnyMessage::new(value));
+    messages.push(AnyMessage::from_erased(ArcShared::from_boxed(value), None, false, false));
   }
   Ok(messages)
 }

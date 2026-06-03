@@ -35,7 +35,7 @@
   - _Boundary: PubSubPathSemantics_
   - _Depends: 2, 3_
 
-- [ ] 5. topic publish と mediator delivery intent を registry に接続する
+- [x] 5. topic publish と mediator delivery intent を registry に接続する
   - topic subscription registry に基づいて `Publish` の delivery intent を生成できるようにする。
   - optional group を registry entry として保持し、topic publish と path `Send` が別 semantics で処理されるようにする。
   - `PubSubBroker` / `ClusterPubSub` / `PubSubApi` から mediator state を利用できる最小接続を追加する。
@@ -44,7 +44,7 @@
   - _Boundary: MediatorProtocol, TopicRegistryBucket_
   - _Depends: 3, 4_
 
-- [ ] 6. topic registry status / delta collection を追加する
+- [x] 6. topic registry status / delta collection を追加する
   - owner version map を持つ registry status と bounded registry delta payload を生成できるようにする。
   - peer status と local bucket version を比較し、max delta elements を超えない version-order chunk を返す。
   - stale delta、unknown owner、non-active member delta が ignored outcome として観測できるようにする。
@@ -53,7 +53,7 @@
   - _Boundary: TopicRegistryDeltaCollector_
   - _Depends: 3_
 
-- [ ] 7. membership / gossip integration boundary を接続する
+- [x] 7. membership / gossip integration boundary を接続する
   - membership current state から role filter と active member status に基づく mediator peer set を更新できるようにする。
   - registry gossip tick で pubsub registry status / delta payload を生成し、`PubSubGossipHandoff` 経由で `GossipPayloadKind` の logical pubsub status / delta kind として渡せる payload contract を追加する。
   - pubsub payload が membership `GossipOutbound`、wire transport、byte tag assignment、gossip envelope framing、heartbeat scheduling、reachability merge、downing decision を所有しないことを boundary test で確認できる。
@@ -62,7 +62,7 @@
   - _Boundary: MediatorPeers, TopicRegistryGossipPayload, PubSubGossipHandoff, ScopeGuard_
   - _Depends: 6_
 
-- [ ] 8. std delivery bridge と gap analysis evidence を更新する
+- [x] 8. std delivery bridge と gap analysis evidence を更新する
   - std adaptor が core delivery intent を実行し、target selection と mediator protocol semantics を再計算しないようにする。
   - actor serialization は existing extension 利用に留め、cluster message serializer framework をこの実装に含めない。
   - `cluster-core-kernel` の targeted tests と no_std check で core に Tokio / std I/O が混入していないことを確認する。

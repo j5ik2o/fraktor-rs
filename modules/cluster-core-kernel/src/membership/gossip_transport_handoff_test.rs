@@ -85,6 +85,8 @@ fn handoff_distinguishes_heartbeat_and_gossip_payload_tags() {
     GossipTransportHandoff::payload_kind_from_tag(3).expect("heartbeat request"),
     GossipTransportHandoff::payload_kind_from_tag(4).expect("heartbeat response"),
     GossipTransportHandoff::payload_kind_from_tag(5).expect("cross dc heartbeat"),
+    GossipTransportHandoff::payload_kind_from_tag(6).expect("pubsub status"),
+    GossipTransportHandoff::payload_kind_from_tag(7).expect("pubsub delta"),
   ];
 
   assert_eq!(kinds, vec![
@@ -92,5 +94,7 @@ fn handoff_distinguishes_heartbeat_and_gossip_payload_tags() {
     GossipPayloadKind::HeartbeatRequest,
     GossipPayloadKind::HeartbeatResponse,
     GossipPayloadKind::CrossDcHeartbeat,
+    GossipPayloadKind::PubSubRegistryStatus,
+    GossipPayloadKind::PubSubRegistryDelta,
   ]);
 }

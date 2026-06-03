@@ -34,6 +34,8 @@ fn gossip_payload_kind_distinguishes_protocol_payloads() {
     GossipPayloadKind::HeartbeatRequest,
     GossipPayloadKind::HeartbeatResponse,
     GossipPayloadKind::CrossDcHeartbeat,
+    GossipPayloadKind::PubSubRegistryStatus,
+    GossipPayloadKind::PubSubRegistryDelta,
   ];
 
   assert_eq!(kinds[0], GossipPayloadKind::Delta);
@@ -42,6 +44,8 @@ fn gossip_payload_kind_distinguishes_protocol_payloads() {
   assert_eq!(kinds[3], GossipPayloadKind::HeartbeatRequest);
   assert_eq!(kinds[4], GossipPayloadKind::HeartbeatResponse);
   assert_eq!(kinds[5], GossipPayloadKind::CrossDcHeartbeat);
+  assert_eq!(kinds[6], GossipPayloadKind::PubSubRegistryStatus);
+  assert_eq!(kinds[7], GossipPayloadKind::PubSubRegistryDelta);
 }
 
 #[test]

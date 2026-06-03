@@ -45,7 +45,7 @@ impl TopicRegistryBucketView {
     self.delivery_candidate
   }
 
-  /// Returns non-removed entries when this bucket is a delivery candidate.
+  /// Returns entries stored in this view. Filtering is performed when the view is created.
   #[must_use]
   pub fn entries(&self) -> &[TopicRegistryEntry] {
     &self.entries

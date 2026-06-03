@@ -2,7 +2,7 @@
 
 use alloc::vec::Vec;
 
-use super::{MediatorDeliveryMode, MediatorPathKey, PubSubEnvelope, PubSubSubscriber};
+use super::{MediatorDeliveryMode, MediatorPathKey, PubSubEnvelope, PubSubSubscriber, PubSubTopic};
 
 /// Delivery intent produced by mediator selection without executing delivery.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -23,10 +23,24 @@ pub enum MediatorDeliveryIntent {
     /// Serialized payload.
     payload: PubSubEnvelope,
   },
+  /// Drop topic payload because no subscriber exists.
+  DroppedTopic {
+    /// Requested topic.
+    topic:   PubSubTopic,
+    /// Serialized payload.
+    payload: PubSubEnvelope,
+  },
   /// Emit dead-letter payload because no matching target exists.
   DeadLetter {
     /// Requested path key.
     path:    MediatorPathKey,
+    /// Serialized payload.
+    payload: PubSubEnvelope,
+  },
+  /// Emit dead-letter topic payload because no subscriber exists.
+  DeadLetterTopic {
+    /// Requested topic.
+    topic:   PubSubTopic,
     /// Serialized payload.
     payload: PubSubEnvelope,
   },
@@ -38,7 +52,9 @@ impl MediatorDeliveryIntent {
   pub fn targets(&self) -> &[PubSubSubscriber] {
     match self {
       | Self::Deliver { targets, .. } => targets,
-      | Self::Dropped { .. } | Self::DeadLetter { .. } => &[],
+      | Self::Dropped { .. } | Self::DroppedTopic { .. } | Self::DeadLetter { .. } | Self::DeadLetterTopic { .. } => {
+        &[]
+      },
     }
   }
 }

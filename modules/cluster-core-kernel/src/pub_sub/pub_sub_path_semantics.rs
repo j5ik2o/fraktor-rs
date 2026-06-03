@@ -4,42 +4,43 @@
 #[path = "pub_sub_path_semantics_test.rs"]
 mod tests;
 
-use alloc::{vec, vec::Vec};
+use alloc::{
+  collections::{BTreeMap, BTreeSet},
+  vec,
+  vec::Vec,
+};
 
 use fraktor_remote_core_rs::address::UniqueAddress;
 
 use super::{
   DistributedPubSubSettings, MediatorDeliveryIntent, MediatorDeliveryMode, MediatorPathKey, PubSubEnvelope,
-  PubSubError, PubSubNoSubscriberBehavior, PubSubRoutingMode, PubSubSubscriber, SendPathInput, SendToAllPathInput,
+  PubSubNoSubscriberBehavior, PubSubRoutingMode, PubSubSubscriber, SendPathInput, SendToAllPathInput,
   TopicRegistryBucketView, TopicRegistryEntryKind,
 };
 
 /// Selects path delivery targets from topic registry bucket views.
 #[derive(Debug, Clone)]
 pub struct PubSubPathSemantics {
-  settings:           DistributedPubSubSettings,
-  local_owner:        UniqueAddress,
-  round_robin_cursor: usize,
-  random_cursor:      usize,
+  settings:            DistributedPubSubSettings,
+  local_owner:         UniqueAddress,
+  round_robin_cursors: BTreeMap<MediatorPathKey, usize>,
+  random_cursor:       usize,
 }
 
 impl PubSubPathSemantics {
   /// Creates a path selector.
   #[must_use]
   pub const fn new(settings: DistributedPubSubSettings, local_owner: UniqueAddress) -> Self {
-    Self { settings, local_owner, round_robin_cursor: 0, random_cursor: 0 }
+    Self { settings, local_owner, round_robin_cursors: BTreeMap::new(), random_cursor: 0 }
   }
 
   /// Selects one matching path target for `Send`.
-  ///
-  /// # Errors
-  ///
-  /// Reserved for future selection errors; current path inputs are already validated.
+  #[must_use]
   pub fn select_send_target(
     &mut self,
     input: SendPathInput,
     buckets: &[TopicRegistryBucketView],
-  ) -> Result<MediatorDeliveryIntent, PubSubError> {
+  ) -> MediatorDeliveryIntent {
     let mut candidates = Self::matching_targets(&input.path, buckets);
     if input.local_affinity {
       let local_candidates =
@@ -48,35 +49,35 @@ impl PubSubPathSemantics {
         candidates = local_candidates;
       }
     }
+    self.prune_round_robin_cursors(buckets);
     let Some(target) = self.select_one(&input.path, &candidates) else {
-      return Ok(self.no_subscriber_intent(input.path, input.payload));
+      return self.no_subscriber_intent(input.path, input.payload);
     };
-    Ok(MediatorDeliveryIntent::Deliver {
+    MediatorDeliveryIntent::Deliver {
       mode:    MediatorDeliveryMode::Send,
       targets: vec![target.1],
       payload: input.payload,
-    })
+    }
   }
 
   /// Selects all matching path targets for `SendToAll`.
-  ///
-  /// # Errors
-  ///
-  /// Reserved for future selection errors; current path inputs are already validated.
+  #[must_use]
   pub fn select_send_to_all_targets(
     &self,
     input: SendToAllPathInput,
     buckets: &[TopicRegistryBucketView],
-  ) -> Result<MediatorDeliveryIntent, PubSubError> {
+  ) -> MediatorDeliveryIntent {
+    let mut deduplicated = BTreeSet::new();
     let targets = Self::matching_targets(&input.path, buckets)
       .into_iter()
       .filter(|candidate| !input.all_but_self || candidate.0 != self.local_owner)
       .map(|candidate| candidate.1)
+      .filter(|subscriber| deduplicated.insert(subscriber.clone()))
       .collect::<Vec<_>>();
     if targets.is_empty() {
-      return Ok(self.no_subscriber_intent(input.path, input.payload));
+      return self.no_subscriber_intent(input.path, input.payload);
     }
-    Ok(MediatorDeliveryIntent::Deliver { mode: MediatorDeliveryMode::SendToAll, targets, payload: input.payload })
+    MediatorDeliveryIntent::Deliver { mode: MediatorDeliveryMode::SendToAll, targets, payload: input.payload }
   }
 
   fn select_one(
@@ -93,8 +94,9 @@ impl PubSubPathSemantics {
         candidates.get(stable_index(path.as_str(), self.random_cursor, candidates.len())).cloned()
       },
       | PubSubRoutingMode::RoundRobin => {
-        let selected = candidates.get(self.round_robin_cursor % candidates.len()).cloned();
-        self.round_robin_cursor = self.round_robin_cursor.wrapping_add(1);
+        let cursor = self.round_robin_cursors.entry(path.clone()).or_insert(0);
+        let selected = candidates.get(*cursor % candidates.len()).cloned();
+        *cursor = cursor.wrapping_add(1);
         selected
       },
     }
@@ -118,6 +120,17 @@ impl PubSubPathSemantics {
       }
     }
     candidates
+  }
+
+  fn prune_round_robin_cursors(&mut self, buckets: &[TopicRegistryBucketView]) {
+    self.round_robin_cursors.retain(|path, _| {
+      buckets.iter().any(|bucket| {
+        bucket.is_delivery_candidate()
+          && bucket.entries().iter().any(
+            |entry| matches!(entry.kind(), TopicRegistryEntryKind::Path { path: entry_path, .. } if entry_path == path),
+          )
+      })
+    });
   }
 
   const fn no_subscriber_intent(&self, path: MediatorPathKey, payload: PubSubEnvelope) -> MediatorDeliveryIntent {
