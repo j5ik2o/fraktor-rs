@@ -59,7 +59,7 @@
   - pubsub payload が membership `GossipOutbound`、wire transport、byte tag assignment、gossip envelope framing、heartbeat scheduling、reachability merge、downing decision を所有しないことを boundary test で確認できる。
   - gossip integration test で member removed/downed/left により bucket が delivery candidate から外れることを確認できる。
   - _Requirements: 2.2, 5.1, 5.2, 5.3, 5.4, 5.5_
-  - _Boundary: MediatorPeers, TopicRegistryGossipPayload, ScopeGuard_
+  - _Boundary: MediatorPeers, TopicRegistryGossipPayload, PubSubGossipHandoff, ScopeGuard_
   - _Depends: 6_
 
 - [ ] 8. std delivery bridge と gap analysis evidence を更新する

@@ -114,7 +114,7 @@ modules/cluster-core-kernel/src/
 │   ├── mediator_ack.rs                            # SubscribeAck / UnsubscribeAck / query result
 │   ├── mediator_delivery_mode.rs                  # Publish / Send / SendToAll delivery mode
 │   ├── pub_sub_path.rs                            # canonical path key semantics
-│   ├── pub_sub_path_test.rs                       # empty / canonicalization / ordering tests
+│   ├── pub_sub_path_test.rs                       # empty / canonicalization / address stripping tests
 │   ├── mediator_delivery_intent.rs                # core delivery outcome for std bridge
 │   ├── topic_registry_entry.rs                    # path entry / topic subscription entry
 │   ├── topic_registry_bucket.rs                   # owner bucket and versioned content
@@ -124,6 +124,8 @@ modules/cluster-core-kernel/src/
 │   ├── topic_registry_delta_collector.rs          # maxDeltaElements and version-order chunking
 │   ├── topic_registry_delta_collector_test.rs     # status/delta/chunking/prune tests
 │   ├── topic_registry_gossip_payload.rs           # status / delta payload for gossip substrate
+│   ├── pub_sub_gossip_handoff.rs                  # payload + logical GossipPayloadKind handoff
+│   ├── pub_sub_gossip_handoff_test.rs             # handoff boundary and kind mapping tests
 │   └── distributed_pub_sub_mediator_state.rs      # command application and delivery selection
 ```
 
@@ -522,7 +524,7 @@ erDiagram
 
 - `distributed_pub_sub_settings_test.rs`: default settings、unsupported routing、max delta validation、dead-letter behavior。
 - `mediator_command_test.rs`: Put / Remove / Subscribe / Unsubscribe / Publish / query command の validation と ack。
-- `pub_sub_path_test.rs`: canonical relative key、parse failure、`Send` local affinity、`SendToAll` all-but-self、invalid path、no matching target。
+- `pub_sub_path_test.rs`: canonical relative key、canonical URI / absolute selection / relative selection の address stripping、parse failure、`Send` local affinity、`SendToAll` all-but-self、invalid path、no matching target。
 - `topic_registry_bucket_test.rs`: owner bucket version、entry variant、remove tombstone、TTL prune。
 - `topic_registry_delta_collector_test.rs`: status comparison、max delta chunking、unknown owner ignored outcome、stale delta。
 - std adaptor test: `DeliveryIntent` を existing `PubSubDeliveryActor` が実行し、target selection を再計算しないこと。
