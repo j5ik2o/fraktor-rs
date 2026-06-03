@@ -17,7 +17,7 @@
   - _Boundary: MediatorProtocol_
   - _Depends: 1_
 
-- [ ] 3. topic / path registry bucket と tombstone を追加する
+- [x] 3. topic / path registry bucket と tombstone を追加する
   - owner identity、bucket version、path entry、topic subscription entry、removed tombstone を同じ registry bucket で保持できるようにする。
   - local mutation ごとに monotonic version が進み、remove entry が removed TTL まで tombstone として残るようにする。
   - removed member の bucket を delivery candidate から外せる state view を提供する。
