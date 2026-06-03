@@ -58,7 +58,7 @@ concurrency:
   cancel-in-progress: true
 jobs:
   changes:
-    name: Detect CI-relevant changes
+    name: Detect Rust source changes
     runs-on: ${{ github.event_name == 'workflow_dispatch' && inputs.runner == 'self-hosted' && 'self-hosted' || 'ubuntu-latest' }}
     outputs:
       run_code_checks: ${{ steps.filter.outputs.run_code_checks }}
@@ -104,16 +104,9 @@ jobs:
             exit 0
           fi
 
-          is_docs_only_path() {
+          is_rust_source_path() {
             local path="$1"
-            [[ "${path}" == *.md \
-              || "${path}" == *.rst \
-              || "${path}" == *.txt \
-              || "${path}" == docs/* \
-              || "${path}" == openspec/* \
-              || "${path}" == README* \
-              || "${path}" == CHANGELOG* \
-              || "${path}" == LICENSE* ]]
+            [[ "${path}" == *.rs ]]
           }
 
           run_code_checks=false
@@ -126,7 +119,7 @@ jobs:
             esac
 
             for path in "${paths[@]}"; do
-              if ! is_docs_only_path "${path}"; then
+              if is_rust_source_path "${path}"; then
                 run_code_checks=true
                 break 2
               fi
@@ -139,6 +132,9 @@ jobs:
   format:
     name: Format Check
     runs-on: ${{ github.event_name == 'workflow_dispatch' && inputs.runner == 'self-hosted' && 'self-hosted' || 'ubuntu-latest' }}
+    needs:
+      - changes
+    if: ${{ needs.changes.outputs.run_code_checks == 'true' }}
     steps:
       - name: Checkout source
         uses: actions/checkout@v6
@@ -492,7 +488,7 @@ jobs:
       - codecov-status
       - docs
       - examples
-    if: ${{ always() && github.event_name == 'pull_request' }}
+    if: ${{ always() && github.event_name == 'pull_request' && needs.changes.outputs.run_code_checks == 'true' }}
     permissions:
       contents: read
       checks: write
@@ -527,10 +523,6 @@ jobs:
           RUN_CODE_CHECKS: ${{ needs.changes.outputs.run_code_checks }}
           EVENT_NAME: ${{ github.event_name }}
         run: |
-          if [[ "${{ needs.format.result }}" != "success" ]]; then
-            echo "format failed"
-            exit 1
-          fi
           run_code_checks="${RUN_CODE_CHECKS}"
           if [[ "${{ needs.changes.result }}" != "success" ]]; then
             echo "changes failed"
@@ -559,6 +551,7 @@ jobs:
             fi
           }
 
+          require_result "format" "${{ needs.format.result }}" "${expected_code_job_result}"
           require_result "lint" "${{ needs.lint.result }}" "${expected_code_job_result}"
           require_result "takt-review-wrapper-tests" "${{ needs['takt-review-wrapper-tests'].result }}" "${expected_code_job_result}"
           require_result "test" "${{ needs.test.result }}" "${expected_code_job_result}"
@@ -567,7 +560,7 @@ jobs:
           require_result "codecov-status" "${{ needs['codecov-status'].result }}" "${expected_code_job_result}"
           require_result "docs" "${{ needs.docs.result }}" "${expected_code_job_result}"
           require_result "examples" "${{ needs.examples.result }}" "${expected_code_job_result}"
-          if [[ "${EVENT_NAME}" == "pull_request" ]]; then
+          if [[ "${EVENT_NAME}" == "pull_request" && "${run_code_checks}" == "true" ]]; then
             expected_review_thread_result="success"
           else
             expected_review_thread_result="skipped"
