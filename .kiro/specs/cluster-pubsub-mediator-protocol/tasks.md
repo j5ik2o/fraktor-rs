@@ -26,7 +26,7 @@
   - _Boundary: TopicRegistryBucket_
   - _Depends: 1, 2_
 
-- [ ] 4. Send / SendToAll path semantics を実装する
+- [x] 4. Send / SendToAll path semantics を実装する
   - `Send` が matching path entry のうち1つを settings routing mode に従って選べるようにする。
   - local affinity が local owner entry を優先し、存在しない場合に cluster-wide candidate へ fallback できるようにする。
   - `SendToAll` が matching path entry 全体へ delivery intent を作り、all-but-self では local owner を除外するようにする。
