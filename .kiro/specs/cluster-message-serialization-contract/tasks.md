@@ -1,10 +1,11 @@
 # 実装計画
 
 - [ ] 1. cluster message serialization の core contract を追加する
-- [ ] 1.1 payload kind と manifest validation を定義する
+- [ ] 1.1 payload kind と manifest preservation rule を定義する
   - gossip と pubsub を stable payload kind として表し、unknown raw tag を既知 kind に丸めない。
   - actor-core manifest を opaque に保持し、payload kind tag と二重管理しないことを検証する。
-  - 完了時には kind tag stability、unknown kind、manifest preservation rule の unit test が通る。
+  - unknown manifest / manifest route failure は actor-core deserialize failure として観測可能にし、cluster 固有 fallback に変換しない。
+  - 完了時には kind tag stability、unknown kind、manifest preservation rule、unknown manifest route failure の unit test が通る。
   - _Requirements: 2.1, 2.4, 2.5, 4.2, 4.4_
   - _Boundary: ClusterMessagePayloadKind, ClusterMessageManifest_
 

@@ -11,7 +11,7 @@
   - `Put`、`Remove`、`Subscribe`、`Unsubscribe`、`Publish`、`Send`、`SendToAll`、query command を core protocol として表現する。
   - subscribe / unsubscribe acknowledgement と current topics / subscriber count query result を返せるようにする。
   - invalid topic、invalid path、扱えない payload が validation failure として観測できる。
-  - path command は actor-core `ActorPathParser` / `ActorPath::to_relative_string()` による address-less relative registry key を使い、address は local owner 判定にだけ使う。
+  - path command は canonical URI を actor-core `ActorPathParser`、absolute / relative selection を `ActorSelectionResolver` 相当で解決し、`ActorPath::to_relative_string()` による address-less relative registry key を使う。address は local owner 判定にだけ使う。
   - command protocol の unit test で command validation、ack、query result の完了状態を確認できる。
   - _Requirements: 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 3.5_
   - _Boundary: MediatorProtocol_
@@ -55,7 +55,7 @@
 
 - [ ] 7. membership / gossip integration boundary を接続する
   - membership current state から role filter と active member status に基づく mediator peer set を更新できるようにする。
-  - registry gossip tick で pubsub registry status / delta payload を生成し、`GossipPayloadKind` の logical pubsub status / delta kind として渡せる payload contract を追加する。
+  - registry gossip tick で pubsub registry status / delta payload を生成し、`PubSubGossipHandoff` 経由で `GossipPayloadKind` の logical pubsub status / delta kind として渡せる payload contract を追加する。
   - pubsub payload が membership `GossipOutbound`、wire transport、byte tag assignment、gossip envelope framing、heartbeat scheduling、reachability merge、downing decision を所有しないことを boundary test で確認できる。
   - gossip integration test で member removed/downed/left により bucket が delivery candidate から外れることを確認できる。
   - _Requirements: 2.2, 5.1, 5.2, 5.3, 5.4, 5.5_

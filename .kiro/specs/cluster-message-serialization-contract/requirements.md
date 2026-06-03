@@ -25,7 +25,7 @@
 2. payload kind が gossip の場合、Cluster Message Serialization Contract は gossip payload の意味論を評価せず、upstream `cluster-gossip-heartbeat-protocol` が定義した payload contract だけを参照しなければならない
 3. payload kind が pubsub の場合、Cluster Message Serialization Contract は pubsub delivery や registry merge を実行せず、upstream `cluster-pubsub-mediator-protocol` が定義した payload contract だけを参照しなければならない
 4. payload kind が未知の場合、Cluster Message Serialization Contract は受信 payload を actor message に復元してはならない
-5. manifest 文字列が未知または payload kind と矛盾する場合、Cluster Message Serialization Contract は decode failure として観測可能にしなければならない
+5. actor-core deserializer または manifest route が manifest 文字列を解決できない場合、Cluster Message Serialization Contract は cluster 固有の fallback に変換せず、serialization / decode failure として観測可能にしなければならない
 
 ### 要件3: std/wire bridge
 **目的:** std adaptor 実装者として、cluster serialized message を versioned wire frame に変換し、transport lifecycle と message semantics を混ぜずに送受信したい。
