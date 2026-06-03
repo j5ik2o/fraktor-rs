@@ -45,8 +45,9 @@
 ### Allowed Dependencies
 
 - `cluster-membership-reachability-model` の `UniqueAddress`、member role、active / removed member view、reachability evidence。
-- `cluster-gossip-heartbeat-protocol` の gossip payload substrate と envelope payload kind extension point。
+- `cluster-gossip-heartbeat-protocol` の logical `GossipEnvelope` と `GossipPayloadKind`。この spec は pubsub 用の logical payload kind を追加できるが、membership `GossipOutbound` / wire transport / byte serialization は拡張しない。
 - 既存 `pub_sub` module の `PubSubTopic`、`PubSubSubscriber`、`PublishRequest`、`PublishAck`、`PubSubError`、`DeliveryPolicy`。
+- actor-core の `ActorPath`、`ActorPathParser`、`ActorPath::to_relative_string()` を path registry key の canonicalization に使う。
 - `fraktor-utils-core-rs` の shared / time abstraction と `alloc` collections。
 - std adaptor の `PubSubDeliveryActor` は delivery intent execution のみで core protocol を消費する。
 
@@ -54,7 +55,7 @@
 
 - `UniqueAddress`、member role、active member status、removed member semantics が変わる。
 - gossip envelope payload kind、deadline、dispatch outcome、status/delta scheduling が変わる。
-- `PubSubSubscriber`、actor path、cluster identity の equality / ordering semantics が変わる。
+- actor-core の `ActorPath` parse / format semantics、`PubSubSubscriber`、cluster identity の equality / ordering semantics が変わる。
 - `PubSubConfig` や existing delivery policy が settings と重複するように拡張される。
 - downstream `cluster-message-serialization-contract` が pubsub payload wire schema を定義する。
 
@@ -76,7 +77,7 @@ graph TB
     MediatorProtocol --> RegistryBucket
     RegistryBucket --> DeltaCollector
     DeltaCollector --> PubSubGossipPayload
-    PubSubGossipPayload --> GossipEnvelope
+    PubSubGossipPayload --> GossipPayloadHandoff
     MediatorProtocol --> DeliveryIntent
     DeliveryIntent --> StdDeliveryBridge
 ```
@@ -94,7 +95,7 @@ graph TB
 |-------|------------------|-----------------|-------|
 | Core runtime | Rust 2024 nightly workspace | mediator protocol、settings、registry state、delta collection | `no_std` + `alloc` を維持 |
 | Membership input | upstream membership model | active member、role filter、owner identity | merge semantics は所有しない |
-| Gossip substrate | upstream gossip envelope | pubsub status / delta payload transport | framing と heartbeat は所有しない |
+| Gossip substrate | upstream logical gossip envelope | pubsub status / delta payload handoff | `GossipPayloadKind` 追加までを所有し、membership delta transport / wire bytes は所有しない |
 | Std adaptor | existing std pubsub delivery actor | delivery intent execution | protocol semantics は変更しない |
 | Tests | cargo unit / integration tests | protocol、settings、path routing、delta collection、boundary guard | targeted check を優先 |
 
@@ -162,10 +163,10 @@ sequenceDiagram
     participant Peer as RemoteMediator
     participant Collector as DeltaCollector
     participant Registry as TopicRegistry
-    participant Gossip as GossipEnvelope
+    participant Gossip as GossipPayloadHandoff
     Peer->>Collector: status owner versions
     Collector->>Registry: compare local buckets
-    Collector-->>Gossip: pubsub delta payload
+    Collector-->>Gossip: pubsub delta payload + logical payload kind
     Gossip-->>Registry: remote delta payload
     Registry-->>Registry: apply newer owner buckets
 ```
@@ -218,7 +219,7 @@ sequenceDiagram
 | PubSubPathSemantics | core/pub_sub | Send / SendToAll path target selection | 3.1, 3.2, 3.3, 3.4 | RegistryBucket P0 | Service |
 | TopicRegistryBucket | core/pub_sub | owner bucket、entry version、tombstone を保持する | 4.1, 4.4, 4.5, 5.2 | UniqueAddress P0 | State |
 | TopicRegistryDeltaCollector | core/pub_sub | status comparison、bounded delta、apply outcome | 2.5, 4.2, 4.3, 4.6 | RegistryBucket P0, Settings P0 | Service, Batch |
-| TopicRegistryGossipPayload | core/pub_sub + gossip boundary | pubsub status / delta payload を gossip substrate に渡す | 5.3, 5.4 | GossipEnvelope P1 | Event |
+| TopicRegistryGossipPayload | core/pub_sub + gossip boundary | pubsub status / delta payload を gossip substrate に渡す | 5.3, 5.4 | GossipEnvelope / GossipPayloadKind P1 | Event |
 | MediatorPeers | core/pub_sub + membership boundary | role filter と active member view から peer set を作る | 2.2, 5.1, 5.2, 5.5 | Membership model P0 | State |
 | StdDeliveryBridge | std/pub_sub | core delivery intent を actor delivery として実行する | 6.1 | PubSubDeliveryActor P0 | Service |
 | ScopeGuard | spec boundary | 隣接 spec の責務を吸収しない | 5.4, 5.5, 6.2, 6.3, 6.4 | roadmap P0 | Batch |
@@ -301,10 +302,13 @@ trait DistributedPubSubMediatorProtocol {
 - `Send` は settings routing mode に従って one-of target を選ぶ。
 - local affinity は local owner entry を優先するが、存在しない場合は cluster-wide candidates を使う。
 - `SendToAll` は all-but-self の場合に local owner を除外する。
+- path key は actor-core の `ActorPathParser` で受け取り、`ActorPath::to_relative_string()` の address-less relative representation を registry key とする。address 付き path は local owner 判定にだけ使い、key には混ぜない。
+- parse 不能、空 path、guardian より上へ遡る relative path は validation failure とする。
 
 **Dependencies**
 - Inbound: `MediatorProtocol` — command execution (P0)
 - Outbound: `TopicRegistryBucket` — path entry lookup (P0)
+- External: actor-core `ActorPath` — path parse / canonical format (P0)
 
 **Contracts**: Service [x] / API [ ] / Event [ ] / Batch [ ] / State [ ]
 
@@ -315,7 +319,7 @@ trait PubSubPathSelector {
   fn select_send_to_all_targets(&self, input: SendToAllPathInput) -> Result<DeliveryIntent, PubSubError>;
 }
 ```
-- Preconditions: path は空でなく canonical key に変換済み。
+- Preconditions: path は actor-core parser で検証され、address-less relative key に変換済み。
 - Postconditions: selected targets は path entry に限定される。
 - Invariants: topic subscription entry は path selection に混入しない。
 
@@ -381,9 +385,11 @@ trait PubSubPathSelector {
 - payload kind は pubsub registry status と pubsub registry delta を区別する。
 - registry version と owner bucket versions を保持する。
 - `GossipEnvelope` の identity、deadline、wire framing は所有しない。
+- existing `GossipPayloadKind` は closed enum なので、この spec では `PubSubRegistryStatus` と `PubSubRegistryDelta` の logical kind 追加までを行う。
+- `GossipOutbound` は membership `MembershipDelta` 専用のまま扱い、pubsub の outbound transport queue や byte tag assignment は downstream serialization / transport integration に残す。
 
 **Dependencies**
-- Outbound: upstream `GossipEnvelope` payload kind extension point (P1)
+- Outbound: upstream `GossipEnvelope` payload kind (P1)
 - Inbound: `TopicRegistryDeltaCollector` — payload creation (P0)
 
 **Contracts**: Service [ ] / API [ ] / Event [x] / Batch [x] / State [ ]
@@ -454,6 +460,7 @@ trait PubSubDeliveryIntentExecutor {
 - `TopicRegistryBucket`: owner、bucket version、entries。
 - `TopicRegistryEntry`: path registration、topic subscription、removed tombstone。
 - `TopicRegistryGossipPayload`: status owner versions、bounded delta buckets。
+- `PubSubPath`: actor-core `ActorPath` から導出した address-less relative registry key。
 
 ### Logical Data Model
 
@@ -477,6 +484,7 @@ erDiagram
 **Consistency & Integrity**
 - owner bucket version は local owner の mutation order を表す。
 - entry key は path registration と topic subscription で namespace を分ける。
+- path entry key は actor-core canonical relative path に固定し、remote address や owner identity は bucket owner 側に保持する。
 - removed tombstone は older delta による resurrection を防ぐ。
 - active owner set に含まれない owner delta は ignored outcome にする。
 
@@ -491,7 +499,7 @@ erDiagram
 
 - `distributed_pub_sub_settings_test.rs`: default settings、unsupported routing、max delta validation、dead-letter behavior。
 - `mediator_command_test.rs`: Put / Remove / Subscribe / Unsubscribe / Publish / query command の validation と ack。
-- `pub_sub_path_test.rs`: `Send` local affinity、`SendToAll` all-but-self、invalid path、no matching target。
+- `pub_sub_path_test.rs`: canonical relative key、parse failure、`Send` local affinity、`SendToAll` all-but-self、invalid path、no matching target。
 - `topic_registry_bucket_test.rs`: owner bucket version、entry variant、remove tombstone、TTL prune。
 - `topic_registry_delta_collector_test.rs`: status comparison、max delta chunking、unknown owner ignored outcome、stale delta。
 - std adaptor test: `DeliveryIntent` を existing `PubSubDeliveryActor` が実行し、target selection を再計算しないこと。
@@ -502,6 +510,7 @@ erDiagram
 - registry delta は max delta elements で bounded にし、過大 payload を core contract で防ぐ。
 - unknown owner delta を ignored outcome にすることで removed member の registry resurrection を防ぐ。
 - role filter は operator が意図しない mediator peer を gossip target に含めないための境界として扱う。
+- pubsub payload kind の追加は logical enum / handoff contract に留め、membership transport の payload byte tag や serializer registry は更新しない。
 - delivery payload serialization は既存 actor serialization extension と downstream serializer spec に委譲し、この仕様で binary compatibility を約束しない。
 
 ## Integration & Migration Notes
@@ -509,10 +518,10 @@ erDiagram
 - 既存 `PubSubBroker` は local topic state と metrics の実装資産として再利用する。
 - `ClusterPubSub` trait は mediator command を受ける facade として段階的に拡張する。
 - `PubSubDeliveryActor` は delivery execution bridge に留め、registry gossip や target selection を移さない。
+- `GossipPayloadKind` には pubsub status / delta 用 variant を追加するが、`GossipOutbound` と std transport は membership delta 専用のまま維持する。
 - `docs/gap-analysis/cluster-gap-analysis.md` は実装完了時に pubsub active follow-up 4項目だけ evidence 更新する。
 
 ## Open Questions / Risks
 
-- actor path canonicalization を actor-core のどの型に寄せるかは実装時に確認する。
-- downstream serializer spec が pubsub payload wire schema を定義するとき、`TopicRegistryGossipPayload` の field naming を再検証する。
+- downstream serializer spec が pubsub payload wire schema を定義するとき、`TopicRegistryGossipPayload` の field naming と `GossipPayloadKind` の byte tag assignment を再検証する。
 - existing `DeliveryPolicy` と mediator routing mode の語彙が重複する場合、path `Send` 用 routing mode と topic delivery policy を混ぜないようにする。

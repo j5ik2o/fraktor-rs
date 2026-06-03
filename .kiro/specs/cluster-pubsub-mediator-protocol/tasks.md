@@ -11,6 +11,7 @@
   - `Put`、`Remove`、`Subscribe`、`Unsubscribe`、`Publish`、`Send`、`SendToAll`、query command を core protocol として表現する。
   - subscribe / unsubscribe acknowledgement と current topics / subscriber count query result を返せるようにする。
   - invalid topic、invalid path、扱えない payload が validation failure として観測できる。
+  - path command は actor-core `ActorPathParser` / `ActorPath::to_relative_string()` による address-less relative registry key を使い、address は local owner 判定にだけ使う。
   - command protocol の unit test で command validation、ack、query result の完了状態を確認できる。
   - _Requirements: 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 3.5_
   - _Boundary: MediatorProtocol_
@@ -29,7 +30,7 @@
   - `Send` が matching path entry のうち1つを settings routing mode に従って選べるようにする。
   - local affinity が local owner entry を優先し、存在しない場合に cluster-wide candidate へ fallback できるようにする。
   - `SendToAll` が matching path entry 全体へ delivery intent を作り、all-but-self では local owner を除外するようにする。
-  - path semantics の unit test で one-of、local affinity、all-of、all-but-self、no-subscriber drop/dead-letter intent を確認できる。
+  - path semantics の unit test で canonical relative key、parse failure、one-of、local affinity、all-of、all-but-self、no-subscriber drop/dead-letter intent を確認できる。
   - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.6_
   - _Boundary: PubSubPathSemantics_
   - _Depends: 2, 3_
@@ -54,8 +55,8 @@
 
 - [ ] 7. membership / gossip integration boundary を接続する
   - membership current state から role filter と active member status に基づく mediator peer set を更新できるようにする。
-  - registry gossip tick で pubsub registry status / delta payload を生成し、upstream gossip substrate に渡せる payload contract を追加する。
-  - pubsub payload が gossip envelope framing、heartbeat scheduling、reachability merge、downing decision を所有しないことを boundary test で確認できる。
+  - registry gossip tick で pubsub registry status / delta payload を生成し、`GossipPayloadKind` の logical pubsub status / delta kind として渡せる payload contract を追加する。
+  - pubsub payload が membership `GossipOutbound`、wire transport、byte tag assignment、gossip envelope framing、heartbeat scheduling、reachability merge、downing decision を所有しないことを boundary test で確認できる。
   - gossip integration test で member removed/downed/left により bucket が delivery candidate から外れることを確認できる。
   - _Requirements: 2.2, 5.1, 5.2, 5.3, 5.4, 5.5_
   - _Boundary: MediatorPeers, TopicRegistryGossipPayload, ScopeGuard_

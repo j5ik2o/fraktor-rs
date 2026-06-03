@@ -3,8 +3,8 @@
 - [ ] 1. cluster message serialization の core contract を追加する
 - [ ] 1.1 payload kind と manifest validation を定義する
   - gossip と pubsub を stable payload kind として表し、unknown raw tag を既知 kind に丸めない。
-  - manifest namespace と payload kind の矛盾を typed failure として返す。
-  - 完了時には kind tag stability、unknown kind、manifest mismatch の unit test が通る。
+  - actor-core manifest を opaque に保持し、payload kind tag と二重管理しないことを検証する。
+  - 完了時には kind tag stability、unknown kind、manifest preservation rule の unit test が通る。
   - _Requirements: 2.1, 2.4, 2.5, 4.2, 4.4_
   - _Boundary: ClusterMessagePayloadKind, ClusterMessageManifest_
 
@@ -17,9 +17,10 @@
 
 - [ ] 2. actor-core serialization との接続点を実装する
 - [ ] 2.1 `SerializationExtension` を使う cluster bridge を追加する
-  - cluster payload kind と typed payload を受け取り、actor-core serialization の結果を `ClusterSerializedMessage` として返す。
+  - cluster payload kind、`SerializationCallScope`、typed payload を受け取り、actor-core serialization の結果を `ClusterSerializedMessage` として返す。
+  - wire bridge caller は `SerializationCallScope::Remote` を渡し、manifest-required scope を Local 扱いで迂回しない。
   - 未登録 serializer、serialize failure、deserialize failure を cluster 独自 fallback に変換しない。
-  - 完了時には custom serializer の serializer id / manifest が bridge roundtrip 後も保持される。
+  - 完了時には custom serializer の serializer id / manifest が bridge roundtrip 後も保持され、Remote scope の manifest requirement test が通る。
   - _Requirements: 1.1, 1.2, 1.3, 4.3, 5.5_
   - _Boundary: ActorSerializationBridge_
 
