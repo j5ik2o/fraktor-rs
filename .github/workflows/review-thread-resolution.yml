@@ -31,8 +31,68 @@ permissions:
   pull-requests: read
 
 jobs:
+  select-rust-prs:
+    name: Select PRs with Rust changes
+    runs-on: ubuntu-latest
+    outputs:
+      pr_numbers: ${{ steps.select.outputs.pr_numbers }}
+    steps:
+      - name: Select PRs with Rust file changes
+        id: select
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_PR_NUMBER: ${{ github.event.pull_request.number || github.event.issue.number || '' }}
+          INPUT_PR_NUMBER: ${{ inputs.pr_number || '' }}
+          IS_PR_ISSUE_COMMENT: ${{ github.event.issue.pull_request != null }}
+          BASE_BRANCH: main
+        run: |
+          set -euo pipefail
+
+          has_rust_changes() {
+            local pr_number="$1"
+            gh api --paginate "repos/${GITHUB_REPOSITORY}/pulls/${pr_number}/files?per_page=100" \
+              --jq '.[] | .filename, (.previous_filename // empty)' \
+              | grep -Eq '\.rs$'
+          }
+
+          pr_candidates=()
+          if [[ "${EVENT_NAME}" == "issue_comment" && "${IS_PR_ISSUE_COMMENT}" != "true" ]]; then
+            pr_candidates=()
+          elif [[ -n "${INPUT_PR_NUMBER}" ]]; then
+            pr_candidates=("${INPUT_PR_NUMBER}")
+          elif [[ -n "${EVENT_PR_NUMBER}" ]]; then
+            pr_candidates=("${EVENT_PR_NUMBER}")
+          else
+            mapfile -t pr_candidates < <(
+              gh api --paginate "repos/${GITHUB_REPOSITORY}/pulls?state=open&base=${BASE_BRANCH}&per_page=100" \
+                --jq '.[].number'
+            )
+          fi
+
+          selected=()
+          for pr_number in "${pr_candidates[@]}"; do
+            if [[ "${pr_number}" =~ ^[0-9]+$ ]] && has_rust_changes "${pr_number}"; then
+              selected+=("${pr_number}")
+            fi
+          done
+
+          pr_numbers="["
+          for pr_number in "${selected[@]}"; do
+            pr_numbers+="${pr_number},"
+          done
+          pr_numbers="${pr_numbers%,}]"
+
+          echo "pr_numbers=${pr_numbers}" >> "${GITHUB_OUTPUT}"
+
   refresh:
     name: Refresh review-thread state
+    needs:
+      - select-rust-prs
+    if: ${{ needs.select-rust-prs.outputs.pr_numbers != '[]' }}
+    strategy:
+      matrix:
+        pr_number: ${{ fromJson(needs.select-rust-prs.outputs.pr_numbers) }}
     uses: j5ik2o/ci/.github/workflows/review-thread-resolution.yml@560170b61c74a9a643a483a052ccbad0d6ad409a
     permissions:
       contents: read
@@ -41,6 +101,6 @@ jobs:
       issues: read
       pull-requests: read
     with:
-      pr_number: ${{ inputs.pr_number }}
-      wait_for_other_checks: ${{ inputs.wait_for_other_checks == '' && 'true' || inputs.wait_for_other_checks }}
+      pr_number: ${{ matrix.pr_number }}
+      wait_for_other_checks: ${{ inputs.wait_for_other_checks || 'true' }}
       ci_ref: 560170b61c74a9a643a483a052ccbad0d6ad409a
