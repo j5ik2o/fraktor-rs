@@ -7,7 +7,7 @@
   - _Requirements: 2.1, 2.2, 2.3, 2.4, 2.5, 2.6_
   - _Boundary: DistributedPubSubSettings_
 
-- [ ] 2. mediator command と acknowledgement protocol を追加する
+- [x] 2. mediator command と acknowledgement protocol を追加する
   - `Put`、`Remove`、`Subscribe`、`Unsubscribe`、`Publish`、`Send`、`SendToAll`、query command を core protocol として表現する。
   - subscribe / unsubscribe acknowledgement と current topics / subscriber count query result を返せるようにする。
   - invalid topic、invalid path、扱えない payload が validation failure として観測できる。
