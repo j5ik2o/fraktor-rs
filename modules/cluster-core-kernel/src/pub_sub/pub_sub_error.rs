@@ -43,4 +43,9 @@ pub enum PubSubError {
     /// Failure reason.
     reason: String,
   },
+  /// Distributed pub-sub settings are invalid.
+  InvalidSettings {
+    /// Failure reason.
+    reason: String,
+  },
 }

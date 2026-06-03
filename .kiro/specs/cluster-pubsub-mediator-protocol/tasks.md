@@ -1,6 +1,6 @@
 # 実装計画
 
-- [ ] 1. DistributedPubSubSettings の core contract を追加する
+- [x] 1. DistributedPubSubSettings の core contract を追加する
   - role filter、routing mode、gossip interval、removed entry TTL、max delta elements、no-subscriber behavior を保持できる settings を追加する。
   - unsupported routing mode と invalid max delta elements が typed configuration error として観測できるようにする。
   - settings の unit test で default 値、role filter、routing validation、dead-letter behavior が確認できる。
