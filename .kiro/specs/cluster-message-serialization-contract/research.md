@@ -56,7 +56,7 @@
 
 | Option | Description | Strengths | Risks / Limitations | Notes |
 |--------|-------------|-----------|---------------------|-------|
-| actor-core reuse + cluster kind wrapper | `SerializedMessage` を source of truth にし、cluster payload kind を追加する | registry 重複がない、既存 diagnostics と一致する | kind/manifest validation が別途必要 | 採用 |
+| actor-core reuse + cluster kind wrapper | `SerializedMessage` を source of truth にし、cluster payload kind を追加する | registry 重複がない、既存 diagnostics と一致する | kind validation と manifest preservation rule が別途必要 | 採用 |
 | cluster 専用 serializer registry | cluster-core に独自 registry を持つ | cluster messages だけを閉じられる | actor-core と二重管理になり drift する | 不採用 |
 | protobuf-first wire schema | proto schema を source of truth にする | 外部互換を議論しやすい | 現 scope の protobuf 完全互換と衝突する | 不採用 |
 

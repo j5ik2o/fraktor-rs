@@ -25,7 +25,7 @@
 
 ### This Spec Owns
 
-- cluster message payload kind と stable manifest namespace。
+- cluster message payload kind と actor-core manifest preservation rule。
 - actor-core `SerializedMessage` と cluster payload kind を組み合わせる core-level bridge model。
 - std/wire の versioned frame shape、encode/decode failure contract。
 - unknown version、unknown payload kind、unknown manifest、malformed payload の failure 分類。
@@ -102,8 +102,8 @@ modules/cluster-core-kernel/src/
 ├── message_serialization/
 │   ├── cluster_message_payload_kind.rs              # gossip / pubsub payload kind
 │   ├── cluster_message_payload_kind_test.rs         # tag stability / unknown handling tests
-│   ├── cluster_message_manifest.rs                  # stable manifest namespace
-│   ├── cluster_message_manifest_test.rs             # manifest validation tests
+│   ├── cluster_message_manifest.rs                  # actor-core manifest preservation rule
+│   ├── cluster_message_manifest_test.rs             # manifest preservation tests
 │   ├── cluster_serialized_message.rs                # payload kind + actor SerializedMessage bridge
 │   ├── cluster_serialized_message_test.rs           # metadata preservation tests
 │   ├── cluster_message_deserialize_failure.rs       # unknown payload / manifest failure taxonomy
@@ -169,7 +169,7 @@ flowchart TB
 | 2.2 | gossip semantics を評価しない | ScopeGuard | boundary | none |
 | 2.3 | pubsub semantics を評価しない | ScopeGuard | boundary | none |
 | 2.4 | unknown kind を復元しない | ClusterWireDecodeFailure | decode failure | failure flow |
-| 2.5 | manifest 矛盾を failure にする | ClusterMessageManifest | manifest validation | failure flow |
+| 2.5 | manifest route failure を actor-core failure として保持する | ClusterMessageManifest, ActorSerializationBridge | manifest preservation / deserialize API | failure flow |
 | 3.1 | versioned wire frame を表現する | ClusterWireFrameV1 | encode API | serialize flow |
 | 3.2 | kind と serialized message を復元する | ClusterWireCodec | decode API | serialize flow |
 | 3.3 | length mismatch を拒否する | ClusterWireDecodeFailure | decode failure | failure flow |
@@ -190,7 +190,7 @@ flowchart TB
 | Component | Domain/Layer | Intent | Req Coverage | Key Dependencies | Contracts |
 |-----------|--------------|--------|--------------|------------------|-----------|
 | ClusterMessagePayloadKind | cluster core | gossip / pubsub payload kind を安定 tag として表す | 2.1, 2.4, 4.2 | upstream specs P0 | State |
-| ClusterMessageManifest | cluster core | cluster manifest namespace と kind 整合性を検証する | 2.5, 4.4 | actor SerializedMessage P0 | Service, State |
+| ClusterMessageManifest | cluster core | actor-core manifest を opaque に保持し、payload kind tag と二重管理しない | 2.5, 4.4 | actor SerializedMessage P0 | Service, State |
 | ClusterSerializedMessage | cluster core | payload kind と actor-core serialized metadata を束ねる | 1.1, 1.3, 1.4, 3.2 | SerializedMessage P0 | State |
 | ActorSerializationBridge | cluster core + actor-core boundary | SerializationExtension と cluster message kind を接続する | 1.1, 1.2, 4.3, 5.5 | SerializationExtension P0 | Service |
 | ClusterWireFrameV1 | std/wire | versioned wire shape を定義する | 3.1, 3.3 | ClusterSerializedMessage P0 | API |
@@ -215,20 +215,20 @@ flowchart TB
 **Contracts**: Service [ ] / API [ ] / Event [ ] / Batch [ ] / State [x]
 
 ##### State Management
-- State model: stable numeric tag、display name、manifest namespace。
+- State model: stable numeric tag、display name、actor-core manifest preservation rule。
 - Invariants: unknown tag は `ClusterWireDecodeFailure::UnknownPayloadKind` になる。
 
 #### ClusterMessageManifest
 
 | Field | Detail |
 |-------|--------|
-| Intent | actor-core manifest と cluster payload kind の矛盾を検出する |
+| Intent | actor-core manifest を opaque metadata として保持し、cluster payload kind の復元境界を検証する |
 | Requirements | 2.5, 4.4 |
 
 **Responsibilities & Constraints**
-- cluster manifest namespace は payload kind と対応する。
-- manifest がない payload は serializer id と payload kind の組み合わせでのみ許可する。
-- 不明 manifest を fallback 型に変換しない。
+- actor-core manifest は serializer/setup が所有する opaque string として扱い、cluster prefix を強制しない。
+- payload kind と actor-core manifest を二重管理せず、cluster family の識別は `ClusterMessagePayloadKind` の stable tag に限定する。
+- manifest がない payload は actor-core serializer id と payload kind の組み合わせを保持し、fallback 型に変換しない。
 
 **Contracts**: Service [x] / API [ ] / Event [ ] / Batch [ ] / State [x]
 
@@ -236,13 +236,13 @@ flowchart TB
 
 ```rust
 impl ClusterMessageManifest {
-  pub fn validate(kind: ClusterMessagePayloadKind, manifest: Option<&str>) -> Result<(), ClusterMessageDeserializeFailure>;
+  pub fn from_actor_manifest(manifest: Option<&str>) -> Self;
 }
 ```
 
-- Preconditions: kind は decoded known kind である。
-- Postconditions: manifest mismatch は typed failure として返る。
-- Invariants: validation は payload bytes を解釈しない。
+- Preconditions: frame payload kind は decode 済み known kind である。
+- Postconditions: manifest は actor-core deserializer へ欠落なく渡される。
+- Invariants: manifest preservation は payload bytes と actor-core manifest semantics を解釈せず、unknown manifest / route mismatch は actor-core deserialize failure として観測する。
 
 #### ClusterSerializedMessage
 
@@ -272,6 +272,7 @@ impl ClusterMessageManifest {
 
 **Responsibilities & Constraints**
 - `SerializationExtension::serialize` 結果を `ClusterSerializedMessage` に包む。
+- cluster wire へ渡す serialize は `SerializationCallScope::Remote` を使い、actor-core の manifest discipline を維持する。
 - `SerializationExtension::deserialize` failure を cluster 独自 fallback に変換しない。
 - actor-core registry、serializer trait、setup API を変更しない。
 
@@ -289,6 +290,7 @@ trait ActorSerializationBridge {
   fn serialize_cluster_message(
     &self,
     kind: ClusterMessagePayloadKind,
+    scope: SerializationCallScope,
     message: &(dyn Any + Send + Sync),
   ) -> Result<ClusterSerializedMessage, SerializationError>;
 
@@ -300,9 +302,9 @@ trait ActorSerializationBridge {
 }
 ```
 
-- Preconditions: caller が payload kind を選ぶ。bridge は kind の semantics を検証しない。
+- Preconditions: caller が payload kind と serialization scope を選ぶ。wire bridge caller は `SerializationCallScope::Remote` を渡す。
 - Postconditions: success は actor-core serialized metadata を保持する。
-- Invariants: failure は actor-core serialization failure として返す。
+- Invariants: failure は actor-core serialization failure として返し、Remote scope で manifest が要求される場合は欠落を成功扱いしない。
 
 ### std/wire
 
@@ -364,7 +366,7 @@ trait ClusterWireCodec {
 ### Domain Model
 
 - `ClusterMessagePayloadKind`: `Gossip`、`PubSub`、future known kind の stable tag。
-- `ClusterMessageManifest`: kind namespace と optional actor manifest の validation rule。
+- `ClusterMessageManifest`: optional actor manifest の preservation rule。
 - `ClusterSerializedMessage`: payload kind + `SerializedMessage`。
 - `ClusterWireFrameV1`: versioned wire frame。
 - `ClusterWireDecodeFailure`: unknown version、unknown payload kind、unknown manifest、malformed payload。
@@ -377,7 +379,7 @@ trait ClusterWireCodec {
 - payload kind は protocol family の識別だけを行い、payload bytes の domain semantics は扱わない。
 
 **Consistency & Integrity**:
-- kind tag と manifest namespace が矛盾する frame は decode failure になる。
+- unknown payload kind tag は decode failure になり、actor-core manifest は serializer/manifest route の解決まで opaque に保持される。
 - unsupported version は decode 前に拒否する。
 - malformed length は payload bytes を actor-core deserializer に渡す前に拒否する。
 
@@ -393,14 +395,14 @@ trait ClusterWireCodec {
 
 - actor-core serialization failure は `SerializationError` として保持する。
 - std wire decode failure は `ClusterWireDecodeFailure` に集約する。
-- manifest mismatch は cluster message deserialize failure として actor-core deserializer 呼び出し前に返す。
+- actor-core manifest は cluster 側で独自解釈せず、unknown serializer / unknown manifest / manifest route mismatch は actor-core serialization failure として保持する。
 - unknown payload は success / empty message / dead-letter message に変換しない。
 
 ### Error Categories and Responses
 
 - **Unknown version**: unsupported frame version を受信した場合に返す。
 - **Unknown payload kind**: known frame version だが payload kind tag が未定義の場合に返す。
-- **Unknown manifest**: manifest namespace が payload kind と一致しない場合に返す。
+- **Unknown manifest**: actor-core deserializer または manifest route が manifest を解決できない場合に返す。
 - **Malformed payload**: length mismatch、invalid manifest bytes、trailing bytes、payload size excess を返す。
 - **Serializer lookup failure**: actor-core registry が serializer id を解決できない場合は actor-core serialization failure として扱う。
 
@@ -415,8 +417,9 @@ trait ClusterWireCodec {
 
 - `ClusterSerializedMessage` が payload kind、serializer id、manifest、payload bytes を保持すること。
 - `ClusterMessagePayloadKind` が unknown raw tag を known kind に丸めないこと。
-- `ClusterMessageManifest` が kind と manifest namespace の矛盾を拒否すること。
-- `ActorSerializationBridge` が `SerializationExtension` の serializer id / manifest を失わず、未登録 serializer failure を返すこと。
+- `ClusterMessageManifest` が actor-core manifest を opaque に保持し、payload kind tag と二重管理しないこと。
+- unknown manifest / manifest route mismatch が actor-core deserialize failure として観測できること。
+- `ActorSerializationBridge` が `SerializationExtension` の serializer id / manifest を失わず、Remote scope の manifest requirement と未登録 serializer failure を返すこと。
 - `ClusterWireCodec` が version one frame を roundtrip し、metadata を保持すること。
 - unknown version、unknown payload kind、length mismatch、invalid manifest bytes が typed failure になること。
 
@@ -436,11 +439,11 @@ trait ClusterWireCodec {
 ## Integration & Migration Notes
 
 - 既存 `actor-core` serialization の `SerializedMessage` を source of truth とし、cluster 側で serializer registry を複製しない。
-- gossip / pubsub upstream specs が payload kind extension point を変更した場合は、この spec の kind tag と manifest namespace を再検証する。
+- gossip / pubsub upstream specs が payload kind extension point を変更した場合は、この spec の kind tag と actor-core manifest preservation rule を再検証する。
 - `docs/gap-analysis/cluster-gap-analysis.md` は実装完了時に cluster message serializer contract の active follow-up だけ evidence 更新する。
 
 ## Open Questions / Risks
 
 - kind tag の具体的な numeric allocation は実装時に既存 wire tag と衝突しない範囲で固定する。
-- `ClusterMessageManifest` の namespace 文字列は actor-core manifest と二重管理にならないよう、最小の prefix validation に留める。
+- `ClusterMessageManifest` は actor-core manifest を prefix validation せず、cluster family の識別は payload kind tag に限定する。
 - future protobuf compatibility spec が必要になった場合、この frame を互換 layer として拡張せず、別 spec で migration adapter を扱う。
