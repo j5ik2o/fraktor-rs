@@ -55,6 +55,27 @@ fn send_selects_one_matching_path_entry() {
 }
 
 #[test]
+fn random_send_does_not_pin_same_path_to_same_entry() {
+  let local = owner("node-a", 1);
+  let key = path("fraktor://sys/user/service");
+  let first = subscriber("actor-1");
+  let second = subscriber("actor-2");
+  let mut bucket = TopicRegistryBucket::new(local.clone());
+  bucket.put_path(key.clone(), first.clone());
+  bucket.put_path(key.clone(), second.clone());
+  let buckets = vec![bucket.delivery_view(from_ref(&local))];
+  let mut semantics =
+    PubSubPathSemantics::new(settings(PubSubRoutingMode::Random, PubSubNoSubscriberBehavior::Drop), local);
+
+  let first_intent =
+    semantics.select_send_target(SendPathInput::new(key.clone(), payload(), false), &buckets).expect("first");
+  let second_intent =
+    semantics.select_send_target(SendPathInput::new(key, payload(), false), &buckets).expect("second");
+
+  assert_ne!(first_intent.targets(), second_intent.targets());
+}
+
+#[test]
 fn path_semantics_uses_canonical_relative_key() {
   let local = owner("node-a", 1);
   let registered = path("fraktor.tcp://sys@node-a:2552/user/service");

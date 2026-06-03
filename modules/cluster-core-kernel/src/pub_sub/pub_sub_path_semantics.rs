@@ -20,13 +20,14 @@ pub struct PubSubPathSemantics {
   settings:           DistributedPubSubSettings,
   local_owner:        UniqueAddress,
   round_robin_cursor: usize,
+  random_cursor:      usize,
 }
 
 impl PubSubPathSemantics {
   /// Creates a path selector.
   #[must_use]
   pub const fn new(settings: DistributedPubSubSettings, local_owner: UniqueAddress) -> Self {
-    Self { settings, local_owner, round_robin_cursor: 0 }
+    Self { settings, local_owner, round_robin_cursor: 0, random_cursor: 0 }
   }
 
   /// Selects one matching path target for `Send`.
@@ -87,7 +88,10 @@ impl PubSubPathSemantics {
       return None;
     }
     match self.settings.routing_mode() {
-      | PubSubRoutingMode::Random => candidates.get(stable_index(path.as_str(), candidates.len())).cloned(),
+      | PubSubRoutingMode::Random => {
+        self.random_cursor = next_random_cursor(self.random_cursor);
+        candidates.get(stable_index(path.as_str(), self.random_cursor, candidates.len())).cloned()
+      },
       | PubSubRoutingMode::RoundRobin => {
         let selected = candidates.get(self.round_robin_cursor % candidates.len()).cloned();
         self.round_robin_cursor = self.round_robin_cursor.wrapping_add(1);
@@ -124,9 +128,13 @@ impl PubSubPathSemantics {
   }
 }
 
-fn stable_index(key: &str, len: usize) -> usize {
+const fn next_random_cursor(current: usize) -> usize {
+  current.wrapping_mul(1_664_525).wrapping_add(1_013_904_223)
+}
+
+fn stable_index(key: &str, cursor: usize, len: usize) -> usize {
   if len == 0 {
     return 0;
   }
-  key.as_bytes().iter().fold(0usize, |accumulator, byte| accumulator.wrapping_add(usize::from(*byte))) % len
+  key.as_bytes().iter().fold(cursor, |accumulator, byte| accumulator.wrapping_add(usize::from(*byte))) % len
 }
