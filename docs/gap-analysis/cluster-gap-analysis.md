@@ -161,16 +161,16 @@ cluster は、membership table、gossip dissemination、full gossip state merge 
 | `ClusterClientReceptionist` | `ClusterClient.scala:565`, `ClusterClient.scala:583` | 未対応 | std + pub_sub | hard | service/subscriber registration と receptionist actor がない |
 | `ClusterReceptionistSettings` | `ClusterClient.scala:661`, `ClusterClient.scala:713` | 未対応 | core/config | easy | receptionist 設定型がない |
 
-### 7. Distributed PubSub　✅ 実装済み 6/10 (60%)
+### 7. Distributed PubSub　✅ 実装済み 10/10 (100%)
 
 | Pekko API / 契約 | Pekko 参照 | fraktor-rs 対応 | 実装先層 | 難易度 | 備考 |
 |------------------|------------|-----------------|----------|--------|------|
-| `DistributedPubSubMediator` protocol | `DistributedPubSubMediator.scala:151`, `DistributedPubSubMediator.scala:553` | 部分実装 | core/pub_sub + std | medium | `PubSubBroker` はあるが mediator actor protocol と registry gossip がない |
-| `DistributedPubSubSettings` | `DistributedPubSubMediator.scala:44`, `DistributedPubSubMediator.scala:103` | 部分実装 | core/pub_sub | easy | `PubSubConfig` は TTL 等が限定的。role/routing/maxDeltaElements がない |
-| topic registry gossip / delta collection | `DistributedPubSubMediator.scala:699`, `DistributedPubSubMediator.scala:861` | 未対応 | core/pub_sub + membership | hard | topic/subscriber registry を cluster gossip へ載せる処理がない |
-| `Send` / `SendToAll` path semantics | `DistributedPubSubMediator.scala:206`, `DistributedPubSubMediator.scala:216` | 部分実装 | core/pub_sub + actor-core | medium | topic publish はあるが actor path への direct send semantics が不足 |
+| `DistributedPubSubMediator` protocol | `DistributedPubSubMediator.scala:151`, `DistributedPubSubMediator.scala:553` | 実装済み | core/pub_sub + std | medium | `MediatorCommand` / `MediatorAcknowledgement` / `MediatorQueryResult` / `DistributedPubSubMediatorState` が subscribe / publish / unsubscribe / query を registry と delivery intent へ接続。std は `PubSubDeliveryIntentExecutor` で intent を実行 |
+| `DistributedPubSubSettings` | `DistributedPubSubMediator.scala:44`, `DistributedPubSubMediator.scala:103` | 実装済み | core/pub_sub | easy | `DistributedPubSubSettings` が role / routing mode / gossip interval / removed TTL / max delta elements / no-subscriber behavior を保持 |
+| topic registry gossip / delta collection | `DistributedPubSubMediator.scala:699`, `DistributedPubSubMediator.scala:861` | 実装済み | core/pub_sub + membership | hard | `TopicRegistryStatus` / `TopicRegistryDelta` / `TopicRegistryDeltaCollector` / `TopicRegistryGossipPayload` / `PubSubGossipHandoff` が owner version status、bounded delta、logical pubsub gossip kind を提供 |
+| `Send` / `SendToAll` path semantics | `DistributedPubSubMediator.scala:206`, `DistributedPubSubMediator.scala:216` | 実装済み | core/pub_sub + actor-core | medium | `MediatorPathKey` と `PubSubPathSemantics` が address-less canonical path、one-of、local affinity、all-of、all-but-self、no-subscriber intent を提供 |
 
-実装済みとして扱うもの: `ClusterPubSub` trait、`ClusterPubSubImpl`、`PubSubBroker`、topic / subscriber / publish ack、delivery policy、partition behavior、std `PubSubDeliveryActor`。
+実装済みとして扱うもの: `ClusterPubSub` trait、`ClusterPubSubImpl`、`PubSubBroker`、topic / subscriber / publish ack、delivery policy、partition behavior、std `PubSubDeliveryActor`、mediator command protocol、distributed pub-sub settings、path semantics、topic registry status / delta / gossip handoff。
 
 ### 8. Sharding / Grain / Placement / Identity　✅ 実装済み 11/19 (58%)
 

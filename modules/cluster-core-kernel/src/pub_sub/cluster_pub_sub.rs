@@ -1,6 +1,13 @@
 //! Abstraction over cluster-wide pub/sub control.
 
-use super::{PubSubError, PubSubSubscriber, PubSubTopic, PublishAck, PublishRequest};
+use alloc::vec::Vec;
+
+use fraktor_remote_core_rs::address::UniqueAddress;
+
+use super::{
+  DistributedPubSubSettings, MediatorCommand, MediatorCommandOutcome, PubSubError, PubSubSubscriber, PubSubTopic,
+  PublishAck, PublishRequest, TopicRegistryApplyOutcome, TopicRegistryDelta, TopicRegistryStatus,
+};
 use crate::TopologyUpdate;
 
 mod cluster_pub_sub_impl;
@@ -43,6 +50,47 @@ pub trait ClusterPubSub: Send + Sync {
   ///
   /// Returns an error only for system-level failures.
   fn publish(&mut self, request: PublishRequest) -> Result<PublishAck, PubSubError>;
+
+  /// Returns distributed mediator settings used by this pub/sub implementation.
+  fn mediator_settings(&self) -> DistributedPubSubSettings {
+    DistributedPubSubSettings::default()
+  }
+
+  /// Returns this node's mediator registry status for gossip.
+  fn mediator_status(&self) -> TopicRegistryStatus {
+    TopicRegistryStatus::default()
+  }
+
+  /// Records a peer mediator registry status observed through gossip.
+  fn record_mediator_peer_status(&mut self, _owner: UniqueAddress, _status: TopicRegistryStatus) {}
+
+  /// Collects mediator registry delta entries newer than the peer status.
+  fn collect_mediator_delta(&self, _peer_status: &TopicRegistryStatus) -> TopicRegistryDelta {
+    TopicRegistryDelta::default()
+  }
+
+  /// Applies mediator registry delta entries observed through gossip.
+  fn apply_mediator_delta(
+    &mut self,
+    _delta: &TopicRegistryDelta,
+    _active_owners: &[UniqueAddress],
+  ) -> Vec<TopicRegistryApplyOutcome> {
+    Vec::new()
+  }
+
+  /// Applies a distributed mediator command.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`PubSubError::NotStarted`] when the implementation does not expose a mediator state.
+  fn apply_mediator_command(
+    &mut self,
+    _command: MediatorCommand,
+    _now_millis: u64,
+    _active_owners: &[UniqueAddress],
+  ) -> Result<MediatorCommandOutcome, PubSubError> {
+    Err(PubSubError::NotStarted)
+  }
 
   /// Applies a topology update to refresh routing decisions.
   fn on_topology(&mut self, update: &TopologyUpdate);

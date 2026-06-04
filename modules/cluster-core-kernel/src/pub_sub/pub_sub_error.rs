@@ -43,4 +43,24 @@ pub enum PubSubError {
     /// Failure reason.
     reason: String,
   },
+  /// Distributed pub-sub settings are invalid.
+  InvalidSettings {
+    /// Failure reason.
+    reason: String,
+  },
+  /// Mediator topic input is invalid.
+  InvalidTopic {
+    /// Failure reason.
+    reason: String,
+  },
+  /// Mediator actor path input is invalid.
+  InvalidPath {
+    /// Failure reason.
+    reason: String,
+  },
+  /// Mediator payload input is invalid.
+  InvalidPayload {
+    /// Failure reason.
+    reason: String,
+  },
 }
