@@ -5,7 +5,7 @@
 mod tests;
 
 use alloc::{collections::BTreeMap, format, string::String, vec, vec::Vec};
-use core::time::Duration;
+use core::{slice::from_ref, time::Duration};
 
 use fraktor_actor_core_kernel_rs::{
   actor::messaging::AnyMessage,
@@ -437,7 +437,7 @@ impl ClusterPubSub for ClusterPubSubImpl {
   }
 
   fn mediator_status(&self) -> TopicRegistryStatus {
-    TopicRegistryStatus::from_buckets(&self.mediator_state.buckets())
+    TopicRegistryStatus::from_buckets(from_ref(self.mediator_state.local_bucket()))
   }
 
   fn record_mediator_peer_status(&mut self, owner: UniqueAddress, status: TopicRegistryStatus) {
@@ -449,7 +449,7 @@ impl ClusterPubSub for ClusterPubSubImpl {
   fn collect_mediator_delta(&self, peer_status: &TopicRegistryStatus) -> TopicRegistryDelta {
     TopicRegistryDeltaCollector::collect_delta(
       peer_status,
-      &self.mediator_state.buckets(),
+      from_ref(self.mediator_state.local_bucket()),
       self.mediator_state.settings(),
     )
   }
