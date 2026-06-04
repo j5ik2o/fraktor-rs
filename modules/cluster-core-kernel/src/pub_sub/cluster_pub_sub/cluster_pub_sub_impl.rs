@@ -437,7 +437,7 @@ impl ClusterPubSub for ClusterPubSubImpl {
   }
 
   fn mediator_status(&self) -> TopicRegistryStatus {
-    TopicRegistryStatus::from_buckets(from_ref(self.mediator_state.local_bucket()))
+    TopicRegistryStatus::from_buckets(&self.mediator_state.buckets())
   }
 
   fn record_mediator_peer_status(&mut self, owner: UniqueAddress, status: TopicRegistryStatus) {
@@ -543,7 +543,7 @@ fn mediator_owner_from_active_owners(
   let (host, port) = address_host_port(advertised_address);
   active_owners
     .iter()
-    .find(|owner| normalize_host(owner.address().host()) == host && owner.address().port() == port)
+    .find(|owner| normalize_host(owner.address().host()) == host && (port == 0 || owner.address().port() == port))
     .cloned()
 }
 
@@ -588,7 +588,7 @@ fn address_host_port(address: &str) -> (String, u16) {
   {
     (String::from(host), port)
   } else {
-    (String::from(address), 0)
+    (String::from(normalize_host(address)), 0)
   }
 }
 

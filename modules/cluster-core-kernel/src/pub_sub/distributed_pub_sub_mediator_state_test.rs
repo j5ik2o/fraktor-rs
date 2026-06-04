@@ -26,6 +26,13 @@ fn payload() -> PubSubEnvelope {
   PubSubEnvelope { serializer_id: 41, type_name: String::from("example.Message"), bytes: vec![1, 2, 3] }
 }
 
+fn publish_targets(outcome: MediatorCommandOutcome) -> Vec<PubSubSubscriber> {
+  match outcome {
+    | MediatorCommandOutcome::Delivery(MediatorDeliveryIntent::Deliver { targets, .. }) => targets,
+    | _ => panic!("unexpected publish outcome"),
+  }
+}
+
 fn settings(behavior: PubSubNoSubscriberBehavior) -> DistributedPubSubSettings {
   DistributedPubSubSettings::try_new(
     None,
@@ -187,6 +194,47 @@ fn grouped_publish_round_robins_within_group() {
       payload: payload(),
     })
   );
+}
+
+#[test]
+fn grouped_publish_deduplicates_subscribers_before_group_selection() {
+  let local = owner("node-a", 1);
+  let remote = owner("node-b", 2);
+  let mut state = DistributedPubSubMediatorState::new(settings(PubSubNoSubscriberBehavior::Drop), local.clone());
+  let topic = PubSubTopic::new("news");
+  let group = Some(String::from("blue"));
+  let first = subscriber("sub-1");
+  let second = subscriber("sub-2");
+  let active = vec![local.clone(), remote.clone()];
+
+  state
+    .apply_command(
+      MediatorCommand::try_subscribe(topic.clone(), group.clone(), first.clone()).expect("subscribe"),
+      10,
+      &active,
+    )
+    .expect("subscribed");
+  state
+    .apply_command(
+      MediatorCommand::try_subscribe(topic.clone(), group.clone(), second.clone()).expect("subscribe"),
+      11,
+      &active,
+    )
+    .expect("subscribed");
+  let mut remote_bucket = TopicRegistryBucket::new(remote);
+  remote_bucket.put_subscription(topic.clone(), group, first.clone());
+  state.upsert_remote_bucket(remote_bucket);
+
+  let targets = (0..4)
+    .map(|time| {
+      let published = state
+        .apply_command(MediatorCommand::try_publish(topic.clone(), payload()).expect("publish"), 12 + time, &active)
+        .expect("published");
+      publish_targets(published)
+    })
+    .collect::<Vec<_>>();
+
+  assert_eq!(targets, vec![vec![first.clone()], vec![second.clone()], vec![first], vec![second]]);
 }
 
 #[test]

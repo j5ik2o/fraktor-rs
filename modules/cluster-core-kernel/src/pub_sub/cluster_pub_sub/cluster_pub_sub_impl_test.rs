@@ -286,11 +286,87 @@ fn mediator_command_rebinds_owner_from_matching_active_membership_address() {
 }
 
 #[test]
+fn mediator_command_rebinds_owner_from_advertised_address_without_port() {
+  let mut registry = KindRegistry::new();
+  registry.register_all(Vec::new());
+  let event_stream: EventStreamShared = EventStreamShared::default();
+  let mut pubsub = make_pubsub(event_stream, &registry, Vec::new()).with_advertised_address("node-a");
+  pubsub.start().expect("start");
+
+  let real_owner = UniqueAddress::new(Address::new("cluster", "node-a", 2552), 42);
+  let target = PubSubSubscriber::ClusterIdentity(ClusterIdentity::new("kind", "path-target").expect("identity"));
+  let payload = PubSubEnvelope { serializer_id: 41, type_name: String::from("dummy"), bytes: Vec::new() };
+
+  pubsub
+    .apply_mediator_command(
+      MediatorCommand::try_put("fraktor://sys/user/service", target.clone()).expect("put"),
+      10,
+      from_ref(&real_owner),
+    )
+    .expect("put");
+
+  let sent = pubsub
+    .apply_mediator_command(
+      MediatorCommand::try_send("fraktor://sys/user/service", payload.clone(), false).expect("send"),
+      11,
+      from_ref(&real_owner),
+    )
+    .expect("send");
+
+  assert_eq!(
+    sent,
+    MediatorCommandOutcome::Delivery(MediatorDeliveryIntent::Deliver {
+      mode: MediatorDeliveryMode::Send,
+      targets: vec![target],
+      payload,
+    })
+  );
+}
+
+#[test]
 fn mediator_command_rebinds_owner_from_bracketed_ipv6_advertised_address() {
   let mut registry = KindRegistry::new();
   registry.register_all(Vec::new());
   let event_stream: EventStreamShared = EventStreamShared::default();
   let mut pubsub = make_pubsub(event_stream, &registry, Vec::new()).with_advertised_address("[::1]:2552");
+  pubsub.start().expect("start");
+
+  let real_owner = UniqueAddress::new(Address::new("cluster", "::1", 2552), 42);
+  let target = PubSubSubscriber::ClusterIdentity(ClusterIdentity::new("kind", "path-target").expect("identity"));
+  let payload = PubSubEnvelope { serializer_id: 41, type_name: String::from("dummy"), bytes: Vec::new() };
+
+  pubsub
+    .apply_mediator_command(
+      MediatorCommand::try_put("fraktor://sys/user/service", target.clone()).expect("put"),
+      10,
+      from_ref(&real_owner),
+    )
+    .expect("put");
+
+  let sent = pubsub
+    .apply_mediator_command(
+      MediatorCommand::try_send("fraktor://sys/user/service", payload.clone(), false).expect("send"),
+      11,
+      from_ref(&real_owner),
+    )
+    .expect("send");
+
+  assert_eq!(
+    sent,
+    MediatorCommandOutcome::Delivery(MediatorDeliveryIntent::Deliver {
+      mode: MediatorDeliveryMode::Send,
+      targets: vec![target],
+      payload,
+    })
+  );
+}
+
+#[test]
+fn mediator_command_rebinds_owner_from_bracketed_ipv6_advertised_address_without_port() {
+  let mut registry = KindRegistry::new();
+  registry.register_all(Vec::new());
+  let event_stream: EventStreamShared = EventStreamShared::default();
+  let mut pubsub = make_pubsub(event_stream, &registry, Vec::new()).with_advertised_address("[::1]");
   pubsub.start().expect("start");
 
   let real_owner = UniqueAddress::new(Address::new("cluster", "::1", 2552), 42);
@@ -624,7 +700,7 @@ fn mediator_delta_applies_remote_subscription_for_publish_delivery() {
 }
 
 #[test]
-fn mediator_gossip_status_and_delta_exclude_remote_mirrors() {
+fn mediator_gossip_status_reports_remote_observations_but_delta_excludes_remote_mirrors() {
   let mut registry = KindRegistry::new();
   registry.register_all(Vec::new());
 
@@ -664,7 +740,7 @@ fn mediator_gossip_status_and_delta_exclude_remote_mirrors() {
   let gossip_delta = pubsub.collect_mediator_delta(&TopicRegistryStatus::default());
 
   assert!(status.version_for(&local_owner).value() > 0);
-  assert_eq!(status.version_for(&remote_owner), TopicRegistryVersion::zero());
+  assert!(status.version_for(&remote_owner).value() > 0);
   assert!(gossip_delta.entries().iter().all(|entry| entry.owner() == &local_owner));
 }
 

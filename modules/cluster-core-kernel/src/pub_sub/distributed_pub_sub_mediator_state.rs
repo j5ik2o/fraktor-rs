@@ -204,6 +204,10 @@ impl DistributedPubSubMediatorState {
         }
       }
     }
+    for subscribers in grouped.values_mut() {
+      let mut deduplicated = BTreeSet::new();
+      subscribers.retain(|subscriber| deduplicated.insert(subscriber.clone()));
+    }
 
     let grouped_targets =
       grouped.into_iter().filter_map(|(group, subscribers)| self.select_group_subscriber(&topic, &group, &subscribers));
