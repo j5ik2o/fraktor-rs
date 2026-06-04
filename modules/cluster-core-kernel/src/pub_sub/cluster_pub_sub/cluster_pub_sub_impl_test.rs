@@ -442,6 +442,63 @@ fn topology_update_prunes_single_member_mediator_tombstones_after_ttl() {
 }
 
 #[test]
+fn topology_update_prunes_local_only_mediator_tombstones_with_non_mediator_members() {
+  let mut registry = KindRegistry::new();
+  registry.register_all(Vec::new());
+
+  let event_stream: EventStreamShared = EventStreamShared::default();
+  let mut pubsub = make_pubsub(event_stream, &registry, Vec::new());
+  let target = PubSubSubscriber::ClusterIdentity(ClusterIdentity::new("kind", "sub-1").expect("identity"));
+  let path = "fraktor://sys/user/service";
+  let path_key = MediatorPathKey::parse(path).expect("path");
+  let active_owner = UniqueAddress::new(Address::new("fraktor-cluster", "pubsub", 0), 1);
+  let command_now = 1_700_000_000_000;
+  pubsub.start().expect("start");
+
+  let topology = ClusterTopology::new(1, vec![String::from("pubsub"), String::from("worker")], Vec::new(), Vec::new());
+  let initial_update = TopologyUpdate::new(
+    topology.clone(),
+    vec![String::from("pubsub"), String::from("worker")],
+    Vec::new(),
+    Vec::new(),
+    Vec::new(),
+    Vec::new(),
+    TimerInstant::from_ticks(0, Duration::from_secs(1)),
+  );
+  pubsub.on_topology(&initial_update);
+
+  pubsub
+    .apply_mediator_command(
+      MediatorCommand::try_put(path, target.clone()).expect("put"),
+      command_now,
+      from_ref(&active_owner),
+    )
+    .expect("put command");
+  pubsub
+    .apply_mediator_command(
+      MediatorCommand::try_remove(path, target.clone()).expect("remove"),
+      command_now,
+      from_ref(&active_owner),
+    )
+    .expect("remove command");
+  let key = TopicRegistryEntryKey::Path { path: path_key, target };
+  assert!(pubsub.mediator_state.local_bucket().entry(&key).is_some());
+
+  let update = TopologyUpdate::new(
+    topology,
+    vec![String::from("pubsub"), String::from("worker")],
+    Vec::new(),
+    Vec::new(),
+    Vec::new(),
+    Vec::new(),
+    TimerInstant::from_ticks(120, Duration::from_secs(1)),
+  );
+  pubsub.on_topology(&update);
+
+  assert!(pubsub.mediator_state.local_bucket().entry(&key).is_none());
+}
+
+#[test]
 fn topology_update_prunes_multi_member_mediator_tombstones_after_peer_status_observes_them() {
   let mut registry = KindRegistry::new();
   registry.register_all(Vec::new());

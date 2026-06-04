@@ -194,10 +194,7 @@ impl ClusterPubSubImpl {
   }
 
   fn active_peer_statuses(&self, update: &TopologyUpdate) -> Option<Vec<TopicRegistryStatus>> {
-    if update.members.len() <= 1 {
-      return Some(Vec::new());
-    }
-
+    let has_active_mediator_peer = self.has_active_mediator_peer(update);
     let mut statuses = Vec::new();
     for (owner, status) in &self.peer_statuses {
       if owner != self.mediator_state.local_owner()
@@ -206,7 +203,21 @@ impl ClusterPubSubImpl {
         statuses.push(status.clone());
       }
     }
-    if statuses.is_empty() { None } else { Some(statuses) }
+    if statuses.is_empty() && has_active_mediator_peer { None } else { Some(statuses) }
+  }
+
+  fn has_active_mediator_peer(&self, update: &TopologyUpdate) -> bool {
+    if self.active_mediator_owners.is_empty() {
+      return update.members.len() > 1;
+    }
+
+    self.active_mediator_owners.iter().any(|owner| {
+      !self.is_local_mediator_owner(owner) && update.members.iter().any(|member| owner_matches_member(owner, member))
+    })
+  }
+
+  fn is_local_mediator_owner(&self, owner: &UniqueAddress) -> bool {
+    owner == self.mediator_state.local_owner() || owner_matches_member(owner, &self.advertised_address)
   }
 
   const fn record_mediator_now(&mut self, now_millis: u64) {
