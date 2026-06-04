@@ -699,3 +699,104 @@ fn topology_update_evicts_remote_bucket_when_active_owner_uid_changes() {
   assert_eq!(pubsub.mediator_status().version_for(&old_remote_owner), TopicRegistryVersion::zero());
   assert!(!pubsub.peer_statuses.contains_key(&old_remote_owner));
 }
+
+#[test]
+fn topology_update_invalidates_stale_active_owner_cache_for_dead_member() {
+  let mut registry = KindRegistry::new();
+  registry.register_all(Vec::new());
+
+  let event_stream: EventStreamShared = EventStreamShared::default();
+  let mut pubsub = make_pubsub(event_stream, &registry, Vec::new());
+  let local_owner = UniqueAddress::new(Address::new("fraktor-cluster", "pubsub", 0), 1);
+  let old_remote_owner = UniqueAddress::new(Address::new("fraktor-cluster", "node-b", 0), 2);
+  let subscriber = PubSubSubscriber::ClusterIdentity(ClusterIdentity::new("kind", "remote").expect("identity"));
+  let topic = PubSubTopic::from("news");
+  let key = TopicRegistryEntryKey::TopicSubscription {
+    topic:      topic.clone(),
+    group:      None,
+    subscriber: subscriber.clone(),
+  };
+  let entry = TopicRegistryEntry::new(TopicRegistryVersion::new(1), TopicRegistryEntryKind::TopicSubscription {
+    topic,
+    group: None,
+    subscriber,
+  });
+  let delta = TopicRegistryDelta::new(vec![TopicRegistryDeltaEntry::new(old_remote_owner.clone(), key, entry)]);
+  pubsub.start().expect("start");
+  pubsub.apply_mediator_delta(&delta, &[local_owner.clone(), old_remote_owner.clone()]);
+  pubsub.record_mediator_peer_status(
+    old_remote_owner.clone(),
+    TopicRegistryStatus::new(vec![(local_owner, TopicRegistryVersion::new(1))]),
+  );
+  assert!(pubsub.mediator_status().version_for(&old_remote_owner).value() > 0);
+  assert!(pubsub.peer_statuses.contains_key(&old_remote_owner));
+
+  let topology = ClusterTopology::new(1, vec![String::from("pubsub"), String::from("node-b")], Vec::new(), Vec::new());
+  let update = TopologyUpdate::new(
+    topology,
+    vec![String::from("pubsub"), String::from("node-b")],
+    Vec::new(),
+    Vec::new(),
+    vec![String::from("node-b")],
+    Vec::new(),
+    TimerInstant::from_ticks(1, Duration::from_secs(1)),
+  );
+  pubsub.on_topology(&update);
+
+  assert_eq!(pubsub.mediator_status().version_for(&old_remote_owner), TopicRegistryVersion::zero());
+  assert!(!pubsub.peer_statuses.contains_key(&old_remote_owner));
+}
+
+#[test]
+fn topology_update_prunes_delta_tombstones_without_local_mediator_command() {
+  let mut registry = KindRegistry::new();
+  registry.register_all(Vec::new());
+
+  let event_stream: EventStreamShared = EventStreamShared::default();
+  let mut pubsub = make_pubsub(event_stream, &registry, Vec::new());
+  let local_owner = UniqueAddress::new(Address::new("fraktor-cluster", "pubsub", 0), 1);
+  let remote_owner = UniqueAddress::new(Address::new("fraktor-cluster", "node-b", 0), 2);
+  let target = PubSubSubscriber::ClusterIdentity(ClusterIdentity::new("kind", "remote").expect("identity"));
+  let path = MediatorPathKey::parse("fraktor://sys/user/service").expect("path");
+  let key = TopicRegistryEntryKey::Path { path, target };
+  let command_now = 1_700_000_000_000;
+  let entry = TopicRegistryEntry::new(TopicRegistryVersion::new(1), TopicRegistryEntryKind::Removed {
+    removed_at_millis: command_now,
+  });
+  let delta = TopicRegistryDelta::new(vec![TopicRegistryDeltaEntry::new(remote_owner.clone(), key, entry)]);
+  let active_owners = vec![local_owner, remote_owner.clone()];
+  pubsub.start().expect("start");
+
+  let topology = ClusterTopology::new(1, vec![String::from("pubsub"), String::from("node-b")], Vec::new(), Vec::new());
+  let initial_update = TopologyUpdate::new(
+    topology.clone(),
+    vec![String::from("pubsub"), String::from("node-b")],
+    Vec::new(),
+    Vec::new(),
+    Vec::new(),
+    Vec::new(),
+    TimerInstant::from_ticks(0, Duration::from_secs(1)),
+  );
+  pubsub.on_topology(&initial_update);
+
+  let outcomes = pubsub.apply_mediator_delta(&delta, &active_owners);
+  assert!(matches!(outcomes.as_slice(), [TopicRegistryApplyOutcome::Applied { .. }]));
+  pubsub.record_mediator_peer_status(
+    remote_owner.clone(),
+    TopicRegistryStatus::new(vec![(remote_owner.clone(), TopicRegistryVersion::new(1))]),
+  );
+  assert!(!pubsub.collect_mediator_delta(&TopicRegistryStatus::default()).is_empty());
+
+  let update = TopologyUpdate::new(
+    topology,
+    vec![String::from("pubsub"), String::from("node-b")],
+    Vec::new(),
+    Vec::new(),
+    Vec::new(),
+    Vec::new(),
+    TimerInstant::from_ticks(120, Duration::from_secs(1)),
+  );
+  pubsub.on_topology(&update);
+
+  assert!(pubsub.collect_mediator_delta(&TopicRegistryStatus::default()).is_empty());
+}

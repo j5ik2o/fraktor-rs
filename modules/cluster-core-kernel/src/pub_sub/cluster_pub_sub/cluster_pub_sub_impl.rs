@@ -27,7 +27,7 @@ use crate::{
     DistributedPubSubSettings, MediatorCommand, MediatorCommandOutcome, PubSubBatch, PubSubBroker, PubSubConfig,
     PubSubEnvelope, PubSubError, PubSubEvent, PubSubSubscriber, PubSubTopic, PubSubTopicOptions, PublishAck,
     PublishOptions, PublishRejectReason, PublishRequest, SubscriberDeliveryReport, TopicRegistryApplyOutcome,
-    TopicRegistryDelta, TopicRegistryDeltaCollector, TopicRegistryStatus,
+    TopicRegistryDelta, TopicRegistryDeltaCollector, TopicRegistryEntryKind, TopicRegistryStatus,
   },
 };
 
@@ -193,6 +193,21 @@ impl ClusterPubSubImpl {
       .retain(|owner, _| owner != &local_owner && self.active_mediator_owners.iter().any(|active| active == owner));
   }
 
+  fn refresh_active_mediator_owners_from_topology(&mut self, update: &TopologyUpdate) {
+    if self.active_mediator_owners.is_empty() {
+      return;
+    }
+
+    let local_owner = self.mediator_state.local_owner().clone();
+    let advertised_address = self.advertised_address.clone();
+    self.active_mediator_owners.retain(|owner| {
+      owner == &local_owner
+        || owner_matches_member(owner, &advertised_address)
+        || !owner_unavailable_in_topology(owner, update)
+    });
+    self.peer_statuses.retain(|owner, _| !owner_unavailable_in_topology(owner, update));
+  }
+
   fn active_peer_statuses(&self, update: &TopologyUpdate) -> Option<Vec<TopicRegistryStatus>> {
     let has_active_mediator_peer = self.has_active_mediator_peer(update);
     let mut statuses = Vec::new();
@@ -225,6 +240,25 @@ impl ClusterPubSubImpl {
     if let Some(observed_at) = self.last_observed_at {
       self.mediator_clock_anchor = Some(MediatorClockAnchor { observed_at, now_millis });
     }
+  }
+
+  fn record_mediator_delta_clock(&mut self, delta: &TopicRegistryDelta) {
+    if self.last_mediator_now.is_some() {
+      return;
+    }
+
+    let Some(now_millis) = delta
+      .entries()
+      .iter()
+      .filter_map(|entry| match entry.entry().kind() {
+        | TopicRegistryEntryKind::Removed { removed_at_millis } => Some(*removed_at_millis),
+        | TopicRegistryEntryKind::Path { .. } | TopicRegistryEntryKind::TopicSubscription { .. } => None,
+      })
+      .max()
+    else {
+      return;
+    };
+    self.record_mediator_now(now_millis);
   }
 
   fn mediator_now_for_topology(&mut self, observed_at: TimerInstant) -> Option<u64> {
@@ -427,6 +461,7 @@ impl ClusterPubSub for ClusterPubSubImpl {
   ) -> Vec<TopicRegistryApplyOutcome> {
     self.rebind_mediator_owner_from_active_owners(active_owners);
     self.record_active_mediator_owners(active_owners);
+    self.record_mediator_delta_clock(delta);
     self.mediator_state.apply_delta(delta, active_owners)
   }
 
@@ -447,6 +482,7 @@ impl ClusterPubSub for ClusterPubSubImpl {
 
   fn on_topology(&mut self, update: &TopologyUpdate) {
     let mediator_now = self.mediator_now_for_topology(update.observed_at);
+    self.refresh_active_mediator_owners_from_topology(update);
     let active_mediator_owners = self.active_mediator_owners.clone();
     let topology_members = update.members.clone();
     self.last_observed_at = Some(update.observed_at);
@@ -521,6 +557,16 @@ fn owner_is_active_or_topology_member(
     return topology_member;
   }
   topology_member && active_owners.iter().any(|active_owner| active_owner == owner)
+}
+
+fn owner_unavailable_in_topology(owner: &UniqueAddress, update: &TopologyUpdate) -> bool {
+  owner_matches_any_member(owner, &update.left)
+    || owner_matches_any_member(owner, &update.dead)
+    || owner_matches_any_member(owner, &update.blocked)
+}
+
+fn owner_matches_any_member(owner: &UniqueAddress, members: &[String]) -> bool {
+  members.iter().any(|member| owner_matches_member(owner, member))
 }
 
 fn owner_matches_member(owner: &UniqueAddress, member: &str) -> bool {
