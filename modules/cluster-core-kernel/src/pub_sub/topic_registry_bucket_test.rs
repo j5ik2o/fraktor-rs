@@ -143,13 +143,39 @@ fn missing_remote_entry_is_not_stale_without_pruned_tombstone_watermark() {
   let missing_path = path_key("fraktor://sys/user/missing");
   let missing_target = subscriber("actor-missing");
   let missing_key = TopicRegistryEntryKey::Path { path: missing_path.clone(), target: missing_target.clone() };
-  let mut source = TopicRegistryBucket::new(owner("node-a", 1));
-  source.put_path(missing_path, missing_target);
-  let missing_entry = source.entry(&missing_key).expect("missing entry").clone();
+  let missing_entry = TopicRegistryEntry::new(TopicRegistryVersion::new(2), TopicRegistryEntryKind::Path {
+    path:   missing_path,
+    target: missing_target,
+  });
 
   assert_eq!(bucket.version(), TopicRegistryVersion::new(1));
   assert!(bucket.entry(&missing_key).is_none());
   assert!(bucket.should_apply_remote_entry(&missing_key, &missing_entry));
+}
+
+#[test]
+fn missing_remote_entry_older_than_bucket_version_is_stale() {
+  let mut bucket = TopicRegistryBucket::new(owner("node-a", 1));
+  let current_path = path_key("fraktor://sys/user/current");
+  let current_target = subscriber("actor-current");
+  let current_key = TopicRegistryEntryKey::Path { path: current_path.clone(), target: current_target.clone() };
+  let current_entry = TopicRegistryEntry::new(TopicRegistryVersion::new(1), TopicRegistryEntryKind::Path {
+    path:   current_path,
+    target: current_target,
+  });
+  let stale_path = path_key("fraktor://sys/user/stale");
+  let stale_target = subscriber("actor-stale");
+  let stale_key = TopicRegistryEntryKey::Path { path: stale_path.clone(), target: stale_target.clone() };
+  let stale_entry = TopicRegistryEntry::new(TopicRegistryVersion::new(1), TopicRegistryEntryKind::Path {
+    path:   stale_path,
+    target: stale_target,
+  });
+
+  bucket.apply_remote_entry(current_key, current_entry);
+
+  assert_eq!(bucket.version(), TopicRegistryVersion::new(1));
+  assert!(bucket.entry(&stale_key).is_none());
+  assert!(!bucket.should_apply_remote_entry(&stale_key, &stale_entry));
 }
 
 #[test]

@@ -118,6 +118,7 @@ impl DistributedPubSubMediatorState {
     for bucket in self.remote_buckets.values_mut() {
       bucket.prune_removed(now_millis, ttl, peer_statuses);
     }
+    self.prune_publish_group_cursors();
   }
 
   /// Applies a validated mediator command and returns the protocol outcome.
@@ -277,6 +278,23 @@ impl DistributedPubSubMediatorState {
           deduplicated.insert(subscriber.clone()).then(|| subscriber.clone())
         },
         | _ => None,
+      })
+      .collect()
+  }
+
+  fn prune_publish_group_cursors(&mut self) {
+    let live_topics = self.live_topics();
+    self.publish_group_cursors.retain(|(topic, _group), _| live_topics.contains(topic));
+  }
+
+  fn live_topics(&self) -> BTreeSet<PubSubTopic> {
+    self
+      .buckets()
+      .into_iter()
+      .flat_map(|bucket| bucket.entries())
+      .filter_map(|entry| match entry.kind() {
+        | TopicRegistryEntryKind::TopicSubscription { topic, .. } => Some(topic.clone()),
+        | TopicRegistryEntryKind::Path { .. } | TopicRegistryEntryKind::Removed { .. } => None,
       })
       .collect()
   }

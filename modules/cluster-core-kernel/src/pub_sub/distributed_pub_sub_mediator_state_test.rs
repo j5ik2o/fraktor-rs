@@ -190,6 +190,55 @@ fn grouped_publish_round_robins_within_group() {
 }
 
 #[test]
+fn prune_removed_entries_drops_publish_group_cursors_for_removed_topics() {
+  let local = owner("node-a", 1);
+  let mut state = DistributedPubSubMediatorState::new(settings(PubSubNoSubscriberBehavior::Drop), local.clone());
+  let topic = PubSubTopic::new("news");
+  let group = String::from("blue");
+  let first = subscriber("sub-1");
+  let second = subscriber("sub-2");
+  let active = from_ref(&local);
+
+  state
+    .apply_command(
+      MediatorCommand::try_subscribe(topic.clone(), Some(group.clone()), first.clone()).expect("subscribe"),
+      10,
+      active,
+    )
+    .expect("subscribed");
+  state
+    .apply_command(
+      MediatorCommand::try_subscribe(topic.clone(), Some(group.clone()), second.clone()).expect("subscribe"),
+      11,
+      active,
+    )
+    .expect("subscribed");
+  state
+    .apply_command(MediatorCommand::try_publish(topic.clone(), payload()).expect("publish"), 12, active)
+    .expect("published");
+  assert!(state.publish_group_cursors.contains_key(&(topic.clone(), group.clone())));
+
+  state
+    .apply_command(
+      MediatorCommand::try_unsubscribe(topic.clone(), Some(group.clone()), first).expect("unsubscribe"),
+      13,
+      active,
+    )
+    .expect("unsubscribed");
+  state
+    .apply_command(
+      MediatorCommand::try_unsubscribe(topic.clone(), Some(group.clone()), second).expect("unsubscribe"),
+      14,
+      active,
+    )
+    .expect("unsubscribed");
+  let expired_at = 14 + state.settings().removed_entry_ttl().as_millis() as u64;
+  state.prune_removed_entries(expired_at, &[]);
+
+  assert!(!state.publish_group_cursors.contains_key(&(topic, group)));
+}
+
+#[test]
 fn random_group_publish_uses_topic_in_selection_key() {
   let local = owner("node-a", 1);
   let first = subscriber("sub-1");

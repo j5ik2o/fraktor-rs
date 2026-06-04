@@ -8,7 +8,7 @@ use fraktor_actor_core_kernel_rs::actor::{
   actor_selection::ActorSelectionResolver,
 };
 
-use super::PubSubError;
+use crate::pub_sub::PubSubError;
 
 /// Address-less actor path key used by mediator path registry entries.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]

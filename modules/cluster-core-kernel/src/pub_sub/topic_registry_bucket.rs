@@ -85,7 +85,7 @@ impl TopicRegistryBucket {
   pub fn should_apply_remote_entry(&self, key: &TopicRegistryEntryKey, entry: &TopicRegistryEntry) -> bool {
     match self.entries.get(key) {
       | Some(current) => current.version() < entry.version(),
-      | None => self.observed_version_floor < entry.version(),
+      | None => self.version.max(self.observed_version_floor) < entry.version(),
     }
   }
 

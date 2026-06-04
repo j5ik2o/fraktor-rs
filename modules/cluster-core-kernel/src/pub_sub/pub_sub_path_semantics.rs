@@ -12,7 +12,7 @@ use alloc::{
 
 use fraktor_remote_core_rs::address::UniqueAddress;
 
-use super::{
+use crate::pub_sub::{
   DistributedPubSubSettings, MediatorDeliveryIntent, MediatorDeliveryMode, MediatorPathKey, PubSubEnvelope,
   PubSubNoSubscriberBehavior, PubSubRoutingMode, PubSubSubscriber, SendPathInput, SendToAllPathInput,
   TopicRegistryBucketView, TopicRegistryEntryKind,
@@ -123,14 +123,8 @@ impl PubSubPathSemantics {
   }
 
   fn prune_round_robin_cursors(&mut self, buckets: &[TopicRegistryBucketView]) {
-    self.round_robin_cursors.retain(|path, _| {
-      buckets.iter().any(|bucket| {
-        bucket.is_delivery_candidate()
-          && bucket.entries().iter().any(
-            |entry| matches!(entry.kind(), TopicRegistryEntryKind::Path { path: entry_path, .. } if entry_path == path),
-          )
-      })
-    });
+    let live_paths = live_paths(buckets);
+    self.round_robin_cursors.retain(|path, _| live_paths.contains(path));
   }
 
   const fn no_subscriber_intent(&self, path: MediatorPathKey, payload: PubSubEnvelope) -> MediatorDeliveryIntent {
@@ -139,6 +133,18 @@ impl PubSubPathSemantics {
       | PubSubNoSubscriberBehavior::DeadLetter => MediatorDeliveryIntent::DeadLetter { path, payload },
     }
   }
+}
+
+fn live_paths(buckets: &[TopicRegistryBucketView]) -> BTreeSet<MediatorPathKey> {
+  buckets
+    .iter()
+    .filter(|bucket| bucket.is_delivery_candidate())
+    .flat_map(|bucket| bucket.entries())
+    .filter_map(|entry| match entry.kind() {
+      | TopicRegistryEntryKind::Path { path, .. } => Some(path.clone()),
+      | TopicRegistryEntryKind::TopicSubscription { .. } | TopicRegistryEntryKind::Removed { .. } => None,
+    })
+    .collect()
 }
 
 const fn next_random_cursor(current: usize) -> usize {

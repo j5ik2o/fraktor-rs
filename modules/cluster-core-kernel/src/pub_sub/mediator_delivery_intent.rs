@@ -2,7 +2,7 @@
 
 use alloc::vec::Vec;
 
-use super::{MediatorDeliveryMode, MediatorPathKey, PubSubEnvelope, PubSubSubscriber, PubSubTopic};
+use crate::pub_sub::{MediatorDeliveryMode, MediatorPathKey, PubSubEnvelope, PubSubSubscriber, PubSubTopic};
 
 /// Delivery intent produced by mediator selection without executing delivery.
 #[derive(Debug, Clone, PartialEq, Eq)]

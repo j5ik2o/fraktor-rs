@@ -1,6 +1,6 @@
 //! Outcome produced by applying a mediator command.
 
-use super::{MediatorAcknowledgement, MediatorDeliveryIntent, MediatorQueryResult, TopicRegistryVersion};
+use crate::pub_sub::{MediatorAcknowledgement, MediatorDeliveryIntent, MediatorQueryResult, TopicRegistryVersion};
 
 /// Observable result of a distributed pub-sub mediator command.
 #[derive(Debug, Clone, PartialEq, Eq)]
