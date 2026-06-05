@@ -74,6 +74,8 @@ fraktor-rs 側はスキル指定の `pub` 系抽出で、型 294 件 (core-kerne
 | panic 系スタブ | 0 件 |
 | 機能 placeholder / TODO | 0 件 |
 
+注: ここでの `raw public` は `pub(crate)` など内部到達可能な `pub` を含む参考値であり、crate 外から到達可能な外部公開 API 数ではない。
+
 cluster は、membership table、gossip dissemination、full gossip state merge / tombstone / seen digest、dedicated heartbeat evidence、failure detector registry、downing/SBR decision model、typed cluster facade、Grain/Placement/Identity、PubSub broker / topic registry gossip、UDP gossip transport などの基礎部品はかなり揃っている。一方で Pekko comparison の範囲で見ると、SBR runtime actor / down execution loop、cluster singleton/client、Pekko sharding の public API、Distributed Data/CRDT が大きく未実装である。
 
 旧版は raw Scala 宣言数をサマリーに置きつつ、`cluster-metrics` を混ぜ、`ShardedDaemonProcess` や typed API を YAGNI で n/a にしていた。固定スコープ版では、JVM 固有以外の public runtime contract を comparison gap として保持する。ただし、直近の implementation backlog は cluster Grain runtime roadmap 側で管理する。
@@ -321,6 +323,11 @@ cluster は、membership table、gossip dissemination、full gossip state merge 
 | 項目 | 実装先層 | 根拠 |
 |------|----------|------|
 | `PrepareForFullClusterShutdown` command path | core/typed + std | カテゴリ1 / カテゴリ5 |
+
+### Active comparison follow-up: easy
+
+| 項目 | 実装先層 | 根拠 |
+|------|----------|------|
 | failure detector implementation choice config | core/failure_detector + config | カテゴリ2 |
 
 ### Deferred Pekko concepts: trivial / easy
@@ -336,7 +343,6 @@ cluster は、membership table、gossip dissemination、full gossip state merge 
 
 | 項目 | 実装先層 | 根拠 |
 |------|----------|------|
-| `prepareForFullClusterShutdown` | core + std | カテゴリ1 |
 | `SingletonActor[M]` | core/typed | カテゴリ6 |
 | `ClusterSingletonSettings` | core/config | カテゴリ6 |
 | `ClusterSingletonProxy` | std + core | カテゴリ6 |
@@ -389,4 +395,4 @@ cluster は membership、gossip / heartbeat contract、downing/SBR decision mode
 
 Pekko 概念を将来採用するなら、低コストで comparison gap を縮めやすいのは、`PrepareForFullClusterShutdown` command、基本 CRDT、std `ClusterApi` wrapper の再公開である。join config compatibility の checker composition、membership/reachability model、gossip/heartbeat protocol の core contract、cluster message serializer contract は契約化済み。router role/max-per-node 設定は、Pekko public API parity ではなく現行 router contract の拡張として実装済み。ただし、残りの実装には個別の OpenSpec change が必要であり、現在の Grain runtime roadmap の直近優先度とは分けて扱う。
 
-主要な comparison gap は、Split Brain Resolver runtime、cluster singleton/client、topic registry gossip、sharding rebalance/remembered entities、Distributed Data Replicator、Pekko/protobuf serializer 完全バイナリ互換である。内部構造比較は、将来これらの scope を採用する OpenSpec change が立った後に進めるのが妥当である。
+主要な comparison gap は、Split Brain Resolver runtime、cluster singleton/client、sharding rebalance/remembered entities、Distributed Data Replicator、Pekko/protobuf serializer 完全バイナリ互換である。内部構造比較は、将来これらの scope を採用する OpenSpec change が立った後に進めるのが妥当である。
