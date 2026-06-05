@@ -104,9 +104,17 @@ jobs:
             exit 0
           fi
 
-          is_rust_source_path() {
+          is_rust_check_path() {
             local path="$1"
-            [[ "${path}" == *.rs ]]
+            [[ "${path}" == *.rs ]] && return 0
+            case "${path}" in
+              rust-toolchain.toml | */rust-toolchain.toml | .github/workflows/ci.yml)
+                return 0
+                ;;
+              *)
+                return 1
+                ;;
+            esac
           }
 
           run_code_checks=false
@@ -119,7 +127,7 @@ jobs:
             esac
 
             for path in "${paths[@]}"; do
-              if is_rust_source_path "${path}"; then
+              if is_rust_check_path "${path}"; then
                 run_code_checks=true
                 break 2
               fi
