@@ -9,7 +9,7 @@
   - _Requirements: 2.1, 2.4, 2.5, 4.2, 4.4_
   - _Boundary: ClusterMessagePayloadKind, ClusterMessageManifest_
 
-- [ ] 1.2 actor-core serialized metadata を保持する bridge message を定義する
+- [x] 1.2 actor-core serialized metadata を保持する bridge message を定義する
   - payload kind と actor-core `SerializedMessage` を束ねる immutable value を追加する。
   - serializer id、manifest、payload bytes が constructor と accessor で欠落なく観測できるようにする。
   - 完了時には manifest あり / なしの metadata preservation test が通る。
