@@ -26,7 +26,7 @@
   - _Boundary: ActorSerializationBridge_
 
 - [ ] 3. std/wire frame と codec を追加する
-- [ ] 3.1 versioned cluster wire frame を定義する
+- [x] 3.1 versioned cluster wire frame を定義する
   - version、payload kind tag、serializer id、manifest、payload length、payload bytes を含む v1 frame を追加する。
   - frame は endpoint、association、retry state を持たない。
   - 完了時には v1 frame encode/decode が metadata を保持して roundtrip する。
