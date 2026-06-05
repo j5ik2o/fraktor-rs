@@ -108,7 +108,7 @@ jobs:
             local path="$1"
             [[ "${path}" == *.rs ]] && return 0
             case "${path}" in
-              rust-toolchain.toml | */rust-toolchain.toml | .github/workflows/ci.yml)
+              Cargo.lock | Cargo.toml | */Cargo.toml | clippy.toml | */clippy.toml | rust-toolchain.toml | */rust-toolchain.toml | .github/workflows/ci.yml)
                 return 0
                 ;;
               *)
