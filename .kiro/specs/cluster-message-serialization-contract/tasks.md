@@ -17,7 +17,7 @@
   - _Boundary: ClusterSerializedMessage_
 
 - [ ] 2. actor-core serialization との接続点を実装する
-- [ ] 2.1 `SerializationExtension` を使う cluster bridge を追加する
+- [x] 2.1 `SerializationExtension` を使う cluster bridge を追加する
   - cluster payload kind、`SerializationCallScope`、typed payload を受け取り、actor-core serialization の結果を `ClusterSerializedMessage` として返す。
   - wire bridge caller は `SerializationCallScope::Remote` を渡し、manifest-required scope を Local 扱いで迂回しない。
   - 未登録 serializer、serialize failure、deserialize failure を cluster 独自 fallback に変換しない。
