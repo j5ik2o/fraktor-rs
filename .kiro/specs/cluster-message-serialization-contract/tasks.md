@@ -58,7 +58,7 @@
   - _Depends: 1.2, 2.1, 3.2_
 
 - [ ] 5. integration evidence と gap analysis を更新する
-- [ ] 5.1 serializer contract follow-up の evidence を更新し、targeted checks を実行する
+- [x] 5.1 serializer contract follow-up の evidence を更新し、targeted checks を実行する
   - `docs/gap-analysis/cluster-gap-analysis.md` の cluster message serializer contract 項目だけを implementation evidence で更新する。
   - protobuf / Pekko binary compatibility は scope 外として残し、別 follow-up に吸収しない。
   - 完了時には targeted unit/integration tests と `cluster-core-kernel` no_std check が通る。
