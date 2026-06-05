@@ -22,7 +22,7 @@ impl ClusterWireCodec {
   ///
   /// Returns a postcard encode error when the frame cannot be serialized.
   pub fn encode(&self, message: &ClusterSerializedMessage) -> Result<Vec<u8>, Error> {
-    let frame = ClusterWireFrameV1::from_cluster_serialized_message(message);
+    let frame = ClusterWireFrameV1::try_from_cluster_serialized_message(message)?;
     to_allocvec(&frame)
   }
 
@@ -34,11 +34,11 @@ impl ClusterWireCodec {
   pub fn decode(&self, bytes: &[u8]) -> Result<ClusterSerializedMessage, ClusterWireDecodeFailure> {
     let (frame, remainder): (ClusterWireFrameV1, &[u8]) =
       take_from_bytes(bytes).map_err(|_| ClusterWireDecodeFailure::MalformedPayload)?;
-    if !remainder.is_empty() {
-      return Err(ClusterWireDecodeFailure::MalformedPayload);
-    }
     if frame.version() != ClusterWireFrameV1::VERSION {
       return Err(ClusterWireDecodeFailure::UnknownVersion);
+    }
+    if !remainder.is_empty() {
+      return Err(ClusterWireDecodeFailure::MalformedPayload);
     }
     let payload_kind = ClusterMessagePayloadKind::from_tag(frame.payload_kind_tag())
       .ok_or(ClusterWireDecodeFailure::UnknownPayloadKind)?;

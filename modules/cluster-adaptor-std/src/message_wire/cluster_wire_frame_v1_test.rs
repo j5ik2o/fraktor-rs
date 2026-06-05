@@ -16,7 +16,7 @@ fn cluster_message() -> ClusterSerializedMessage {
 fn from_cluster_serialized_message_preserves_v1_metadata() {
   let message = cluster_message();
 
-  let frame = ClusterWireFrameV1::from_cluster_serialized_message(&message);
+  let frame = ClusterWireFrameV1::try_from_cluster_serialized_message(&message).expect("frame");
 
   assert_eq!(frame.version(), ClusterWireFrameV1::VERSION);
   assert_eq!(frame.payload_kind_tag(), ClusterMessagePayloadKind::Gossip.tag());
@@ -29,7 +29,7 @@ fn from_cluster_serialized_message_preserves_v1_metadata() {
 #[test]
 fn postcard_roundtrip_preserves_metadata_and_reconstructs_cluster_message() {
   let message = cluster_message();
-  let frame = ClusterWireFrameV1::from_cluster_serialized_message(&message);
+  let frame = ClusterWireFrameV1::try_from_cluster_serialized_message(&message).expect("frame");
 
   let encoded = postcard::to_allocvec(&frame).expect("encode frame");
   let decoded: ClusterWireFrameV1 = postcard::from_bytes(&encoded).expect("decode frame");
@@ -44,7 +44,7 @@ fn postcard_roundtrip_preserves_metadata_and_reconstructs_cluster_message() {
 
 #[test]
 fn non_v1_frame_is_not_reconstructed() {
-  let frame = ClusterWireFrameV1::from_cluster_serialized_message(&cluster_message());
+  let frame = ClusterWireFrameV1::try_from_cluster_serialized_message(&cluster_message()).expect("frame");
   let mut encoded = postcard::to_allocvec(&frame).expect("encode frame");
   encoded[0] = 2;
   let decoded: ClusterWireFrameV1 = postcard::from_bytes(&encoded).expect("decode frame");
@@ -54,8 +54,16 @@ fn non_v1_frame_is_not_reconstructed() {
 }
 
 #[test]
+fn payload_length_mismatch_is_not_reconstructed() {
+  let mut frame = ClusterWireFrameV1::try_from_cluster_serialized_message(&cluster_message()).expect("frame");
+  frame.payload_len += 1;
+
+  assert!(frame.to_cluster_serialized_message().is_none());
+}
+
+#[test]
 fn frame_debug_shape_exposes_only_wire_metadata() {
-  let frame = ClusterWireFrameV1::from_cluster_serialized_message(&cluster_message());
+  let frame = ClusterWireFrameV1::try_from_cluster_serialized_message(&cluster_message()).expect("frame");
   let debug = format!("{frame:?}");
 
   for field in ["version", "payload_kind", "serializer_id", "manifest", "payload_len", "payload_bytes"] {

@@ -8,6 +8,7 @@ use alloc::{borrow::ToOwned, string::String, vec::Vec};
 
 use fraktor_actor_core_kernel_rs::serialization::{SerializedMessage, SerializerId};
 use fraktor_cluster_core_kernel_rs::message_serialization::{ClusterMessagePayloadKind, ClusterSerializedMessage};
+use postcard::Error;
 use serde::{Deserialize, Serialize};
 
 /// Version one cluster message wire frame.
@@ -27,27 +28,30 @@ impl ClusterWireFrameV1 {
 
   /// Creates a version one frame from a cluster serialized message.
   ///
-  /// # Panics
+  /// # Errors
   ///
-  /// Panics when the payload length does not fit into the v1 `u32` length field.
-  #[must_use]
-  pub fn from_cluster_serialized_message(message: &ClusterSerializedMessage) -> Self {
+  /// Returns a postcard encode error when the payload length does not fit into
+  /// the v1 `u32` length field.
+  pub fn try_from_cluster_serialized_message(message: &ClusterSerializedMessage) -> Result<Self, Error> {
     let payload_bytes = message.payload_bytes().to_vec();
-    let payload_len = payload_bytes.len().try_into().expect("cluster wire frame payload length exceeds u32");
-    Self {
+    let payload_len = payload_bytes.len().try_into().map_err(|_| Error::SerializeBufferFull)?;
+    Ok(Self {
       version: Self::VERSION,
       payload_kind: message.payload_kind().tag(),
       serializer_id: message.serializer_id().value(),
       manifest: message.manifest().map(ToOwned::to_owned),
       payload_len,
       payload_bytes,
-    }
+    })
   }
 
   /// Reconstructs the cluster serialized message when the payload kind tag is known.
   #[must_use]
   pub fn to_cluster_serialized_message(&self) -> Option<ClusterSerializedMessage> {
     if self.version != Self::VERSION {
+      return None;
+    }
+    if self.payload_len as usize != self.payload_bytes.len() {
       return None;
     }
     let payload_kind = ClusterMessagePayloadKind::from_tag(self.payload_kind)?;

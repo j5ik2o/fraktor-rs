@@ -357,7 +357,7 @@ fn cluster_message() -> ClusterSerializedMessage {
 }
 
 fn encoded_frame(message: &ClusterSerializedMessage) -> Vec<u8> {
-  let frame = ClusterWireFrameV1::from_cluster_serialized_message(message);
+  let frame = ClusterWireFrameV1::try_from_cluster_serialized_message(message).expect("frame");
   to_allocvec(&frame).expect("encode frame")
 }
 
@@ -380,6 +380,18 @@ fn unsupported_frame_version_returns_unknown_version() {
   let codec = ClusterWireCodec;
   let mut encoded = encoded_frame(&cluster_message());
   encoded[0] = 2;
+
+  let failure = codec.decode(&encoded).expect_err("unknown version");
+
+  assert_eq!(failure, ClusterWireDecodeFailure::UnknownVersion);
+}
+
+#[test]
+fn unsupported_frame_version_with_trailing_bytes_returns_unknown_version() {
+  let codec = ClusterWireCodec;
+  let mut encoded = encoded_frame(&cluster_message());
+  encoded[0] = 2;
+  encoded.extend_from_slice(&[0x01, 0x02]);
 
   let failure = codec.decode(&encoded).expect_err("unknown version");
 

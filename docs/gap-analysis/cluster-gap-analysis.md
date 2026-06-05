@@ -1,6 +1,6 @@
 # cluster モジュール ギャップ分析
 
-更新日: 2026-06-02 (cluster-downing-sbr-decision-model / cluster-discovery-provider-interop evidence reflected)
+更新日: 2026-06-05 (cluster-message-serialization-contract evidence reflected)
 
 ## 位置づけ
 

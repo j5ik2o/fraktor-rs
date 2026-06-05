@@ -24,6 +24,7 @@ fraktor-remote-core-rs = { workspace = true }
 fraktor-utils-core-rs = { workspace = true, features = ["alloc", "unsize", "std-locks"] }
 serde = { workspace = true }
 postcard = { workspace = true }
+thiserror = { workspace = true }
 tracing = { workspace = true, features = ["std"] }
 aws-sdk-ecs = { workspace = true, optional = true }
 aws-config = { workspace = true, optional = true }
