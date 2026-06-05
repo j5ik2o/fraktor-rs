@@ -33,7 +33,7 @@
   - _Requirements: 3.1, 3.2, 3.4, 5.3_
   - _Boundary: ClusterWireFrameV1_
 
-- [ ] 3.2 decode failure taxonomy と malformed payload rejection を実装する
+- [x] 3.2 decode failure taxonomy と malformed payload rejection を実装する
   - unknown version、unknown payload kind、unknown manifest、length mismatch、invalid manifest bytes を区別する。
   - decode failure 時に actor message、empty message、dead-letter message へ変換しない。
   - 完了時には各 failure category の unit test が個別に失敗種別を検証する。
