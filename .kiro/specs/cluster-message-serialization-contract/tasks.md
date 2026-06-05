@@ -41,7 +41,7 @@
   - _Boundary: ClusterWireCodec, ClusterWireDecodeFailure_
 
 - [ ] 4. upstream gossip/pubsub payload と境界検証を接続する
-- [ ] 4.1 (P) gossip payload の serialization bridge smoke test を追加する
+- [x] 4.1 (P) gossip payload の serialization bridge smoke test を追加する
   - upstream gossip payload contract 由来の値を payload kind `Gossip` として serialized message に包む。
   - bridge は gossip merge、seen digest、heartbeat evidence、reachability update を実行しないことを検証する。
   - 完了時には gossip payload の wire roundtrip smoke test が semantics evaluation なしで通る。
