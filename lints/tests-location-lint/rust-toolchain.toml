@@ -1,4 +1,4 @@
 [toolchain]
 # Mirrors the repository root pin for standalone lint crate runs.
-channel = "nightly-2025-12-01"
+channel = "nightly-2026-06-05"
 components = ["rustc-dev", "llvm-tools-preview", "rust-src"]
