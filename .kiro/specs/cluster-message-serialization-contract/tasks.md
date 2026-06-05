@@ -49,7 +49,7 @@
   - _Boundary: ScopeGuard, ActorSerializationBridge_
   - _Depends: 1.2, 2.1, 3.2_
 
-- [ ] 4.2 (P) pubsub payload の serialization bridge smoke test を追加する
+- [x] 4.2 (P) pubsub payload の serialization bridge smoke test を追加する
   - upstream pubsub payload contract 由来の値を payload kind `PubSub` として serialized message に包む。
   - bridge は mediator command application、delivery target selection、registry delta application を実行しないことを検証する。
   - 完了時には pubsub payload の wire roundtrip smoke test が mediator state mutation なしで通る。

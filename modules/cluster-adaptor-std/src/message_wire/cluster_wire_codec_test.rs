@@ -12,6 +12,7 @@ use fraktor_actor_core_kernel_rs::{
 use fraktor_cluster_core_kernel_rs::{
   membership::{GossipEnvelope, GossipPayloadKind, MembershipVersion},
   message_serialization::{ActorSerializationBridge, ClusterMessagePayloadKind, ClusterSerializedMessage},
+  pub_sub::{PubSubGossipHandoff, TopicRegistryGossipPayload, TopicRegistryStatus, TopicRegistryVersion},
 };
 use fraktor_remote_core_rs::address::{Address, UniqueAddress};
 use fraktor_utils_core_rs::sync::ArcShared;
@@ -22,6 +23,7 @@ use super::ClusterWireCodec;
 use crate::message_wire::{ClusterWireDecodeFailure, ClusterWireFrameV1};
 
 const GOSSIP_MANIFEST: &str = "cluster.payload/GossipEnvelope";
+const PUBSUB_MANIFEST: &str = "cluster.payload/PubSubGossipHandoff";
 
 #[derive(Debug, Deserialize, Serialize)]
 struct GossipEnvelopeRecord {
@@ -64,11 +66,81 @@ impl GossipEnvelopeRecord {
   }
 }
 
+#[derive(Debug, Deserialize, Serialize)]
+struct PubSubOwnerVersionRecord {
+  system:  String,
+  host:    String,
+  port:    u16,
+  uid:     u64,
+  version: u64,
+}
+
+impl PubSubOwnerVersionRecord {
+  fn from_owner_version(owner: &UniqueAddress, version: TopicRegistryVersion) -> Self {
+    Self {
+      system:  String::from(owner.address().system()),
+      host:    String::from(owner.address().host()),
+      port:    owner.address().port(),
+      uid:     owner.uid(),
+      version: version.value(),
+    }
+  }
+
+  fn into_owner_version(self) -> (UniqueAddress, TopicRegistryVersion) {
+    (
+      UniqueAddress::new(Address::new(self.system, self.host, self.port), self.uid),
+      TopicRegistryVersion::new(self.version),
+    )
+  }
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+struct PubSubGossipHandoffRecord {
+  payload_kind_tag: u8,
+  owner_versions:   Vec<PubSubOwnerVersionRecord>,
+}
+
+impl PubSubGossipHandoffRecord {
+  fn from_handoff(handoff: &PubSubGossipHandoff) -> Result<Self, SerializationError> {
+    let TopicRegistryGossipPayload::Status(status) = handoff.payload() else {
+      return Err(SerializationError::invalid_format());
+    };
+    Ok(Self {
+      payload_kind_tag: payload_kind_tag(handoff.payload_kind()),
+      owner_versions:   status
+        .owner_versions()
+        .iter()
+        .map(|(owner, version)| PubSubOwnerVersionRecord::from_owner_version(owner, *version))
+        .collect(),
+    })
+  }
+
+  fn into_handoff(self) -> Result<PubSubGossipHandoff, SerializationError> {
+    let payload_kind = payload_kind_from_tag(self.payload_kind_tag)?;
+    if payload_kind != GossipPayloadKind::PubSubRegistryStatus {
+      return Err(SerializationError::invalid_format());
+    }
+    Ok(PubSubGossipHandoff::status(TopicRegistryStatus::new(
+      self.owner_versions.into_iter().map(PubSubOwnerVersionRecord::into_owner_version).collect(),
+    )))
+  }
+}
+
 struct GossipEnvelopeSerializer {
   id: SerializerId,
 }
 
+struct PubSubGossipHandoffSerializer {
+  id: SerializerId,
+}
+
 impl GossipEnvelopeSerializer {
+  const fn new(id: SerializerId) -> Self {
+    Self { id }
+  }
+}
+
+impl PubSubGossipHandoffSerializer {
   const fn new(id: SerializerId) -> Self {
     Self { id }
   }
@@ -114,6 +186,46 @@ impl Serializer for GossipEnvelopeSerializer {
   }
 }
 
+impl Serializer for PubSubGossipHandoffSerializer {
+  fn identifier(&self) -> SerializerId {
+    self.id
+  }
+
+  fn include_manifest(&self) -> bool {
+    true
+  }
+
+  fn to_binary(&self, message: &(dyn Any + Send + Sync)) -> Result<Vec<u8>, SerializationError> {
+    let handoff = message.downcast_ref::<PubSubGossipHandoff>().ok_or_else(|| {
+      SerializationError::not_serializable(NotSerializableError::new(
+        type_name::<PubSubGossipHandoff>(),
+        Some(self.id),
+        Some(String::from(PUBSUB_MANIFEST)),
+        None,
+        None,
+      ))
+    })?;
+    to_allocvec(&PubSubGossipHandoffRecord::from_handoff(handoff)?).map_err(|_| SerializationError::invalid_format())
+  }
+
+  fn from_binary(
+    &self,
+    bytes: &[u8],
+    _type_hint: Option<TypeId>,
+  ) -> Result<Box<dyn Any + Send + Sync>, SerializationError> {
+    let record: PubSubGossipHandoffRecord = from_bytes(bytes).map_err(|_| SerializationError::invalid_format())?;
+    Ok(Box::new(record.into_handoff()?))
+  }
+
+  fn as_any(&self) -> &(dyn Any + Send + Sync) {
+    self
+  }
+
+  fn as_string_manifest(&self) -> Option<&dyn SerializerWithStringManifest> {
+    Some(self)
+  }
+}
+
 impl SerializerWithStringManifest for GossipEnvelopeSerializer {
   fn manifest(&self, _message: &(dyn Any + Send + Sync)) -> Cow<'_, str> {
     Cow::Borrowed(GOSSIP_MANIFEST)
@@ -125,6 +237,23 @@ impl SerializerWithStringManifest for GossipEnvelopeSerializer {
     manifest: &str,
   ) -> Result<Box<dyn Any + Send + Sync>, SerializationError> {
     if manifest != GOSSIP_MANIFEST {
+      return Err(SerializationError::unknown_manifest(manifest));
+    }
+    self.from_binary(bytes, None)
+  }
+}
+
+impl SerializerWithStringManifest for PubSubGossipHandoffSerializer {
+  fn manifest(&self, _message: &(dyn Any + Send + Sync)) -> Cow<'_, str> {
+    Cow::Borrowed(PUBSUB_MANIFEST)
+  }
+
+  fn from_binary_with_manifest(
+    &self,
+    bytes: &[u8],
+    manifest: &str,
+  ) -> Result<Box<dyn Any + Send + Sync>, SerializationError> {
+    if manifest != PUBSUB_MANIFEST {
       return Err(SerializationError::unknown_manifest(manifest));
     }
     self.from_binary(bytes, None)
@@ -173,6 +302,13 @@ fn gossip_envelope() -> GossipEnvelope {
   .expect("confirmed identities should build an envelope")
 }
 
+fn pubsub_status_handoff() -> PubSubGossipHandoff {
+  PubSubGossipHandoff::status(TopicRegistryStatus::new(vec![
+    (unique_address("node-a", 20), TopicRegistryVersion::new(3)),
+    (unique_address("node-b", 21), TopicRegistryVersion::new(5)),
+  ]))
+}
+
 fn build_gossip_bridge_extension() -> (SerializationExtension, SerializerId, ActorSystem) {
   let serializer_id = SerializerId::try_from(601).expect("serializer id");
   let serializer: ArcShared<dyn Serializer> = ArcShared::new(GossipEnvelopeSerializer::new(serializer_id));
@@ -184,6 +320,25 @@ fn build_gossip_bridge_extension() -> (SerializationExtension, SerializerId, Act
     .bind::<GossipEnvelope>("gossip-envelope")
     .expect("bind gossip envelope")
     .bind_remote_manifest::<GossipEnvelope>(GOSSIP_MANIFEST)
+    .expect("manifest")
+    .require_manifest_for_scope(SerializationCallScope::Remote)
+    .build()
+    .expect("setup");
+  let system = create_noop_actor_system();
+  (SerializationExtension::new(&system, setup), serializer_id, system)
+}
+
+fn build_pubsub_bridge_extension() -> (SerializationExtension, SerializerId, ActorSystem) {
+  let serializer_id = SerializerId::try_from(602).expect("serializer id");
+  let serializer: ArcShared<dyn Serializer> = ArcShared::new(PubSubGossipHandoffSerializer::new(serializer_id));
+  let setup = SerializationSetupBuilder::new()
+    .register_serializer("pubsub-handoff", serializer_id, serializer)
+    .expect("register pubsub serializer")
+    .set_fallback("pubsub-handoff")
+    .expect("fallback")
+    .bind::<PubSubGossipHandoff>("pubsub-handoff")
+    .expect("bind pubsub handoff")
+    .bind_remote_manifest::<PubSubGossipHandoff>(PUBSUB_MANIFEST)
     .expect("manifest")
     .require_manifest_for_scope(SerializationCallScope::Remote)
     .build()
@@ -318,5 +473,29 @@ fn gossip_payload_bridge_roundtrip_does_not_evaluate_gossip_semantics() {
   assert_eq!(decoded.payload_kind(), ClusterMessagePayloadKind::Gossip);
   assert_eq!(decoded.serializer_id(), serializer_id);
   assert_eq!(decoded.manifest(), Some(GOSSIP_MANIFEST));
+  assert_eq!(*restored, payload);
+}
+
+#[test]
+fn pubsub_payload_bridge_roundtrip_does_not_mutate_mediator_state() {
+  let (extension, serializer_id, _system) = build_pubsub_bridge_extension();
+  let codec = ClusterWireCodec;
+  let payload = pubsub_status_handoff();
+
+  let cluster_message = extension
+    .serialize_cluster_message(ClusterMessagePayloadKind::PubSub, SerializationCallScope::Remote, &payload)
+    .expect("serialize pubsub payload");
+  let encoded = codec.encode(&cluster_message).expect("encode pubsub payload");
+  let decoded = codec.decode(&encoded).expect("decode pubsub payload");
+  let restored = extension
+    .deserialize_cluster_message(&decoded, Some(TypeId::of::<PubSubGossipHandoff>()))
+    .expect("deserialize pubsub payload")
+    .downcast::<PubSubGossipHandoff>()
+    .expect("pubsub handoff");
+
+  assert_eq!(cluster_message.payload_kind(), ClusterMessagePayloadKind::PubSub);
+  assert_eq!(decoded.payload_kind(), ClusterMessagePayloadKind::PubSub);
+  assert_eq!(decoded.serializer_id(), serializer_id);
+  assert_eq!(decoded.manifest(), Some(PUBSUB_MANIFEST));
   assert_eq!(*restored, payload);
 }
