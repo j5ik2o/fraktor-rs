@@ -16,5 +16,7 @@ pub mod extension;
 pub mod grain;
 /// Tokio-backed membership and gossip adaptors.
 pub mod membership;
+/// Cluster message wire frame adaptors.
+pub mod message_wire;
 /// Cluster publish/subscribe delivery adaptors.
 pub mod pub_sub;
