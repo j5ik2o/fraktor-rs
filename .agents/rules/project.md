@@ -12,7 +12,7 @@
 
 ## Toolchain & Build
 
-- **Rust toolchain**: `nightly-2025-12-01`（`rust-toolchain.toml` で固定）。lint 自身が `rustc_private` を要求するため nightly 必須
+- **Rust toolchain**: `nightly-2026-06-05`（`rust-toolchain.toml` で固定）。lint 自身が `rustc_private` を要求するため nightly 必須
 - **Edition**: `2024`（workspace 全体で統一）
 - **`.cargo/config.toml`**: `--cfg portable_atomic_unstable_coerce_unsized` を有効化
 - **clippy.toml（disallowed-types）**: `Arc` / `Rc` / `std::sync::Mutex` / `spin::Mutex` / `spin::RwLock` / `spin::Once` の直接使用を禁止し `ArcShared` / `SpinSyncMutex` / `SpinSyncRwLock` / `SyncOnce` への置換を強制
