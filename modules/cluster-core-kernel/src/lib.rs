@@ -68,6 +68,8 @@ pub mod failure_detector;
 pub mod grain;
 /// Membership management, gossip dissemination, and node lifecycle.
 pub mod membership;
+/// Cluster message serialization contracts.
+pub mod message_serialization;
 /// Outbound message pipeline coordination.
 pub mod outbound;
 /// Cluster-wide publish/subscribe messaging coordination.
