@@ -1,6 +1,6 @@
 # cluster モジュール ギャップ分析
 
-更新日: 2026-06-02 (cluster-downing-sbr-decision-model / cluster-discovery-provider-interop evidence reflected)
+更新日: 2026-06-05 (cluster-message-serialization-contract evidence reflected)
 
 ## 位置づけ
 
@@ -87,7 +87,7 @@ cluster は、membership table、gossip dissemination、full gossip state merge 
 | core / typed | typed `Cluster`, command, subscription, singleton, sharding typed API | `modules/cluster-core-typed` に typed `Cluster` / command / state subscription / self events / setup がある | typed Cluster の薄い facade はあるが、singleton / sharding typed API は未実装 |
 | core / virtual actor | `ClusterSharding`, `EntityRef`, `EntityTypeKey`, `ShardRegion`, coordinator | `GrainRef`, `GrainKey`, `VirtualActorRegistry`, `PlacementCoordinatorCore`, `PartitionIdentityLookup` | protoactor-go style の同等機能は強いが Pekko public API と remember/rebalance が不足 |
 | core / distributed state | `DistributedData`, `Replicator`, CRDT 型群 | なし | 未実装 |
-| std / adapter | gossip transport, provider, discovery adapter | `TokioGossipTransport`, `MembershipCoordinatorDriver`, `LocalClusterProvider`, `StaticClusterProvider`, `AwsEcsClusterProvider`, `GenericDiscoveryAdapter`, `ProviderLifecycleBridge` | Rust adapter、logical envelope handoff、seed/discovery provider boundary はある。cluster message serializer integration は限定的 |
+| std / adapter | gossip transport, provider, discovery adapter | `TokioGossipTransport`, `MembershipCoordinatorDriver`, `LocalClusterProvider`, `StaticClusterProvider`, `AwsEcsClusterProvider`, `GenericDiscoveryAdapter`, `ProviderLifecycleBridge`, `ClusterWireCodec` | Rust adapter、logical envelope handoff、seed/discovery provider boundary、cluster message serializer contract はある。Pekko/protobuf 完全バイナリ互換は scope 外 |
 
 ## カテゴリ別ギャップ
 
@@ -207,17 +207,17 @@ cluster は、membership table、gossip dissemination、full gossip state merge 
 | read/write consistency levels | `Replicator.scala:284` | 未対応 | core/ddata | easy | ReadLocal/ReadMajority/WriteMajority 等 |
 | typed DistributedData API | `cluster-typed/ddata/typed/scaladsl/DistributedData.scala:33` | 未対応 | core/typed | medium | typed actor ref adapter が必要 |
 
-### 10. std adapter / discovery / wire integration　✅ 実装済み 7/9 (78%)
+### 10. std adapter / discovery / wire integration　✅ 実装済み 8/9 (89%)
 
 | Pekko API / 契約 | Pekko 参照 | fraktor-rs 対応 | 実装先層 | 難易度 | 備考 |
 |------------------|------------|-----------------|----------|--------|------|
-| cluster message serializer contract | `ClusterMessageSerializer.scala:83`, `ClusterShardingMessageSerializer.scala`, `DistributedPubSubMessageSerializer.scala` | 部分実装 | std/wire + actor-core serialization | hard | gossip delta は postcard wire だが Pekko cluster/sharding/pubsub message serializer に相当する contract がない |
+| cluster message serializer contract | `ClusterMessageSerializer.scala:83`, `ClusterShardingMessageSerializer.scala`, `DistributedPubSubMessageSerializer.scala` | contract 実装済み | std/wire + actor-core serialization | hard | core `message_serialization` は `ClusterMessagePayloadKind`、`ClusterMessageManifest`、`ClusterSerializedMessage`、`ActorSerializationBridge` を公開する。std `message_wire` は `ClusterWireFrameV1`、`ClusterWireCodec`、`ClusterWireDecodeFailure` を公開する。tests: actor-core metadata preservation、unknown payload/version/malformed payload failure、gossip/pubsub wire smoke。gossip semantics、pubsub mediator semantics、transport lifecycle、Pekko/protobuf 完全バイナリ互換は scope 外 |
 | seed node discovery process | `SeedNodeProcess.scala:22` | boundary contract 実装済み | core/cluster_provider + std/provider | medium | `SeedNodeProcess` が seed authority を provider-neutral join input に変換し、`DiscoveryTopologyMapper` が topology update へ写像する。`ProviderLifecycleBridge` が lifecycle 内で seed/discovery input を同じ contract に接続する。tests: `seed_node_process_*`, `discovery_topology_mapper_*`, `provider_lifecycle_bridge_*` |
 | generic discovery adapter | `Cluster.scala:354`, `ClusterClient.scala:65` | boundary contract 実装済み | core/cluster_provider + std/provider | medium | `DiscoveryBackend` / `DiscoveryBackendError` / `GenericDiscoveryAdapter` が backend success、empty success、failure、AWS ECS style authority を `DiscoveryResult` / `DiscoveredAuthority` に正規化する。tests: `generic_discovery_adapter_*`, `discovery_result_*`, `aws_ecs` feature tests |
 | std `ClusterApi` wrapper parity | `Cluster.scala:328`, `Cluster.scala:384`, `Cluster.scala:395` | 部分実装 | std/api | trivial | std wrapper は `get/request/down` のみで `join/leave/subscribe` を再公開していない |
 | transport lifecycle to membership bridge retention | `local_cluster_provider_ext.rs` | 実装済み | std/provider | easy | `subscribe_remoting_events` が `EventStreamSubscription` を返し、guard 保持中だけ connected/quarantined events を topology input にする。weak provider retention により subscription は provider を延命しない。`local_cluster_provider_ext` tests で確認 |
 
-実装済みとして扱うもの: `TokioGossipTransport`、`MembershipCoordinatorDriver`、`LocalClusterProvider`、`StaticClusterProvider`、`AwsEcsClusterProvider`、`SeedNodeProcess`、`DiscoveryTopologyMapper`、`GenericDiscoveryAdapter`、`ProviderLifecycleBridge`。logical gossip envelope handoff は `GossipEnvelope` evidence の一部として扱い、この section の独立 completed concept には数えない。
+実装済みとして扱うもの: `TokioGossipTransport`、`MembershipCoordinatorDriver`、`LocalClusterProvider`、`StaticClusterProvider`、`AwsEcsClusterProvider`、`SeedNodeProcess`、`DiscoveryTopologyMapper`、`GenericDiscoveryAdapter`、`ProviderLifecycleBridge`、`ClusterMessagePayloadKind`、`ClusterMessageManifest`、`ClusterSerializedMessage`、`ActorSerializationBridge`、`ClusterWireFrameV1`、`ClusterWireCodec`、`ClusterWireDecodeFailure`。logical gossip envelope handoff は `GossipEnvelope` evidence の一部として扱い、この section の独立 completed concept には数えない。
 
 ## 対象外 (n/a)
 
@@ -251,7 +251,7 @@ cluster は、membership table、gossip dissemination、full gossip state merge 
 | `remotePathOf` | core/extension | 実装済み | `ClusterApi::remote_path_of`。tests: `remote_path_of_*` |
 | transport lifecycle bridge retention | std/provider | 実装済み | `subscribe_remoting_events`、`EventStreamSubscription`、weak provider retention。tests: `local_cluster_provider_ext` |
 
-上記は cluster-active-compatibility-baseline の完了 evidence であり、次の項目を完了扱いにしない: seed process / discovery provider、pubsub mediator / serialization / cluster message serializer、Deferred Pekko concepts。`SplitBrainResolverProvider` は下の `cluster-downing-sbr-decision-model` evidence に移動した。
+上記は cluster-active-compatibility-baseline の完了 evidence であり、次の項目を完了扱いにしない: seed process / discovery provider、pubsub mediator semantics / registry gossip、Deferred Pekko concepts。`SplitBrainResolverProvider` は下の `cluster-downing-sbr-decision-model` evidence に移動し、cluster message serializer contract は専用 completed table に分離した。
 
 ### Completed active follow-up: membership / reachability model
 
@@ -263,7 +263,7 @@ cluster は、membership table、gossip dissemination、full gossip state merge 
 | `Reachability` matrix | core/membership | core contract 実装済み | `ReachabilityMatrix` / `ReachabilityRecord` / `ReachabilitySnapshot` が observer / subject / status / version、reachable prune、terminated precedence、aggregate status、snapshot propagation を保持。tests: `reachability_matrix::*`, `reachability_snapshot_tracks_failure_detector_and_heartbeat_receipt` |
 | indirect connection handling | core/membership + core/downing_provider | evidence contract 実装済み | `IndirectConnectionEvidence` と `DowningInput::IndirectConnectionEvidence` が partial connectivity evidence を渡す。downing decision、lease majority、SBR strategy は実行しない。tests: `indirect_connection_evidence::*` |
 
-この completed table は `cluster-membership-reachability-model` の core contract evidence だけを表す。SeedNodeProcess / generic discovery adapter は discovery provider interop の completed table に分離し、downing / SBR decision model は専用の completed table に分離する。次の責務は未完了のまま downstream / future scope に残す: SBR runtime actor、provider からの実 down execution loop、concrete lease coordination backend、DistributedPubSubMediator / topic registry gossip、cluster message serializer contract、Deferred Pekko concepts。
+この completed table は `cluster-membership-reachability-model` の core contract evidence だけを表す。SeedNodeProcess / generic discovery adapter は discovery provider interop の completed table に分離し、downing / SBR decision model は専用の completed table に分離する。次の責務は未完了のまま downstream / future scope に残す: SBR runtime actor、provider からの実 down execution loop、concrete lease coordination backend、DistributedPubSubMediator / topic registry gossip、Deferred Pekko concepts。
 
 ### Completed active follow-up: gossip / heartbeat protocol
 
@@ -274,7 +274,7 @@ cluster は、membership table、gossip dissemination、full gossip state merge 
 | dedicated cluster heartbeat protocol | core/membership | core protocol 実装済み | `HeartbeatProtocolState`、`HeartbeatRequest`、`HeartbeatResponse`、`HeartbeatEvidence` が sequence number、request/response 照合、first / regular timeout evidence を扱う。tests: `heartbeat_tick_generates_sequence_per_peer`, `heartbeat_request_roundtrip_produces_reachable_evidence`, `first_and_regular_heartbeat_timeouts_are_observable` |
 | `CrossDcClusterHeartbeat` | core/membership | core evidence 実装済み | `CrossDcHeartbeat`、`CrossDcHeartbeatRequest`、`CrossDcHeartbeatResponse`、`CrossDcHeartbeatEvidence` が data center pair 付き cross-DC liveness evidence と target change を扱う。tests: `cross_dc_*` |
 
-この completed table は `cluster-gossip-heartbeat-protocol` の evidence だけを表す。SeedNodeProcess / generic discovery adapter は discovery provider interop の completed table に分離し、downing / SBR decision model は専用の completed table に分離する。次の責務は未完了のまま downstream / future scope に残す: SBR runtime actor、provider からの実 down execution loop、concrete lease coordination backend、DistributedPubSubMediator / topic registry gossip、cluster message serializer contract、versioned transport handoff / serde-postcard envelope bytes、Deferred Pekko concepts。
+この completed table は `cluster-gossip-heartbeat-protocol` の evidence だけを表す。SeedNodeProcess / generic discovery adapter は discovery provider interop の completed table に分離し、downing / SBR decision model は専用の completed table に分離する。次の責務は未完了のまま downstream / future scope に残す: SBR runtime actor、provider からの実 down execution loop、concrete lease coordination backend、DistributedPubSubMediator / topic registry gossip、versioned transport handoff / serde-postcard envelope bytes、Deferred Pekko concepts。
 
 ### Completed active follow-up: downing / SBR decision model
 
@@ -286,7 +286,7 @@ cluster は、membership table、gossip dissemination、full gossip state merge 
 | lease-based majority | core/downing_provider + std/provider | port contract + std binding 実装済み | `LeaseMajorityPort` / `LeaseAcquisitionOutcome` と `StdLeaseMajorityBackend` が lease outcome を core vocabulary へ変換し、`StdSplitBrainResolverProvider` が lifecycle 内で backend を所有する。tests: `lease_majority_port`, `lease_acquisition_outcome`, `split_brain_resolver_provider` |
 | provider-facing SBR integration | core/downing_provider + std/provider | provider binding 実装済み | `SplitBrainResolverProviderHook` が compatibility metadata と decision/error mapping を提供し、`StdSplitBrainResolverProvider` が start/stop/drop lifecycle で hook と backend adapter を管理する。tests: `split_brain_resolver_provider_hook`, `split_brain_resolver_provider` |
 
-この completed table は `cluster-downing-sbr-decision-model` の evidence だけを表す。SeedNodeProcess / generic discovery adapter は discovery provider interop の completed table に分離する。次の責務は未完了のまま downstream / future scope に残す: SBR runtime actor、責任ノード選択、reachability 変化監視、provider からの実 down execution loop、concrete lease coordination backend、DistributedPubSubMediator / topic registry gossip、cluster message serializer contract、Deferred Pekko concepts。
+この completed table は `cluster-downing-sbr-decision-model` の evidence だけを表す。SeedNodeProcess / generic discovery adapter は discovery provider interop の completed table に分離する。次の責務は未完了のまま downstream / future scope に残す: SBR runtime actor、責任ノード選択、reachability 変化監視、provider からの実 down execution loop、concrete lease coordination backend、DistributedPubSubMediator / topic registry gossip、Deferred Pekko concepts。
 
 ### Completed active follow-up: discovery provider interop
 
@@ -295,7 +295,15 @@ cluster は、membership table、gossip dissemination、full gossip state merge 
 | `SeedNodeProcess` | core/cluster_provider + std/provider | boundary contract 実装済み | `SeedNodeInput` / `SeedNodeProcess` が seed authority を provider-neutral join input に変換し、empty seed、self filtering、duplicate seed、invalid authority、client start、shutdown 後停止を扱う。`ProviderLifecycleBridge` が seed input を topology update に接続する。tests: `seed_node_process_*`, `provider_lifecycle_bridge_*` |
 | generic discovery adapter | core/cluster_provider + std/provider | boundary contract 実装済み | `DiscoveredAuthority` / `DiscoveryResult` / `DiscoveryTopologyMapper` と `DiscoveryBackend` / `DiscoveryBackendError` / `GenericDiscoveryAdapter` が backend result を provider-neutral topology input に正規化する。tests: `discovery_result_*`, `discovery_topology_mapper_*`, `generic_discovery_adapter_*`, `static_cluster_provider`, `aws_ecs` feature tests |
 
-この completed table は `cluster-discovery-provider-interop` の SeedNodeProcess と generic discovery adapter evidence だけを表す。gossip heartbeat / full Gossip、reachability / WeaklyUp、downing / SBR decision model はそれぞれ専用 completed table の evidence に留め、この feature の完了根拠には含めない。次の責務は未完了のまま downstream / future scope に残す: SBR runtime actor、provider からの実 down execution loop、concrete lease coordination backend、DistributedPubSubMediator / topic registry gossip、cluster message serializer contract、Deferred Pekko concepts。
+この completed table は `cluster-discovery-provider-interop` の SeedNodeProcess と generic discovery adapter evidence だけを表す。gossip heartbeat / full Gossip、reachability / WeaklyUp、downing / SBR decision model はそれぞれ専用 completed table の evidence に留め、この feature の完了根拠には含めない。次の責務は未完了のまま downstream / future scope に残す: SBR runtime actor、provider からの実 down execution loop、concrete lease coordination backend、DistributedPubSubMediator / topic registry gossip、Deferred Pekko concepts。
+
+### Completed active follow-up: cluster message serialization contract
+
+| 項目 | 実装先層 | 状態 | 根拠 / evidence |
+|------|----------|------|-----------------|
+| cluster message serializer contract | core/message_serialization + std/message_wire | contract evidence 実装済み | core contract は `ClusterMessagePayloadKind`、`ClusterMessageManifest`、`ClusterSerializedMessage`、`ActorSerializationBridge` で actor-core `SerializationExtension` と std/wire を橋渡しする。std adaptor は `ClusterWireFrameV1`、`ClusterWireCodec`、`ClusterWireDecodeFailure` で versioned frame と decode failure を扱う。tests: actor-core metadata preservation、unknown payload/version/malformed payload failure、gossip wire smoke、pubsub wire smoke |
+
+この completed table は `cluster-message-serialization-contract` の serializer bridge evidence だけを表す。gossip merge / heartbeat / reachability semantics、pubsub mediator state / delivery / registry semantics、remote transport lifecycle、Pekko/protobuf 完全バイナリ互換は scope 外のまま残す。
 
 ### Active comparison follow-up: medium
 
@@ -310,7 +318,6 @@ cluster は、membership table、gossip dissemination、full gossip state merge 
 | 項目 | 実装先層 | 根拠 |
 |------|----------|------|
 | topic registry gossip / delta collection | core/pub_sub + membership | カテゴリ7 |
-| cluster message serializer contract | std/wire + actor-core serialization | カテゴリ10 |
 
 ### Deferred Pekko concepts: trivial / easy
 
@@ -367,15 +374,15 @@ cluster は、membership table、gossip dissemination、full gossip state merge 
 | 構造観点 | 現状 | 次に見るべき点 |
 |----------|------|----------------|
 | membership と provider の境界 | pure coordinator と provider/event-stream adapter が分かれている | SeedNodeProcess / discovery / downing がどちらに入るべきか |
-| gossip と wire の境界 | core gossip / heartbeat contract + std logical handoff + existing postcard delta UDP | cluster message serializer contract を actor-core serialization に寄せるか |
+| gossip と wire の境界 | core gossip / heartbeat contract + std logical handoff + existing postcard delta UDP + actor-core serialization bridge | Pekko/protobuf 完全バイナリ互換を将来採用するか |
 | grain と typed sharding の境界 | protoactor-go style の Grain API が中心 | Pekko typed sharding wrapper を薄く載せられるか |
 | pubsub と distributed-data の境界 | PubSub は独自 broker、CRDT は未実装 | PubSub registry gossip を ddata Replicator 相当に寄せるか |
 | singleton / client の配置 | 対応モジュールなし | cluster-tools 相当を core contract と std actor runtime にどう分けるか |
 
 ## まとめ
 
-cluster は membership、gossip / heartbeat contract、downing/SBR decision model、typed Cluster facade、Grain/Placement/Identity、PubSub、std UDP gossip transport という fraktor-rs 独自の基礎は強い。一方で、Pekko comparison の固定スコープ全体としては SBR runtime actor / down execution loop、singleton/client/receptionist、Distributed Data/CRDT、Pekko sharding public API が大きく未実装で、現時点の比較カバレッジは中程度である。
+cluster は membership、gossip / heartbeat contract、downing/SBR decision model、typed Cluster facade、Grain/Placement/Identity、PubSub、std UDP gossip transport、cluster message serializer contract という fraktor-rs 独自の基礎は強い。一方で、Pekko comparison の固定スコープ全体としては SBR runtime actor / down execution loop、singleton/client/receptionist、Distributed Data/CRDT、Pekko sharding public API が大きく未実装で、現時点の比較カバレッジは中程度である。
 
-Pekko 概念を将来採用するなら、低コストで comparison gap を縮めやすいのは、`PrepareForFullClusterShutdown` command、基本 CRDT、std `ClusterApi` wrapper の再公開である。join config compatibility の checker composition、membership/reachability model、gossip/heartbeat protocol の core contract は契約化済み。router role/max-per-node 設定は、Pekko public API parity ではなく現行 router contract の拡張として実装済み。ただし、残りの実装には個別の OpenSpec change が必要であり、現在の Grain runtime roadmap の直近優先度とは分けて扱う。
+Pekko 概念を将来採用するなら、低コストで comparison gap を縮めやすいのは、`PrepareForFullClusterShutdown` command、基本 CRDT、std `ClusterApi` wrapper の再公開である。join config compatibility の checker composition、membership/reachability model、gossip/heartbeat protocol の core contract、cluster message serializer contract は契約化済み。router role/max-per-node 設定は、Pekko public API parity ではなく現行 router contract の拡張として実装済み。ただし、残りの実装には個別の OpenSpec change が必要であり、現在の Grain runtime roadmap の直近優先度とは分けて扱う。
 
-主要な comparison gap は、Split Brain Resolver、cluster singleton/client、topic registry gossip、sharding rebalance/remembered entities、Distributed Data Replicator、cluster/sharding/pubsub serializer contract である。内部構造比較は、将来これらの scope を採用する OpenSpec change が立った後に進めるのが妥当である。
+主要な comparison gap は、Split Brain Resolver runtime、cluster singleton/client、topic registry gossip、sharding rebalance/remembered entities、Distributed Data Replicator、Pekko/protobuf serializer 完全バイナリ互換である。内部構造比較は、将来これらの scope を採用する OpenSpec change が立った後に進めるのが妥当である。
