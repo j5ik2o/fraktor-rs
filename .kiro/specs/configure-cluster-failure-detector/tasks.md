@@ -26,7 +26,7 @@
   - _Depends: 1.1, 1.2_
 
 - [ ] 2. Cluster Configuration (クラスタ設定) と Join Compatibility (参加互換性) へ接続する
-- [ ] 2.1 (P) `ClusterCompatibilityKeyCatalog` に `cluster.failure-detector` を追加する
+- [x] 2.1 (P) `ClusterCompatibilityKeyCatalog` に `cluster.failure-detector` を追加する
   - Failure Detector Configuration (故障検出器設定) 用の required key を追加する。
   - `cluster.failure-detector.choice` は excluded key のまま維持し、required / conditional に入れない。
   - 完了時点で、required keys と excluded keys の分類を単体テストで確認できる。
