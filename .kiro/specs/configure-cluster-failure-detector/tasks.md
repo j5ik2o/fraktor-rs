@@ -98,7 +98,7 @@
   - _Depends: 3.2, 4.1_
 
 - [ ] 5. gap analysis と scope guard を更新する
-- [ ] 5.1 cluster gap analysis の該当項目を完了扱いへ更新する
+- [x] 5.1 cluster gap analysis の該当項目を完了扱いへ更新する
   - Failure Detector Configuration (故障検出器設定) の contract、validation、Join Compatibility (参加互換性)、std bridge が揃ったことを反映する。
   - Split Brain Resolver execution actor、provider down execution loop、lease coordination backend はこの成果として書かない。
   - Cluster Singleton、Cluster Client、Receptionist、Distributed Data / CRDT、Pekko public API parity をこの feature の成果として扱わない。

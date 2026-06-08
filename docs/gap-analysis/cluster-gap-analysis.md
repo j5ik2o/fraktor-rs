@@ -63,13 +63,13 @@ fraktor-rs 側はスキル指定の `pub` 系抽出で、型 294 件 (core-kerne
 | 指標 | 値 |
 |------|-----|
 | Pekko 固定スコープ対象概念 | 約 121 |
-| fraktor-rs 固定スコープ対応概念 | 約 72 |
-| 固定スコープ概念カバレッジ | 約 72/121 (60%) |
+| fraktor-rs 固定スコープ対応概念 | 約 73 |
+| 固定スコープ概念カバレッジ | 約 73/121 (60%) |
 | raw public type declarations | 294 (core-kernel: 263, core-typed: 9, std: 22) |
 | raw public method declarations | 825 (core-kernel: 714, core-typed: 32, std: 79) |
 | hard gap | 16 |
 | medium gap | 16 |
-| easy gap | 9 |
+| easy gap | 8 |
 | trivial gap | 2 |
 | panic 系スタブ | 0 件 |
 | 機能 placeholder / TODO | 0 件 |
@@ -105,7 +105,7 @@ cluster は、membership table、gossip dissemination、full gossip state merge 
 
 実装済みとして扱うもの: cluster extension、join/leave/down、event stream subscription、current state snapshot、member/up/removed callback、roles/app_version 設定、leader/role leader 算出、startup/shutdown event。
 
-### 2. Gossip / reachability / failure detection　✅ 実装済み 14/15 (93%)
+### 2. Gossip / reachability / failure detection　✅ 実装済み 15/15 (100%)
 
 | Pekko API / 契約 | Pekko 参照 | fraktor-rs 対応 | 実装先層 | 難易度 | 備考 |
 |------------------|------------|-----------------|----------|--------|------|
@@ -116,7 +116,7 @@ cluster は、membership table、gossip dissemination、full gossip state merge 
 | `CrossDcClusterHeartbeat` | `CrossDcClusterHeartbeat.scala:230` | core evidence 実装済み | core/membership | hard | `CrossDcHeartbeat` が data center pair、cross-DC request/response、target add/remove/retain、timeout evidence を扱う。routing、discovery、downing strategy は決定しない。tests: `cross_dc_*` |
 | `SeedNodeProcess` | `SeedNodeProcess.scala:22` | core + std provider boundary 実装済み | core/cluster_provider + std/provider | medium | `SeedNodeInput` と `SeedNodeProcess` が empty seed、self filtering、duplicate seed、invalid authority、client start、shutdown 後停止を扱う。`ProviderLifecycleBridge` が seed input を topology update に接続する。tests: `seed_node_process_*`, `provider_lifecycle_bridge_seed_input_publishes_topology_update`, `provider_lifecycle_bridge_shutdown_stops_seed_and_discovery_lifecycle` |
 | config compatibility full key set | `JoinConfigCompatChecker.scala:25`, `JoinConfigCompatCheckCluster.scala:27` | baseline 実装済み | core/config | easy | `ClusterCompatibilityKeyCatalog` が required/excluded key を公開し、`JoinCompatibilityComposition` と `ClusterExtensionConfig::check_join_compatibility` が pubsub、downing provider、SBR settings の mismatch reason を合成する。`cluster_compatibility_key` / `join_compatibility` tests で確認 |
-| failure detector implementation choice | `Cluster.scala:124`, `Cluster.scala:131` | 部分実装 | core/failure_detector | easy | registry はあるが cluster config から deadline/phi などを選ぶ設定 contract がない |
+| Failure Detector Configuration (故障検出器設定) | `Cluster.scala:124`, `Cluster.scala:131` | contract 実装済み | core/failure_detector + config + std/membership | easy | `FailureDetectorConfig` が Phi Accrual 前提の Availability Evidence (可用性観測証拠) 観測パラメータを Cluster Configuration (クラスタ設定) として保持する。Cluster Configuration Validation (クラスタ設定検証) は install / start 境界で不成立値を Join Compatibility (参加互換性) より前に拒否する。Join Compatibility (参加互換性) は single key `cluster.failure-detector` で Compatibility Mismatch Reason (互換性不一致理由) を作り、detail に差分 field を含める。`cluster.failure-detector.choice` は required key ではなく excluded key のまま維持する。std bridge は `ConfiguredPhiAccrualDetectorFactory` で config を concrete detector 生成へ接続する |
 
 実装済みとして扱うもの: `MembershipTable`、`MembershipDelta`、`MembershipVersion`、`VectorClock`、`DefaultFailureDetectorRegistry`、`MembershipCoordinator::poll` による suspect/dead 遷移、`GossipEnvelope`、`GossipStateModel`、`HeartbeatProtocolState`、`CrossDcHeartbeat`、logical envelope handoff、`TokioGossipTransport`。
 
@@ -307,6 +307,14 @@ cluster は、membership table、gossip dissemination、full gossip state merge 
 
 この completed table は `cluster-message-serialization-contract` の serializer bridge evidence だけを表す。gossip merge / heartbeat / reachability semantics、pubsub mediator state / delivery / registry semantics、remote transport lifecycle、Pekko/protobuf 完全バイナリ互換は scope 外のまま残す。
 
+### Completed active follow-up: Failure Detector Configuration (故障検出器設定)
+
+| 項目 | 実装先層 | 状態 | 根拠 / evidence |
+|------|----------|------|-----------------|
+| Failure Detector Configuration (故障検出器設定) | core/failure_detector + config + std/membership | contract evidence 実装済み | `FailureDetectorConfig` が Phi Accrual 前提の観測パラメータを Cluster Configuration (クラスタ設定) として保持し、Cluster Configuration Validation (クラスタ設定検証) が install / start 境界で不成立値を拒否する。Join Compatibility (参加互換性) は `cluster.failure-detector` single key を使い、Compatibility Mismatch Reason (互換性不一致理由) の detail に差分 field を含める。`cluster.failure-detector.choice` は required key ではなく excluded key のまま維持する。std bridge は `ConfiguredPhiAccrualDetectorFactory` で `FailureDetectorConfig` を concrete Phi Accrual detector 生成へ接続する |
+
+この completed table は `configure-cluster-failure-detector` の Failure Detector Configuration (故障検出器設定) contract evidence だけを表す。Split Brain Resolver execution actor、provider down execution loop、concrete lease coordination backend、Cluster Singleton、Cluster Client、Receptionist、Distributed Data / CRDT、Pekko public API parity、Failure Detector Algorithm Selection (故障検出器アルゴリズム選択) はこの feature の成果として扱わず、延期 scope のまま残す。
+
 ### Completed active follow-up: distributed pubsub / topic registry
 
 | 項目 | 実装先層 | 状態 | 根拠 / evidence |
@@ -323,12 +331,6 @@ cluster は、membership table、gossip dissemination、full gossip state merge 
 | 項目 | 実装先層 | 根拠 |
 |------|----------|------|
 | `PrepareForFullClusterShutdown` command path | core/typed + std | カテゴリ1 / カテゴリ5 |
-
-### Active comparison follow-up: easy
-
-| 項目 | 実装先層 | 根拠 |
-|------|----------|------|
-| failure detector implementation choice config | core/failure_detector + config | カテゴリ2 |
 
 ### Deferred Pekko concepts: trivial / easy
 
