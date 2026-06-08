@@ -8,7 +8,7 @@
   - _Requirements: 3.2, 3.3, 3.4, 3.6_
   - _Boundary: FailureDetectorConfigError_
 
-- [ ] 1.2 `FailureDetectorConfig` が観測パラメータと default を保持する
+- [x] 1.2 `FailureDetectorConfig` が観測パラメータと default を保持する
   - phi threshold、max sample size、min standard deviation、acceptable heartbeat pause、first heartbeat estimate を保持する。
   - default は既存 cluster membership path と同等の `1.0`, `10`, `1ms`, `0ms`, `10ms` にする。
   - suspect timeout、dead timeout、quarantine ttl、gossip interval は含めない。
