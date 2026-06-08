@@ -324,8 +324,8 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
       - name: Upload coverage reports to Codecov
-        # third-party action の mutable tag リスクを避けるため、v6 の commit SHA に固定する。
-        uses: codecov/codecov-action@57e3a136b779b570ffcdbf80b3bdc90e7fab3de2
+        # third-party action の mutable tag リスクを避けるため、v7.0.0 の commit SHA に固定する。
+        uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f
         with:
           use_oidc: true
           files: target/coverage/lcov.info
