@@ -15,14 +15,15 @@ use fraktor_utils_core_rs::{
 
 use super::*;
 use crate::{
-  BlockListProvider, ClusterEvent, ClusterProviderError, ClusterProviderShared, ClusterTopology, MetricsError,
-  StartupMode, TopologyUpdate,
+  BlockListProvider, ClusterError, ClusterEvent, ClusterProviderError, ClusterProviderShared, ClusterTopology,
+  MetricsError, StartupMode, TopologyUpdate,
   activation::{
     ActivatedKind, IdentityLookup, IdentityLookupShared, IdentitySetupError, LookupError, PidCache, PidCacheEvent,
     PlacementResolution,
   },
   cluster_provider::ClusterProvider,
   downing_provider::{DowningDecision, DowningInput, DowningProvider, NoopDowningProvider},
+  failure_detector::{FailureDetectorConfig, FailureDetectorConfigError},
   grain::{GrainKey, KindRegistry, TOPIC_ACTOR_KIND},
   membership::{Gossiper, GossiperShared},
   pub_sub::{
@@ -68,6 +69,49 @@ impl ClusterProvider for StubProvider {
   }
 
   fn start_client(&mut self) -> Result<(), ClusterProviderError> {
+    Ok(())
+  }
+
+  fn down(&mut self, _authority: &str) -> Result<(), ClusterProviderError> {
+    Ok(())
+  }
+
+  fn join(&mut self, _authority: &str) -> Result<(), ClusterProviderError> {
+    Ok(())
+  }
+
+  fn leave(&mut self, _authority: &str) -> Result<(), ClusterProviderError> {
+    Ok(())
+  }
+
+  fn shutdown(&mut self, _graceful: bool) -> Result<(), ClusterProviderError> {
+    Ok(())
+  }
+}
+
+#[derive(Clone)]
+struct RecordingProvider {
+  member_started: ArcShared<SpinSyncMutex<bool>>,
+  client_started: ArcShared<SpinSyncMutex<bool>>,
+}
+
+impl RecordingProvider {
+  fn new() -> Self {
+    Self {
+      member_started: ArcShared::new(SpinSyncMutex::new(false)),
+      client_started: ArcShared::new(SpinSyncMutex::new(false)),
+    }
+  }
+}
+
+impl ClusterProvider for RecordingProvider {
+  fn start_member(&mut self) -> Result<(), ClusterProviderError> {
+    *self.member_started.lock() = true;
+    Ok(())
+  }
+
+  fn start_client(&mut self) -> Result<(), ClusterProviderError> {
+    *self.client_started.lock() = true;
     Ok(())
   }
 
@@ -921,6 +965,80 @@ fn start_member_fails_when_pubsub_start_fails() {
     ClusterEvent::StartupFailed { address, mode, reason }
       if address == "proto://member" && *mode == StartupMode::Member && reason.contains("pubsub")
   )));
+}
+
+#[test]
+fn start_member_rejects_invalid_failure_detector_config_before_starting_dependencies() {
+  let provider_impl = RecordingProvider::new();
+  let member_started = provider_impl.member_started.clone();
+  let provider = wrap_provider(provider_impl);
+  let block_list_provider = ArcShared::new(StubBlockListProvider::new(vec![]));
+  let event_stream = EventStreamShared::default();
+  let kind_registry = KindRegistry::new();
+  let identity_lookup = wrap_identity_lookup(StubIdentityLookup::new());
+  let gossiper_impl = StubGossiper::new();
+  let gossiper_started = gossiper_impl.started.clone();
+  let gossiper = wrap_gossiper(gossiper_impl);
+  let pubsub_impl = StubPubSub::new();
+  let pubsub_started = pubsub_impl.started.clone();
+  let pubsub = wrap_pubsub(pubsub_impl);
+  let config =
+    ClusterExtensionConfig::new().with_failure_detector_config(FailureDetectorConfig::new().with_phi_threshold(0.0));
+  let mut core = ClusterCore::new(
+    &config,
+    provider,
+    block_list_provider,
+    event_stream,
+    wrap_downing_provider(NoopDowningProvider::new()),
+    gossiper,
+    pubsub,
+    kind_registry,
+    identity_lookup,
+  );
+
+  let result = core.start_member();
+
+  assert_eq!(Err(ClusterError::Configuration(FailureDetectorConfigError::InvalidPhiThreshold)), result);
+  assert!(!*member_started.lock());
+  assert!(!*pubsub_started.lock());
+  assert!(!*gossiper_started.lock());
+}
+
+#[test]
+fn start_client_rejects_invalid_failure_detector_config_before_starting_dependencies() {
+  let provider_impl = RecordingProvider::new();
+  let client_started = provider_impl.client_started.clone();
+  let provider = wrap_provider(provider_impl);
+  let block_list_provider = ArcShared::new(StubBlockListProvider::new(vec![]));
+  let event_stream = EventStreamShared::default();
+  let kind_registry = KindRegistry::new();
+  let identity_lookup = wrap_identity_lookup(StubIdentityLookup::new());
+  let gossiper_impl = StubGossiper::new();
+  let gossiper_started = gossiper_impl.started.clone();
+  let gossiper = wrap_gossiper(gossiper_impl);
+  let pubsub_impl = StubPubSub::new();
+  let pubsub_started = pubsub_impl.started.clone();
+  let pubsub = wrap_pubsub(pubsub_impl);
+  let config =
+    ClusterExtensionConfig::new().with_failure_detector_config(FailureDetectorConfig::new().with_phi_threshold(0.0));
+  let mut core = ClusterCore::new(
+    &config,
+    provider,
+    block_list_provider,
+    event_stream,
+    wrap_downing_provider(NoopDowningProvider::new()),
+    gossiper,
+    pubsub,
+    kind_registry,
+    identity_lookup,
+  );
+
+  let result = core.start_client();
+
+  assert_eq!(Err(ClusterError::Configuration(FailureDetectorConfigError::InvalidPhiThreshold)), result);
+  assert!(!*client_started.lock());
+  assert!(!*pubsub_started.lock());
+  assert!(!*gossiper_started.lock());
 }
 
 #[test]

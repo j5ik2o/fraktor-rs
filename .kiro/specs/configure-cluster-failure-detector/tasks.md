@@ -61,7 +61,7 @@
   - _Boundary: ClusterError_
   - _Depends: 1.1_
 
-- [ ] 3.2 `ClusterCore` が start 前に Failure Detector Configuration (故障検出器設定) を検証する
+- [x] 3.2 `ClusterCore` が start 前に Failure Detector Configuration (故障検出器設定) を検証する
   - `ClusterCore` は start member / client の前提として Failure Detector Configuration (故障検出器設定) を保持する。
   - provider、pubsub、gossiper の start より前に validation failure を返す。
   - validation failure は Join Compatibility (参加互換性) failure ではなく cluster lifecycle error として観測できる。
