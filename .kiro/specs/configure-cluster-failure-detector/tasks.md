@@ -53,7 +53,7 @@
   - _Depends: 1.3, 2.1, 2.2_
 
 - [ ] 3. install / start 境界で Cluster Configuration Validation (クラスタ設定検証) を実行する
-- [ ] 3.1 `ClusterError` が Cluster Configuration Validation (クラスタ設定検証) を表せるようにする
+- [x] 3.1 `ClusterError` が Cluster Configuration Validation (クラスタ設定検証) を表せるようにする
   - start member / client で返す validation failure を cluster lifecycle error として扱えるようにする。
   - error は Join Compatibility (参加互換性) failure と区別できる形にする。
   - 完了時点で、Failure Detector Configuration (故障検出器設定) の validation failure を lifecycle error として比較できる。
