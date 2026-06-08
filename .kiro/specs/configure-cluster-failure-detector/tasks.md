@@ -116,7 +116,7 @@
   - _Boundary: Verification_
   - _Depends: 5.1_
 
-- [ ] 6.2 no_std 境界、用語、禁止 scope を確認する
+- [x] 6.2 no_std 境界、用語、禁止 scope を確認する
   - cluster-core に std 依存が増えていないことを確認する。
   - 禁止された用途語、旧 prefix の failure detector key、`cluster.failure-detector.choice` の required 化が残っていないことを検索で確認する。
   - docs が `CONTEXT.md` の用語に沿い、Failure Detector Algorithm Selection (故障検出器アルゴリズム選択) を成果として扱っていないことを確認する。
