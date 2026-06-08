@@ -238,6 +238,7 @@ impl ClusterExtensionInstaller {
         alloc::format!("{}:{}", remoting_config.canonical_host(), remoting_config.canonical_port().unwrap_or(0));
       config = config.with_advertised_address(addr);
     }
+    config.validate().map_err(|error| ActorSystemBuildError::Configuration(alloc::format!("{error:?}")))?;
 
     // デフォルト実装を使用（未指定の場合）
     let block_list_provider: ArcShared<dyn BlockListProvider> =

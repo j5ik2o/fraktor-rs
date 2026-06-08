@@ -10,7 +10,7 @@ use core::time::Duration;
 use crate::{
   ClusterTopology, ConfigValidation, JoinConfigCompatChecker,
   downing_provider::DowningProviderCompatibility,
-  failure_detector::FailureDetectorConfig,
+  failure_detector::{FailureDetectorConfig, FailureDetectorConfigError},
   pub_sub::PubSubConfig,
   topology::{ClusterCompatibilityKey, ClusterCompatibilityKeyCatalog},
 };
@@ -233,6 +233,16 @@ impl ClusterExtensionConfig {
   #[must_use]
   pub fn is_sensitive_join_compatibility_key(key: &str) -> bool {
     SENSITIVE_JOIN_COMPATIBILITY_KEYS.contains(&key)
+  }
+
+  /// Validates cluster extension configuration values.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`FailureDetectorConfigError`] when the configured failure detector
+  /// observation parameters are outside the accepted range.
+  pub fn validate(&self) -> Result<(), FailureDetectorConfigError> {
+    self.failure_detector_config.validate()
   }
 }
 

@@ -70,7 +70,7 @@
   - _Boundary: ClusterCore_
   - _Depends: 2.2, 3.1_
 
-- [ ] 3.3 (P) `ClusterExtensionInstaller` が install 前に Failure Detector Configuration (故障検出器設定) を検証する
+- [x] 3.3 (P) `ClusterExtensionInstaller` が install 前に Failure Detector Configuration (故障検出器設定) を検証する
   - extension install 時に `ClusterExtensionConfig` の validation を実行する。
   - invalid config は actor system build configuration failure として返す。
   - provider、pubsub、identity lookup の組み立て前に failure が観測できるようにする。

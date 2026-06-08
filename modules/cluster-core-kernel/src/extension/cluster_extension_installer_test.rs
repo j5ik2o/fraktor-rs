@@ -6,15 +6,17 @@ use fraktor_actor_core_kernel_rs::{
     Actor, ActorContext, error::ActorError, extension::ExtensionInstallers, messaging::AnyMessageView, props::Props,
     setup::ActorSystemConfig,
   },
-  system::ActorSystem,
+  system::{ActorSystem, ActorSystemBuildError},
 };
 use fraktor_utils_core_rs::sync::{ArcShared, SpinSyncMutex};
 
 use super::ClusterExtensionInstaller;
 use crate::{
   ClusterExtensionConfig, ClusterProviderError,
+  activation::NoopIdentityLookup,
   cluster_provider::NoopClusterProvider,
   downing_provider::{DowningDecision, DowningInput, DowningProvider, DowningProviderCompatibility},
+  failure_detector::FailureDetectorConfig,
   pub_sub::{NoopClusterPubSub, cluster_pub_sub::ClusterPubSub},
 };
 
@@ -38,6 +40,44 @@ fn with_downing_provider_factory_propagates_compatibility_key_to_install_config(
   let _system = ActorSystem::create_from_props(&props, config).expect("build system");
 
   assert_eq!(observed_key.lock().clone(), Some(String::from("recording-downing-provider")));
+}
+
+#[test]
+fn install_rejects_invalid_failure_detector_config_before_building_components() {
+  let provider_calls = ArcShared::new(SpinSyncMutex::new(0usize));
+  let pubsub_calls = ArcShared::new(SpinSyncMutex::new(0usize));
+  let identity_lookup_calls = ArcShared::new(SpinSyncMutex::new(0usize));
+  let provider_calls_for_factory = provider_calls.clone();
+  let pubsub_calls_for_factory = pubsub_calls.clone();
+  let identity_lookup_calls_for_factory = identity_lookup_calls.clone();
+  let cluster_config =
+    ClusterExtensionConfig::new().with_failure_detector_config(FailureDetectorConfig::new().with_phi_threshold(0.0));
+  let cluster_installer =
+    ClusterExtensionInstaller::new(cluster_config, move |_event_stream, _block_list, _address| {
+      *provider_calls_for_factory.lock() += 1;
+      Box::new(NoopClusterProvider::new())
+    })
+    .with_pubsub_factory(move |_config| {
+      *pubsub_calls_for_factory.lock() += 1;
+      Box::new(NoopClusterPubSub::new()) as Box<dyn ClusterPubSub>
+    })
+    .with_identity_lookup_factory(move || {
+      *identity_lookup_calls_for_factory.lock() += 1;
+      Box::new(NoopIdentityLookup::new())
+    });
+  let props = Props::from_fn(|| TestGuardian);
+  let system = ActorSystem::create_from_props(&props, ActorSystemConfig::new(TestTickDriver::default()))
+    .expect("build actor system");
+
+  let result = cluster_installer.install(&system);
+
+  let Err(ActorSystemBuildError::Configuration(reason)) = result else {
+    panic!("invalid failure detector config should reject actor system build");
+  };
+  assert!(reason.contains("InvalidPhiThreshold"));
+  assert_eq!(*provider_calls.lock(), 0);
+  assert_eq!(*pubsub_calls.lock(), 0);
+  assert_eq!(*identity_lookup_calls.lock(), 0);
 }
 
 struct RecordingDowningProvider;

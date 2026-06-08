@@ -83,6 +83,14 @@ fn custom_failure_detector_config_is_preserved() {
 }
 
 #[test]
+fn validate_delegates_to_failure_detector_config() {
+  let config =
+    ClusterExtensionConfig::new().with_failure_detector_config(FailureDetectorConfig::new().with_phi_threshold(0.0));
+
+  assert_eq!(config.validate(), Err(crate::failure_detector::FailureDetectorConfigError::InvalidPhiThreshold));
+}
+
+#[test]
 fn join_compatibility_accepts_same_failure_detector_config() {
   let failure_detector_config = FailureDetectorConfig::new()
     .with_phi_threshold(8.0)
