@@ -108,7 +108,7 @@
   - _Depends: 2.3, 3.2, 3.3, 4.2_
 
 - [ ] 6. feature 全体を検証する
-- [ ] 6.1 対象 crate の単体・統合テストを通す
+- [x] 6.1 対象 crate の単体・統合テストを通す
   - cluster-core の Failure Detector Configuration (故障検出器設定)、Join Compatibility (参加互換性)、install / start validation のテストを実行する。
   - cluster-adaptor-std の std bridge と既存 detector registry 接続のテストを実行する。
   - 完了時点で、対象 test command の成功結果が確認できる。
