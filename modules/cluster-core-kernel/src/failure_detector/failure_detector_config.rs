@@ -1,6 +1,9 @@
 //! Failure detector observation configuration.
 
+use alloc::vec::Vec;
 use core::time::Duration;
+
+use super::FailureDetectorConfigError;
 
 #[cfg(test)]
 #[path = "failure_detector_config_test.rs"]
@@ -92,6 +95,53 @@ impl FailureDetectorConfig {
   #[must_use]
   pub const fn first_heartbeat_estimate(&self) -> Duration {
     self.first_heartbeat_estimate
+  }
+
+  /// Validates this failure detector configuration.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`FailureDetectorConfigError`] when an observation parameter is
+  /// outside the accepted configuration range.
+  pub fn validate(&self) -> Result<(), FailureDetectorConfigError> {
+    if !self.phi_threshold.is_finite() || self.phi_threshold <= 0.0 {
+      return Err(FailureDetectorConfigError::InvalidPhiThreshold);
+    }
+    if self.max_sample_size == 0 {
+      return Err(FailureDetectorConfigError::ZeroMaxSampleSize);
+    }
+    if self.min_standard_deviation == Duration::ZERO {
+      return Err(FailureDetectorConfigError::ZeroMinStandardDeviation);
+    }
+    if self.first_heartbeat_estimate == Duration::ZERO {
+      return Err(FailureDetectorConfigError::ZeroFirstHeartbeatEstimate);
+    }
+
+    Ok(())
+  }
+
+  /// Returns observation parameter names whose values differ from another configuration.
+  #[must_use]
+  pub fn difference_field_names(&self, other: &Self) -> Vec<&'static str> {
+    let mut names = Vec::new();
+
+    if self.phi_threshold.to_bits() != other.phi_threshold.to_bits() {
+      names.push("phi_threshold");
+    }
+    if self.max_sample_size != other.max_sample_size {
+      names.push("max_sample_size");
+    }
+    if self.min_standard_deviation != other.min_standard_deviation {
+      names.push("min_standard_deviation");
+    }
+    if self.acceptable_heartbeat_pause != other.acceptable_heartbeat_pause {
+      names.push("acceptable_heartbeat_pause");
+    }
+    if self.first_heartbeat_estimate != other.first_heartbeat_estimate {
+      names.push("first_heartbeat_estimate");
+    }
+
+    names
   }
 }
 

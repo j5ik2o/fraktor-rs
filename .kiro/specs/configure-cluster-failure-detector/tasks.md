@@ -16,7 +16,7 @@
   - _Requirements: 1.1, 1.2, 1.3, 2.1, 2.2, 2.3, 2.4_
   - _Boundary: FailureDetectorConfig_
 
-- [ ] 1.3 `FailureDetectorConfig` の validation と差分抽出を完成させる
+- [x] 1.3 `FailureDetectorConfig` の validation と差分抽出を完成させる
   - 正の有限値ではない phi threshold、0 の max sample size、0 の min standard deviation、0 の first heartbeat estimate を拒否する。
   - acceptable heartbeat pause の 0 は valid として扱う。
   - 差分のある観測パラメータ名だけを Compatibility Mismatch Reason (互換性不一致理由) の detail に使える形で返す。
