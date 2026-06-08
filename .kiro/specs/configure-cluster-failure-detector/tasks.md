@@ -80,7 +80,7 @@
   - _Depends: 2.2_
 
 - [ ] 4. std 環境で Availability Evidence (可用性観測証拠) の観測へ接続する
-- [ ] 4.1 (P) `FailureDetectorConfig` から Phi Accrual detector を生成する bridge を追加する
+- [x] 4.1 (P) `FailureDetectorConfig` から Phi Accrual detector を生成する bridge を追加する
   - std 側で `FailureDetectorConfig` の値を `PhiAccrualFailureDetector` の constructor へ渡す。
   - Duration を millis に変換し、public な Cluster Configuration (クラスタ設定) 上の duration 意味を維持する。
   - bridge は fixed Phi Accrual 生成だけを担い、Failure Detector Algorithm Selection (故障検出器アルゴリズム選択) の API を持たない。
