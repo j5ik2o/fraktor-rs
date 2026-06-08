@@ -89,7 +89,7 @@
   - _Boundary: ConfiguredPhiAccrualDetectorFactory_
   - _Depends: 1.2, 1.3_
 
-- [ ] 4.2 std bridge を既存の detector registry 利用箇所へ接続する
+- [x] 4.2 std bridge を既存の detector registry 利用箇所へ接続する
   - 既存の ad hoc Phi Accrual constructor usage を、Cluster Configuration (クラスタ設定) 由来の bridge を使う形へ置き換える。
   - `MembershipCoordinatorConfig::phi_threshold` の既存互換性は壊さず、この feature の範囲では policy cleanup をしない。
   - 完了時点で、std 側の coordinator / gossiper test が Failure Detector Configuration (故障検出器設定) 由来の detector で通る。

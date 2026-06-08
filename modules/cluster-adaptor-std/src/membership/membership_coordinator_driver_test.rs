@@ -7,16 +7,17 @@ use std::{
 use fraktor_actor_core_kernel_rs::event::stream::EventStreamShared;
 use fraktor_cluster_core_kernel_rs::{
   extension::ClusterExtensionConfig,
-  failure_detector::{DefaultFailureDetectorRegistry, FailureDetector},
+  failure_detector::{DefaultFailureDetectorRegistry, FailureDetectorConfig},
   membership::{
     GossipOutbound, GossipTransport, GossipTransportError, MembershipCoordinator, MembershipCoordinatorConfig,
     MembershipCoordinatorShared, MembershipDelta, MembershipSnapshot, MembershipTable, NodeStatus,
   },
 };
-use fraktor_remote_core_rs::{address::Address, failure_detector::PhiAccrualFailureDetector};
+use fraktor_remote_core_rs::address::Address;
 use fraktor_utils_core_rs::{sync::SharedAccess, time::TimerInstant};
 
 use super::MembershipCoordinatorDriver;
+use crate::membership::ConfiguredPhiAccrualDetectorFactory;
 
 impl<TTransport: GossipTransport> MembershipCoordinatorDriver<TTransport> {
   const fn coordinator(&self) -> &MembershipCoordinatorShared {
@@ -43,24 +44,6 @@ impl<TTransport: GossipTransport> MembershipCoordinatorDriver<TTransport> {
       .with_write(|coordinator| coordinator.handle_heartbeat(authority, now))
       .expect("handle_heartbeat");
     self.apply_outcome(outcome).expect("apply handle_heartbeat outcome");
-  }
-}
-
-/// Test-only adapter that bridges the remote-core detector to the
-/// cluster-core `FailureDetector` trait.
-struct PhiAccrualAdapter(PhiAccrualFailureDetector);
-
-impl FailureDetector for PhiAccrualAdapter {
-  fn is_available(&self, now_ms: u64) -> bool {
-    self.0.is_available(now_ms)
-  }
-
-  fn is_monitoring(&self) -> bool {
-    self.0.is_monitoring()
-  }
-
-  fn heartbeat(&mut self, now_ms: u64) {
-    self.0.heartbeat(now_ms);
   }
 }
 
@@ -124,7 +107,8 @@ impl GossipTransport for DemoTransport {
 }
 
 struct DemoNode {
-  driver: MembershipCoordinatorDriver<DemoTransport>,
+  driver:        MembershipCoordinatorDriver<DemoTransport>,
+  phi_threshold: f64,
 }
 
 impl DemoNode {
@@ -135,27 +119,30 @@ impl DemoNode {
     event_stream: EventStreamShared,
   ) -> Self {
     let table = MembershipTable::new(3);
-    let threshold = config.phi_threshold;
+    let phi_threshold = config.phi_threshold;
     let cluster_config = ClusterExtensionConfig::new()
       .with_advertised_address(authority)
       .with_app_version("1.0.0")
-      .with_roles(vec![String::from("member")]);
+      .with_roles(vec![String::from("member")])
+      .with_failure_detector_config(FailureDetectorConfig::new().with_phi_threshold(phi_threshold));
+    let detector_config = *cluster_config.failure_detector_config();
     let registry = DefaultFailureDetectorRegistry::new(Box::new(move || {
-      Box::new(PhiAccrualAdapter(PhiAccrualFailureDetector::new(detector_address(), threshold, 10, 1, 0, 10)))
+      ConfiguredPhiAccrualDetectorFactory::new(detector_config, detector_address()).create()
     }));
     let mut coordinator = MembershipCoordinator::new(config, cluster_config, table, registry);
     coordinator.start_member().expect("start_member");
     let shared = MembershipCoordinatorShared::new(coordinator);
     let transport = DemoTransport::new(authority, bus);
     let driver = MembershipCoordinatorDriver::new(shared, transport, event_stream);
-    Self { driver }
+    Self { driver, phi_threshold }
   }
 
   fn handle_join(&mut self, node_id: &str, authority: &str, now: TimerInstant) {
     let joining_config = ClusterExtensionConfig::new()
       .with_advertised_address(authority)
       .with_app_version("1.0.0")
-      .with_roles(vec![String::from("member")]);
+      .with_roles(vec![String::from("member")])
+      .with_failure_detector_config(FailureDetectorConfig::new().with_phi_threshold(self.phi_threshold));
     self.driver.handle_join(node_id, authority, &joining_config, now);
   }
 

@@ -5,38 +5,21 @@ use fraktor_actor_core_kernel_rs::event::stream::{
   EventStreamEvent, EventStreamShared, EventStreamSubscriber, EventStreamSubscriberShared,
 };
 use fraktor_cluster_adaptor_std_rs::membership::{
-  TokioGossipTransport, TokioGossipTransportConfig, TokioGossiper, TokioGossiperConfig,
+  ConfiguredPhiAccrualDetectorFactory, TokioGossipTransport, TokioGossipTransportConfig, TokioGossiper,
+  TokioGossiperConfig,
 };
 use fraktor_cluster_core_kernel_rs::{
   extension::ClusterExtensionConfig,
-  failure_detector::{DefaultFailureDetectorRegistry, FailureDetector},
+  failure_detector::{DefaultFailureDetectorRegistry, FailureDetectorConfig},
   membership::{
     GossipOutbound, GossipTransport, Gossiper, MembershipCoordinator, MembershipCoordinatorConfig,
     MembershipCoordinatorShared, MembershipDelta, MembershipTable, MembershipVersion, NodeRecord, NodeStatus,
   },
   topology::ClusterEvent,
 };
-use fraktor_remote_core_rs::{address::Address, failure_detector::PhiAccrualFailureDetector};
+use fraktor_remote_core_rs::address::Address;
 use fraktor_utils_core_rs::sync::{SharedLock, SpinSyncMutex};
 use tokio::runtime::Handle;
-
-/// Test-only adapter that bridges the remote-core detector to the
-/// cluster-core `FailureDetector` trait.
-struct PhiAccrualAdapter(PhiAccrualFailureDetector);
-
-impl FailureDetector for PhiAccrualAdapter {
-  fn is_available(&self, now_ms: u64) -> bool {
-    self.0.is_available(now_ms)
-  }
-
-  fn is_monitoring(&self) -> bool {
-    self.0.is_monitoring()
-  }
-
-  fn heartbeat(&mut self, now_ms: u64) {
-    self.0.heartbeat(now_ms);
-  }
-}
 
 struct EventSink {
   events: Arc<Mutex<Vec<ClusterEvent>>>,
@@ -71,14 +54,15 @@ fn build_coordinator() -> MembershipCoordinatorShared {
     topology_emit_interval: Duration::from_millis(20),
   };
   let table = MembershipTable::new(3);
-  let threshold = config.phi_threshold;
-  let registry = DefaultFailureDetectorRegistry::new(Box::new(move || {
-    Box::new(PhiAccrualAdapter(PhiAccrualFailureDetector::new(detector_address(), threshold, 10, 1, 0, 10)))
-  }));
   let cluster_config = ClusterExtensionConfig::new()
     .with_advertised_address("127.0.0.1:22110")
     .with_app_version("1.0.0")
-    .with_roles(vec![String::from("member")]);
+    .with_roles(vec![String::from("member")])
+    .with_failure_detector_config(FailureDetectorConfig::new().with_phi_threshold(config.phi_threshold));
+  let detector_config = *cluster_config.failure_detector_config();
+  let registry = DefaultFailureDetectorRegistry::new(Box::new(move || {
+    ConfiguredPhiAccrualDetectorFactory::new(detector_config, detector_address()).create()
+  }));
   let mut coordinator = MembershipCoordinator::new(config, cluster_config, table, registry);
   coordinator.start_member().expect("start_member");
   MembershipCoordinatorShared::new(coordinator)
