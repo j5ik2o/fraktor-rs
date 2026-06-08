@@ -43,7 +43,7 @@
   - _Boundary: ClusterExtensionConfig_
   - _Depends: 1.2_
 
-- [ ] 2.3 `ClusterExtensionConfig` の Join Compatibility (参加互換性) 判定に Failure Detector Configuration (故障検出器設定) を含める
+- [x] 2.3 `ClusterExtensionConfig` の Join Compatibility (参加互換性) 判定に Failure Detector Configuration (故障検出器設定) を含める
   - local と joining の Failure Detector Configuration (故障検出器設定) が一致する場合は compatible として扱う。
   - 不一致の場合は `cluster.failure-detector` の single key で incompatible reason を作る。
   - reason detail には差分のある観測パラメータ名を含め、`cluster.failure-detector.choice` を必須 key として扱わない。
