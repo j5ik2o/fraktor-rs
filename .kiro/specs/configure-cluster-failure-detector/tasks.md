@@ -34,7 +34,7 @@
   - _Boundary: ClusterCompatibilityKeyCatalog_
   - _Depends: 1.1_
 
-- [ ] 2.2 (P) `ClusterExtensionConfig` が Failure Detector Configuration (故障検出器設定) を保持する
+- [x] 2.2 (P) `ClusterExtensionConfig` が Failure Detector Configuration (故障検出器設定) を保持する
   - Cluster Configuration (クラスタ設定) の一部として `FailureDetectorConfig` を保持する。
   - 明示指定がない場合は `FailureDetectorConfig` の default を使う。
   - custom config を builder-style API で設定でき、getter で同じ値を取得できる。

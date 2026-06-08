@@ -4,6 +4,7 @@ use super::*;
 use crate::{
   ClusterTopology, ConfigValidation, JoinConfigCompatChecker,
   downing_provider::{DowningProviderCompatibility, SplitBrainResolverSettings, SplitBrainResolverStrategy},
+  failure_detector::FailureDetectorConfig,
   pub_sub::PubSubConfig,
 };
 
@@ -58,6 +59,27 @@ fn downing_provider_compatibility_is_preserved() {
   let config = ClusterExtensionConfig::new().with_downing_provider_compatibility(compatibility.clone());
 
   assert_eq!(config.downing_provider_compatibility(), &compatibility);
+}
+
+#[test]
+fn default_failure_detector_config_is_preserved() {
+  let config = ClusterExtensionConfig::new();
+
+  assert_eq!(config.failure_detector_config(), &FailureDetectorConfig::default());
+}
+
+#[test]
+fn custom_failure_detector_config_is_preserved() {
+  let failure_detector_config = FailureDetectorConfig::new()
+    .with_phi_threshold(8.0)
+    .with_max_sample_size(128)
+    .with_min_standard_deviation(Duration::from_millis(500))
+    .with_acceptable_heartbeat_pause(Duration::from_secs(2))
+    .with_first_heartbeat_estimate(Duration::from_secs(1));
+
+  let config = ClusterExtensionConfig::new().with_failure_detector_config(failure_detector_config);
+
+  assert_eq!(config.failure_detector_config(), &failure_detector_config);
 }
 
 #[test]

@@ -10,6 +10,7 @@ use core::time::Duration;
 use crate::{
   ClusterTopology, ConfigValidation, JoinConfigCompatChecker,
   downing_provider::DowningProviderCompatibility,
+  failure_detector::FailureDetectorConfig,
   pub_sub::PubSubConfig,
   topology::{ClusterCompatibilityKey, ClusterCompatibilityKeyCatalog},
 };
@@ -66,15 +67,16 @@ const JOIN_COMPATIBILITY_CHECKS: &[JoinCompatibilityCheck] = &[
 ];
 
 /// Configuration applied when installing the cluster extension.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct ClusterExtensionConfig {
-  advertised_address: String,
-  metrics_enabled:    bool,
-  static_topology:    Option<ClusterTopology>,
-  pubsub_config:      PubSubConfig,
-  app_version:        String,
-  roles:              Vec<String>,
-  downing_provider:   DowningProviderCompatibility,
+  advertised_address:      String,
+  metrics_enabled:         bool,
+  static_topology:         Option<ClusterTopology>,
+  pubsub_config:           PubSubConfig,
+  failure_detector_config: FailureDetectorConfig,
+  app_version:             String,
+  roles:                   Vec<String>,
+  downing_provider:        DowningProviderCompatibility,
 }
 
 impl ClusterExtensionConfig {
@@ -86,13 +88,14 @@ impl ClusterExtensionConfig {
   #[must_use]
   pub fn new() -> Self {
     Self {
-      advertised_address: String::new(),
-      metrics_enabled:    false,
-      static_topology:    None,
-      pubsub_config:      PubSubConfig::new(Duration::from_secs(3), Duration::from_secs(60)),
-      app_version:        String::from(env!("CARGO_PKG_VERSION")),
-      roles:              Vec::new(),
-      downing_provider:   DowningProviderCompatibility::noop(),
+      advertised_address:      String::new(),
+      metrics_enabled:         false,
+      static_topology:         None,
+      pubsub_config:           PubSubConfig::new(Duration::from_secs(3), Duration::from_secs(60)),
+      failure_detector_config: FailureDetectorConfig::new(),
+      app_version:             String::from(env!("CARGO_PKG_VERSION")),
+      roles:                   Vec::new(),
+      downing_provider:        DowningProviderCompatibility::noop(),
     }
   }
 
@@ -138,6 +141,13 @@ impl ClusterExtensionConfig {
     self
   }
 
+  /// Sets the failure detector configuration.
+  #[must_use]
+  pub const fn with_failure_detector_config(mut self, config: FailureDetectorConfig) -> Self {
+    self.failure_detector_config = config;
+    self
+  }
+
   /// Sets cluster roles advertised by this node.
   #[must_use]
   pub fn with_roles(mut self, roles: Vec<String>) -> Self {
@@ -169,6 +179,12 @@ impl ClusterExtensionConfig {
   #[must_use]
   pub const fn pubsub_config(&self) -> &PubSubConfig {
     &self.pubsub_config
+  }
+
+  /// Returns the failure detector configuration.
+  #[must_use]
+  pub const fn failure_detector_config(&self) -> &FailureDetectorConfig {
+    &self.failure_detector_config
   }
 
   /// Returns advertised application version.
