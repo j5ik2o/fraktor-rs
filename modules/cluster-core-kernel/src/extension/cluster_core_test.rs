@@ -988,7 +988,7 @@ fn start_member_rejects_invalid_failure_detector_config_before_starting_dependen
     &config,
     provider,
     block_list_provider,
-    event_stream,
+    event_stream.clone(),
     wrap_downing_provider(NoopDowningProvider::new()),
     gossiper,
     pubsub,
@@ -996,12 +996,19 @@ fn start_member_rejects_invalid_failure_detector_config_before_starting_dependen
     identity_lookup,
   );
 
+  let (subscriber_impl, _subscription) = subscribe_recorder(&event_stream);
+
   let result = core.start_member();
 
   assert_eq!(Err(ClusterError::Configuration(FailureDetectorConfigError::InvalidPhiThreshold)), result);
   assert!(!*member_started.lock());
   assert!(!*pubsub_started.lock());
   assert!(!*gossiper_started.lock());
+  let events = subscriber_impl.events();
+  assert!(events.iter().any(|event| matches!(event,
+    ClusterEvent::StartupFailed { address, mode, reason }
+      if address == "" && *mode == StartupMode::Member && reason.contains("phi threshold")
+  )));
 }
 
 #[test]
@@ -1025,7 +1032,7 @@ fn start_client_rejects_invalid_failure_detector_config_before_starting_dependen
     &config,
     provider,
     block_list_provider,
-    event_stream,
+    event_stream.clone(),
     wrap_downing_provider(NoopDowningProvider::new()),
     gossiper,
     pubsub,
@@ -1033,12 +1040,19 @@ fn start_client_rejects_invalid_failure_detector_config_before_starting_dependen
     identity_lookup,
   );
 
+  let (subscriber_impl, _subscription) = subscribe_recorder(&event_stream);
+
   let result = core.start_client();
 
   assert_eq!(Err(ClusterError::Configuration(FailureDetectorConfigError::InvalidPhiThreshold)), result);
   assert!(!*client_started.lock());
   assert!(!*pubsub_started.lock());
   assert!(!*gossiper_started.lock());
+  let events = subscriber_impl.events();
+  assert!(events.iter().any(|event| matches!(event,
+    ClusterEvent::StartupFailed { address, mode, reason }
+      if address == "" && *mode == StartupMode::Client && reason.contains("phi threshold")
+  )));
 }
 
 #[test]

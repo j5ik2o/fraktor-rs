@@ -4,7 +4,7 @@ use super::*;
 use crate::{
   ClusterTopology, ConfigValidation, JoinConfigCompatChecker,
   downing_provider::{DowningProviderCompatibility, SplitBrainResolverSettings, SplitBrainResolverStrategy},
-  failure_detector::FailureDetectorConfig,
+  failure_detector::{FailureDetectorConfig, FailureDetectorConfigError},
   pub_sub::PubSubConfig,
 };
 
@@ -87,7 +87,7 @@ fn validate_delegates_to_failure_detector_config() {
   let config =
     ClusterExtensionConfig::new().with_failure_detector_config(FailureDetectorConfig::new().with_phi_threshold(0.0));
 
-  assert_eq!(config.validate(), Err(crate::failure_detector::FailureDetectorConfigError::InvalidPhiThreshold));
+  assert_eq!(config.validate(), Err(FailureDetectorConfigError::InvalidPhiThreshold));
 }
 
 #[test]

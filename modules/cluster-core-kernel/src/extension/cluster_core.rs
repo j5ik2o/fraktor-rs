@@ -228,8 +228,15 @@ impl ClusterCore {
   ///
   /// Returns an error if configuration validation, pub/sub, gossiper, or provider startup fails.
   pub fn start_member(&mut self) -> Result<(), ClusterError> {
-    self.failure_detector_config.validate().map_err(ClusterError::from)?;
     let address = self.startup_address();
+    self.failure_detector_config.validate().map_err(|error| {
+      self.publish_cluster_event(ClusterEvent::StartupFailed {
+        address: address.clone(),
+        mode:    StartupMode::Member,
+        reason:  error.to_string(),
+      });
+      ClusterError::from(error)
+    })?;
     self.refresh_blocked_members();
 
     self.pub_sub.with_write(|pub_sub| pub_sub.start()).map_err(ClusterError::from).map_err(|error| {
@@ -278,8 +285,15 @@ impl ClusterCore {
   ///
   /// Returns an error if configuration validation, pub/sub, gossiper, or provider startup fails.
   pub fn start_client(&mut self) -> Result<(), ClusterError> {
-    self.failure_detector_config.validate().map_err(ClusterError::from)?;
     let address = self.startup_address();
+    self.failure_detector_config.validate().map_err(|error| {
+      self.publish_cluster_event(ClusterEvent::StartupFailed {
+        address: address.clone(),
+        mode:    StartupMode::Client,
+        reason:  error.to_string(),
+      });
+      ClusterError::from(error)
+    })?;
     self.refresh_blocked_members();
 
     self.pub_sub.with_write(|pub_sub| pub_sub.start()).map_err(ClusterError::from).map_err(|error| {
