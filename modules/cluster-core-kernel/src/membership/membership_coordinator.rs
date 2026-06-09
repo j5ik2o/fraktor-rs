@@ -153,6 +153,8 @@ impl MembershipCoordinator {
       return Err(MembershipCoordinatorError::Membership(MembershipError::Quarantined { authority, reason }));
     }
 
+    joining_config.validate().map_err(MembershipCoordinatorError::Configuration)?;
+
     if let ConfigValidation::Incompatible { reason } = self.cluster_config.check_join_compatibility(joining_config) {
       return Err(MembershipCoordinatorError::Membership(MembershipError::IncompatibleConfig { reason }));
     }

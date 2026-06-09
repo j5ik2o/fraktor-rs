@@ -379,6 +379,22 @@ fn join_rejects_incompatible_cluster_config() {
 }
 
 #[test]
+fn join_rejects_invalid_joining_failure_detector_config_before_compatibility_check() {
+  let table = MembershipTable::new(3);
+  let config = base_config();
+  let mut coordinator = MembershipCoordinator::new(config, local_cluster_config(), table, registry(1.0));
+  coordinator.start_member().unwrap();
+
+  let joining =
+    joining_cluster_config().with_failure_detector_config(FailureDetectorConfig::new().with_max_sample_size(0));
+
+  let err = coordinator
+    .handle_join("node-1".to_string(), "node-a".to_string(), &joining, now(1))
+    .expect_err("invalid joining failure detector config must be rejected");
+  assert_eq!(err, MembershipCoordinatorError::Configuration(FailureDetectorConfigError::ZeroMaxSampleSize));
+}
+
+#[test]
 fn join_uses_joining_config_metadata() {
   let table = MembershipTable::new(3);
   let config = base_config();
