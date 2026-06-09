@@ -4,6 +4,7 @@ use super::*;
 use crate::{
   ClusterTopology, ConfigValidation, JoinConfigCompatChecker,
   downing_provider::{DowningProviderCompatibility, SplitBrainResolverSettings, SplitBrainResolverStrategy},
+  failure_detector::{FailureDetectorConfig, FailureDetectorConfigError},
   pub_sub::PubSubConfig,
 };
 
@@ -61,6 +62,65 @@ fn downing_provider_compatibility_is_preserved() {
 }
 
 #[test]
+fn default_failure_detector_config_is_preserved() {
+  let config = ClusterExtensionConfig::new();
+
+  assert_eq!(config.failure_detector_config(), &FailureDetectorConfig::default());
+}
+
+#[test]
+fn custom_failure_detector_config_is_preserved() {
+  let failure_detector_config = FailureDetectorConfig::new()
+    .with_phi_threshold(8.0)
+    .with_max_sample_size(128)
+    .with_min_standard_deviation(Duration::from_millis(500))
+    .with_acceptable_heartbeat_pause(Duration::from_secs(2))
+    .with_first_heartbeat_estimate(Duration::from_secs(1));
+
+  let config = ClusterExtensionConfig::new().with_failure_detector_config(failure_detector_config);
+
+  assert_eq!(config.failure_detector_config(), &failure_detector_config);
+}
+
+#[test]
+fn validate_delegates_to_failure_detector_config() {
+  let config =
+    ClusterExtensionConfig::new().with_failure_detector_config(FailureDetectorConfig::new().with_phi_threshold(0.0));
+
+  assert_eq!(config.validate(), Err(FailureDetectorConfigError::InvalidPhiThreshold));
+}
+
+#[test]
+fn join_compatibility_accepts_same_failure_detector_config() {
+  let failure_detector_config = FailureDetectorConfig::new()
+    .with_phi_threshold(8.0)
+    .with_max_sample_size(128)
+    .with_min_standard_deviation(Duration::from_millis(500))
+    .with_acceptable_heartbeat_pause(Duration::from_secs(2))
+    .with_first_heartbeat_estimate(Duration::from_secs(1));
+  let local = ClusterExtensionConfig::new().with_failure_detector_config(failure_detector_config);
+  let joining = ClusterExtensionConfig::new().with_failure_detector_config(failure_detector_config);
+
+  let validation = local.check_join_compatibility(&joining);
+
+  assert_eq!(validation, ConfigValidation::Compatible);
+}
+
+#[test]
+fn join_compatibility_reports_failure_detector_config_mismatch_with_different_fields() {
+  let local = ClusterExtensionConfig::new()
+    .with_failure_detector_config(FailureDetectorConfig::new().with_phi_threshold(8.0).with_max_sample_size(128));
+  let joining = ClusterExtensionConfig::new()
+    .with_failure_detector_config(FailureDetectorConfig::new().with_phi_threshold(10.0).with_max_sample_size(256));
+
+  let validation = local.check_join_compatibility(&joining);
+
+  assert_eq!(validation, ConfigValidation::Incompatible {
+    reason: "cluster.failure-detector mismatch: phi_threshold, max_sample_size".to_string(),
+  });
+}
+
+#[test]
 fn join_compatibility_key_manifest_separates_required_and_conditional_non_sensitive_keys() {
   let required_keys = ClusterExtensionConfig::required_join_compatibility_keys();
   let conditional_keys = ClusterExtensionConfig::conditional_join_compatibility_keys();
@@ -69,6 +129,7 @@ fn join_compatibility_key_manifest_separates_required_and_conditional_non_sensit
     "fraktor.cluster.pubsub.subscriber-timeout",
     "fraktor.cluster.pubsub.suspended-ttl",
     "fraktor.cluster.downing-provider.provider-key",
+    "cluster.failure-detector",
   ]);
   assert_eq!(conditional_keys, &[
     "fraktor.cluster.downing-provider.split-brain-resolver.stable-after",
@@ -76,6 +137,9 @@ fn join_compatibility_key_manifest_separates_required_and_conditional_non_sensit
     "fraktor.cluster.downing-provider.split-brain-resolver.down-all-when-unstable",
   ]);
   assert!(ClusterExtensionConfig::is_required_join_compatibility_key("fraktor.cluster.downing-provider.provider-key"));
+  assert!(ClusterExtensionConfig::is_required_join_compatibility_key("cluster.failure-detector"));
+  assert!(!ClusterExtensionConfig::is_required_join_compatibility_key("cluster.failure-detector.choice"));
+  assert!(!ClusterExtensionConfig::is_required_join_compatibility_key("cluster.failure-detector.phi-threshold"));
   assert!(!ClusterExtensionConfig::is_required_join_compatibility_key(
     "fraktor.cluster.downing-provider.split-brain-resolver.stable-after"
   ));

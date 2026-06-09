@@ -3,33 +3,18 @@ use core::time::Duration;
 use fraktor_actor_core_kernel_rs::event::stream::EventStreamShared;
 use fraktor_cluster_core_kernel_rs::{
   extension::ClusterExtensionConfig,
-  failure_detector::{DefaultFailureDetectorRegistry, FailureDetector},
+  failure_detector::{DefaultFailureDetectorRegistry, FailureDetectorConfig},
   membership::{
     Gossiper, MembershipCoordinator, MembershipCoordinatorConfig, MembershipCoordinatorShared, MembershipTable,
   },
 };
-use fraktor_remote_core_rs::{address::Address, failure_detector::PhiAccrualFailureDetector};
+use fraktor_remote_core_rs::address::Address;
 use tokio::runtime::Handle;
 
-use crate::membership::{TokioGossipTransport, TokioGossipTransportConfig, TokioGossiper, TokioGossiperConfig};
-
-/// Test-only adapter that bridges the remote-core detector to the
-/// cluster-core `FailureDetector` trait.
-struct PhiAccrualAdapter(PhiAccrualFailureDetector);
-
-impl FailureDetector for PhiAccrualAdapter {
-  fn is_available(&self, now_ms: u64) -> bool {
-    self.0.is_available(now_ms)
-  }
-
-  fn is_monitoring(&self) -> bool {
-    self.0.is_monitoring()
-  }
-
-  fn heartbeat(&mut self, now_ms: u64) {
-    self.0.heartbeat(now_ms);
-  }
-}
+use crate::membership::{
+  ConfiguredPhiAccrualDetectorFactory, TokioGossipTransport, TokioGossipTransportConfig, TokioGossiper,
+  TokioGossiperConfig,
+};
 
 fn build_coordinator() -> MembershipCoordinatorShared {
   let config = MembershipCoordinatorConfig {
@@ -42,11 +27,13 @@ fn build_coordinator() -> MembershipCoordinatorShared {
     topology_emit_interval: Duration::from_millis(50),
   };
   let table = MembershipTable::new(3);
-  let threshold = config.phi_threshold;
+  let cluster_config = ClusterExtensionConfig::new()
+    .with_failure_detector_config(FailureDetectorConfig::new().with_phi_threshold(config.phi_threshold));
+  let detector_config = *cluster_config.failure_detector_config();
   let registry = DefaultFailureDetectorRegistry::new(Box::new(move || {
-    Box::new(PhiAccrualAdapter(PhiAccrualFailureDetector::new(detector_address(), threshold, 10, 1, 0, 10)))
+    ConfiguredPhiAccrualDetectorFactory::new(detector_config, detector_address()).create()
   }));
-  let mut coordinator = MembershipCoordinator::new(config, ClusterExtensionConfig::new(), table, registry);
+  let mut coordinator = MembershipCoordinator::new(config, cluster_config, table, registry);
   coordinator.start_member().expect("start_member");
   MembershipCoordinatorShared::new(coordinator)
 }

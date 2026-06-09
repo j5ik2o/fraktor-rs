@@ -10,6 +10,7 @@ use core::time::Duration;
 use crate::{
   ClusterTopology, ConfigValidation, JoinConfigCompatChecker,
   downing_provider::DowningProviderCompatibility,
+  failure_detector::{FailureDetectorConfig, FailureDetectorConfigError},
   pub_sub::PubSubConfig,
   topology::{ClusterCompatibilityKey, ClusterCompatibilityKeyCatalog},
 };
@@ -21,60 +22,55 @@ const SPLIT_BRAIN_RESOLVER_PROVIDER_KEY: &str = "split-brain-resolver";
 const PUBSUB_SUBSCRIBER_TIMEOUT_KEY: &str = "fraktor.cluster.pubsub.subscriber-timeout";
 const PUBSUB_SUSPENDED_TTL_KEY: &str = "fraktor.cluster.pubsub.suspended-ttl";
 const DOWNING_PROVIDER_KEY: &str = "fraktor.cluster.downing-provider.provider-key";
+const FAILURE_DETECTOR_KEY: &str = ClusterCompatibilityKeyCatalog::FAILURE_DETECTOR.name();
 const SBR_STABLE_AFTER_KEY: &str = "fraktor.cluster.downing-provider.split-brain-resolver.stable-after";
 const SBR_ACTIVE_STRATEGY_KEY: &str = "fraktor.cluster.downing-provider.split-brain-resolver.active-strategy";
 const SBR_DOWN_ALL_WHEN_UNSTABLE_KEY: &str =
   "fraktor.cluster.downing-provider.split-brain-resolver.down-all-when-unstable";
 const REQUIRED_JOIN_COMPATIBILITY_KEYS: &[&str] =
-  &[PUBSUB_SUBSCRIBER_TIMEOUT_KEY, PUBSUB_SUSPENDED_TTL_KEY, DOWNING_PROVIDER_KEY];
+  &[PUBSUB_SUBSCRIBER_TIMEOUT_KEY, PUBSUB_SUSPENDED_TTL_KEY, DOWNING_PROVIDER_KEY, FAILURE_DETECTOR_KEY];
 const CONDITIONAL_JOIN_COMPATIBILITY_KEYS: &[&str] =
   &[SBR_STABLE_AFTER_KEY, SBR_ACTIVE_STRATEGY_KEY, SBR_DOWN_ALL_WHEN_UNSTABLE_KEY];
 const SENSITIVE_JOIN_COMPATIBILITY_KEYS: &[&str] = &[];
 
 struct JoinCompatibilityCheck {
-  key:           ClusterCompatibilityKey,
-  reason:        &'static str,
-  is_compatible: fn(&ClusterExtensionConfig, &ClusterExtensionConfig) -> bool,
+  key:             ClusterCompatibilityKey,
+  mismatch_detail: fn(&ClusterExtensionConfig, &ClusterExtensionConfig) -> Option<String>,
 }
 
 impl JoinCompatibilityCheck {
   const fn new(
     key: ClusterCompatibilityKey,
-    reason: &'static str,
-    is_compatible: fn(&ClusterExtensionConfig, &ClusterExtensionConfig) -> bool,
+    mismatch_detail: fn(&ClusterExtensionConfig, &ClusterExtensionConfig) -> Option<String>,
   ) -> Self {
-    Self { key, reason, is_compatible }
+    Self { key, mismatch_detail }
   }
 }
 
 const JOIN_COMPATIBILITY_CHECKS: &[JoinCompatibilityCheck] = &[
-  JoinCompatibilityCheck::new(
-    ClusterCompatibilityKeyCatalog::PUBSUB,
-    PUBSUB_CONFIGURATION_MISMATCH_REASON,
-    pubsub_configs_are_compatible,
-  ),
-  JoinCompatibilityCheck::new(
-    ClusterCompatibilityKeyCatalog::DOWNING_PROVIDER,
-    DOWNING_PROVIDER_KEY_MISMATCH_REASON,
-    downing_provider_keys_are_compatible,
-  ),
+  JoinCompatibilityCheck::new(ClusterCompatibilityKeyCatalog::PUBSUB, pubsub_config_mismatch_detail),
+  JoinCompatibilityCheck::new(ClusterCompatibilityKeyCatalog::DOWNING_PROVIDER, downing_provider_key_mismatch_detail),
   JoinCompatibilityCheck::new(
     ClusterCompatibilityKeyCatalog::SPLIT_BRAIN_RESOLVER_SETTINGS,
-    SBR_SETTINGS_MISMATCH_REASON,
-    split_brain_resolver_settings_are_compatible,
+    split_brain_resolver_settings_mismatch_detail,
+  ),
+  JoinCompatibilityCheck::new(
+    ClusterCompatibilityKeyCatalog::FAILURE_DETECTOR,
+    failure_detector_config_mismatch_detail,
   ),
 ];
 
 /// Configuration applied when installing the cluster extension.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct ClusterExtensionConfig {
-  advertised_address: String,
-  metrics_enabled:    bool,
-  static_topology:    Option<ClusterTopology>,
-  pubsub_config:      PubSubConfig,
-  app_version:        String,
-  roles:              Vec<String>,
-  downing_provider:   DowningProviderCompatibility,
+  advertised_address:      String,
+  metrics_enabled:         bool,
+  static_topology:         Option<ClusterTopology>,
+  pubsub_config:           PubSubConfig,
+  failure_detector_config: FailureDetectorConfig,
+  app_version:             String,
+  roles:                   Vec<String>,
+  downing_provider:        DowningProviderCompatibility,
 }
 
 impl ClusterExtensionConfig {
@@ -86,13 +82,14 @@ impl ClusterExtensionConfig {
   #[must_use]
   pub fn new() -> Self {
     Self {
-      advertised_address: String::new(),
-      metrics_enabled:    false,
-      static_topology:    None,
-      pubsub_config:      PubSubConfig::new(Duration::from_secs(3), Duration::from_secs(60)),
-      app_version:        String::from(env!("CARGO_PKG_VERSION")),
-      roles:              Vec::new(),
-      downing_provider:   DowningProviderCompatibility::noop(),
+      advertised_address:      String::new(),
+      metrics_enabled:         false,
+      static_topology:         None,
+      pubsub_config:           PubSubConfig::new(Duration::from_secs(3), Duration::from_secs(60)),
+      failure_detector_config: FailureDetectorConfig::new(),
+      app_version:             String::from(env!("CARGO_PKG_VERSION")),
+      roles:                   Vec::new(),
+      downing_provider:        DowningProviderCompatibility::noop(),
     }
   }
 
@@ -138,6 +135,13 @@ impl ClusterExtensionConfig {
     self
   }
 
+  /// Sets the failure detector configuration.
+  #[must_use]
+  pub const fn with_failure_detector_config(mut self, config: FailureDetectorConfig) -> Self {
+    self.failure_detector_config = config;
+    self
+  }
+
   /// Sets cluster roles advertised by this node.
   #[must_use]
   pub fn with_roles(mut self, roles: Vec<String>) -> Self {
@@ -169,6 +173,12 @@ impl ClusterExtensionConfig {
   #[must_use]
   pub const fn pubsub_config(&self) -> &PubSubConfig {
     &self.pubsub_config
+  }
+
+  /// Returns the failure detector configuration.
+  #[must_use]
+  pub const fn failure_detector_config(&self) -> &FailureDetectorConfig {
+    &self.failure_detector_config
   }
 
   /// Returns advertised application version.
@@ -224,6 +234,16 @@ impl ClusterExtensionConfig {
   pub fn is_sensitive_join_compatibility_key(key: &str) -> bool {
     SENSITIVE_JOIN_COMPATIBILITY_KEYS.contains(&key)
   }
+
+  /// Validates cluster extension configuration values.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`FailureDetectorConfigError`] when the configured failure detector
+  /// observation parameters are outside the accepted range.
+  pub fn validate(&self) -> Result<(), FailureDetectorConfigError> {
+    self.failure_detector_config.validate()
+  }
 }
 
 impl Default for ClusterExtensionConfig {
@@ -237,8 +257,8 @@ impl JoinConfigCompatChecker for ClusterExtensionConfig {
     let mut reason = String::new();
 
     for check in JOIN_COMPATIBILITY_CHECKS {
-      if !(check.is_compatible)(self, joining) {
-        append_mismatch_reason(&mut reason, check.key, check.reason);
+      if let Some(detail) = (check.mismatch_detail)(self, joining) {
+        append_mismatch_reason(&mut reason, check.key, &detail);
       }
     }
 
@@ -259,8 +279,27 @@ fn pubsub_configs_are_compatible(local: &ClusterExtensionConfig, joining: &Clust
   local.pubsub_config == joining.pubsub_config
 }
 
+fn pubsub_config_mismatch_detail(local: &ClusterExtensionConfig, joining: &ClusterExtensionConfig) -> Option<String> {
+  if pubsub_configs_are_compatible(local, joining) {
+    None
+  } else {
+    Some(String::from(PUBSUB_CONFIGURATION_MISMATCH_REASON))
+  }
+}
+
 fn downing_provider_keys_are_compatible(local: &ClusterExtensionConfig, joining: &ClusterExtensionConfig) -> bool {
   local.downing_provider.provider_key() == joining.downing_provider.provider_key()
+}
+
+fn downing_provider_key_mismatch_detail(
+  local: &ClusterExtensionConfig,
+  joining: &ClusterExtensionConfig,
+) -> Option<String> {
+  if downing_provider_keys_are_compatible(local, joining) {
+    None
+  } else {
+    Some(String::from(DOWNING_PROVIDER_KEY_MISMATCH_REASON))
+  }
 }
 
 fn split_brain_resolver_settings_are_compatible(
@@ -270,6 +309,25 @@ fn split_brain_resolver_settings_are_compatible(
   local.downing_provider.provider_key() != SPLIT_BRAIN_RESOLVER_PROVIDER_KEY
     || joining.downing_provider.provider_key() != SPLIT_BRAIN_RESOLVER_PROVIDER_KEY
     || local.downing_provider.sbr_settings_identity() == joining.downing_provider.sbr_settings_identity()
+}
+
+fn split_brain_resolver_settings_mismatch_detail(
+  local: &ClusterExtensionConfig,
+  joining: &ClusterExtensionConfig,
+) -> Option<String> {
+  if split_brain_resolver_settings_are_compatible(local, joining) {
+    None
+  } else {
+    Some(String::from(SBR_SETTINGS_MISMATCH_REASON))
+  }
+}
+
+fn failure_detector_config_mismatch_detail(
+  local: &ClusterExtensionConfig,
+  joining: &ClusterExtensionConfig,
+) -> Option<String> {
+  let field_names = local.failure_detector_config.difference_field_names(&joining.failure_detector_config);
+  if field_names.is_empty() { None } else { Some(field_names.join(", ")) }
 }
 
 fn normalize_roles(mut roles: Vec<String>) -> Vec<String> {

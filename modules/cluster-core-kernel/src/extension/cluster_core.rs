@@ -29,6 +29,7 @@ use crate::{
     ActivatedKind, IdentityLookupShared, IdentitySetupError, LookupError, PidCache, PlacementEvent, PlacementResolution,
   },
   downing_provider::{DowningDecision, DowningInput, DowningProvider},
+  failure_detector::FailureDetectorConfig,
   grain::{GrainKey, KindRegistry},
   membership::{CurrentClusterState, GossiperShared, MembershipVersion, NodeRecord, NodeStatus},
   pub_sub::ClusterPubSubShared,
@@ -36,25 +37,26 @@ use crate::{
 
 /// Aggregates configuration and shared dependencies for cluster runtime flows.
 pub struct ClusterCore {
-  provider:            ClusterProviderShared,
-  block_list_provider: ArcShared<dyn BlockListProvider>,
-  event_stream:        EventStreamShared,
-  downing_provider:    SharedLock<Box<dyn DowningProvider>>,
-  gossiper:            GossiperShared,
-  pub_sub:             ClusterPubSubShared,
-  startup_state:       ClusterStartupState,
-  metrics_enabled:     bool,
-  kind_registry:       KindRegistry,
-  identity_lookup:     IdentityLookupShared,
-  virtual_actor_count: i64,
-  mode:                Option<StartupMode>,
-  metrics:             Option<ClusterMetrics>,
-  blocked_members:     Vec<String>,
-  member_count:        usize,
-  pid_cache:           Option<PidCache>,
-  last_topology_hash:  Option<u64>,
-  current_members:     Vec<String>,
-  observed_at:         TimerInstant,
+  provider:                ClusterProviderShared,
+  block_list_provider:     ArcShared<dyn BlockListProvider>,
+  event_stream:            EventStreamShared,
+  downing_provider:        SharedLock<Box<dyn DowningProvider>>,
+  gossiper:                GossiperShared,
+  pub_sub:                 ClusterPubSubShared,
+  failure_detector_config: FailureDetectorConfig,
+  startup_state:           ClusterStartupState,
+  metrics_enabled:         bool,
+  kind_registry:           KindRegistry,
+  identity_lookup:         IdentityLookupShared,
+  virtual_actor_count:     i64,
+  mode:                    Option<StartupMode>,
+  metrics:                 Option<ClusterMetrics>,
+  blocked_members:         Vec<String>,
+  member_count:            usize,
+  pid_cache:               Option<PidCache>,
+  last_topology_hash:      Option<u64>,
+  current_members:         Vec<String>,
+  observed_at:             TimerInstant,
 }
 
 impl ClusterCore {
@@ -84,6 +86,7 @@ impl ClusterCore {
       downing_provider,
       gossiper,
       pub_sub: pubsub,
+      failure_detector_config: *config.failure_detector_config(),
       startup_state,
       metrics_enabled,
       kind_registry,
@@ -223,9 +226,17 @@ impl ClusterCore {
   ///
   /// # Errors
   ///
-  /// Returns an error if pub/sub, gossiper, or provider startup fails.
+  /// Returns an error if configuration validation, pub/sub, gossiper, or provider startup fails.
   pub fn start_member(&mut self) -> Result<(), ClusterError> {
     let address = self.startup_address();
+    self.failure_detector_config.validate().map_err(|error| {
+      self.publish_cluster_event(ClusterEvent::StartupFailed {
+        address: address.clone(),
+        mode:    StartupMode::Member,
+        reason:  error.to_string(),
+      });
+      ClusterError::from(error)
+    })?;
     self.refresh_blocked_members();
 
     self.pub_sub.with_write(|pub_sub| pub_sub.start()).map_err(ClusterError::from).map_err(|error| {
@@ -272,9 +283,17 @@ impl ClusterCore {
   ///
   /// # Errors
   ///
-  /// Returns an error if pub/sub or provider startup fails.
+  /// Returns an error if configuration validation, pub/sub, gossiper, or provider startup fails.
   pub fn start_client(&mut self) -> Result<(), ClusterError> {
     let address = self.startup_address();
+    self.failure_detector_config.validate().map_err(|error| {
+      self.publish_cluster_event(ClusterEvent::StartupFailed {
+        address: address.clone(),
+        mode:    StartupMode::Client,
+        reason:  error.to_string(),
+      });
+      ClusterError::from(error)
+    })?;
     self.refresh_blocked_members();
 
     self.pub_sub.with_write(|pub_sub| pub_sub.start()).map_err(ClusterError::from).map_err(|error| {

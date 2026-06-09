@@ -1,6 +1,7 @@
 //! Membership coordinator error types.
 
 use super::{GossipTransportError, MembershipCoordinatorState, MembershipError};
+use crate::failure_detector::FailureDetectorConfigError;
 
 /// Errors returned by the membership coordinator.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -14,6 +15,8 @@ pub enum MembershipCoordinatorError {
   },
   /// Membership table error.
   Membership(MembershipError),
+  /// Cluster configuration validation failure.
+  Configuration(FailureDetectorConfigError),
   /// Gossip transport error.
   Transport(GossipTransportError),
 }

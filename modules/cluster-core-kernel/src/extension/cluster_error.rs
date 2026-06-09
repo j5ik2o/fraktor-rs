@@ -2,10 +2,15 @@
 
 extern crate alloc;
 
+#[cfg(test)]
+#[path = "cluster_error_test.rs"]
+mod tests;
+
 use alloc::string::String;
 
 use crate::{
-  ClusterProviderError, activation::IdentitySetupError, downing_provider::DowningDecision, pub_sub::PubSubError,
+  ClusterProviderError, activation::IdentitySetupError, downing_provider::DowningDecision,
+  failure_detector::FailureDetectorConfigError, pub_sub::PubSubError,
 };
 
 /// Error type returned by cluster lifecycle operations.
@@ -13,6 +18,8 @@ use crate::{
 pub enum ClusterError {
   /// Provider-related failure.
   Provider(ClusterProviderError),
+  /// Cluster configuration validation failure.
+  Configuration(FailureDetectorConfigError),
   /// Downing strategy did not allow an explicit down command.
   DowningRejected {
     /// Authority that was requested to be downed.
@@ -31,6 +38,12 @@ pub enum ClusterError {
 impl From<ClusterProviderError> for ClusterError {
   fn from(value: ClusterProviderError) -> Self {
     Self::Provider(value)
+  }
+}
+
+impl From<FailureDetectorConfigError> for ClusterError {
+  fn from(value: FailureDetectorConfigError) -> Self {
+    Self::Configuration(value)
   }
 }
 

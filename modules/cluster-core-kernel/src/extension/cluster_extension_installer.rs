@@ -45,7 +45,7 @@ pub type ClusterProviderFactory = ArcShared<
 >;
 
 /// Factory function type for creating a `Gossiper`.
-type GossiperFactory = ArcShared<dyn Fn() -> Box<dyn Gossiper> + Send + Sync>;
+type GossiperFactory = ArcShared<dyn Fn(&ClusterExtensionConfig) -> Box<dyn Gossiper> + Send + Sync>;
 /// Factory function type for creating a `DowningProvider`.
 type DowningProviderFactory = ArcShared<dyn Fn() -> Box<dyn DowningProvider> + Send + Sync>;
 
@@ -169,11 +169,12 @@ impl ClusterExtensionInstaller {
 
   /// Sets a custom gossiper factory.
   ///
-  /// The factory is called during installation to create a fresh `Gossiper` instance.
+  /// The factory receives the validated cluster configuration and is called
+  /// during installation to create a fresh `Gossiper` instance.
   #[must_use]
   pub fn with_gossiper_factory<F>(mut self, factory: F) -> Self
   where
-    F: Fn() -> Box<dyn Gossiper> + Send + Sync + 'static, {
+    F: Fn(&ClusterExtensionConfig) -> Box<dyn Gossiper> + Send + Sync + 'static, {
     self.gossiper_f = Some(ArcShared::new(factory));
     self
   }
@@ -238,6 +239,7 @@ impl ClusterExtensionInstaller {
         alloc::format!("{}:{}", remoting_config.canonical_host(), remoting_config.canonical_port().unwrap_or(0));
       config = config.with_advertised_address(addr);
     }
+    config.validate().map_err(|error| ActorSystemBuildError::Configuration(alloc::format!("{error:?}")))?;
 
     // デフォルト実装を使用（未指定の場合）
     let block_list_provider: ArcShared<dyn BlockListProvider> =
@@ -245,7 +247,8 @@ impl ClusterExtensionInstaller {
     let downing_provider: Box<dyn DowningProvider> =
       self.downing_provider_f.as_ref().map(|f| f()).unwrap_or_else(|| Box::new(NoopDowningProvider::new()));
     // Gossiper はファクトリ経由で作成（Clone できないため）
-    let gossiper: Box<dyn Gossiper> = self.gossiper_f.as_ref().map(|f| f()).unwrap_or_else(|| Box::new(NoopGossiper));
+    let gossiper: Box<dyn Gossiper> =
+      self.gossiper_f.as_ref().map(|f| f(&config)).unwrap_or_else(|| Box::new(NoopGossiper));
     // ClusterPubSub はファクトリ経由で作成（Clone できないため）
     let pubsub: Box<dyn ClusterPubSub> =
       self.pubsub_f.as_ref().map(|f| f(&config)).unwrap_or_else(|| Box::new(NoopClusterPubSub));

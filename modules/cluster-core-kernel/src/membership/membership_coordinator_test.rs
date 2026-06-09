@@ -10,7 +10,9 @@ use fraktor_utils_core_rs::time::TimerInstant;
 use super::MembershipCoordinator;
 use crate::{
   ClusterEvent, ClusterExtensionConfig,
-  failure_detector::{DefaultFailureDetectorRegistry, FailureDetector},
+  failure_detector::{
+    DefaultFailureDetectorRegistry, FailureDetector, FailureDetectorConfig, FailureDetectorConfigError,
+  },
   membership::{
     DataCenter, MembershipCoordinatorConfig, MembershipCoordinatorError, MembershipCoordinatorState, MembershipDelta,
     MembershipError, MembershipEvent, MembershipTable, MembershipVersion, NodeRecord, NodeStatus, QuarantineEvent,
@@ -102,6 +104,21 @@ fn client_rejects_join_and_leave() {
 
   let err = coordinator.handle_leave("node-a", now(1)).unwrap_err();
   assert_eq!(err, MembershipCoordinatorError::InvalidState { state: MembershipCoordinatorState::Client });
+}
+
+#[test]
+fn start_member_rejects_invalid_failure_detector_config_before_running() {
+  let table = MembershipTable::new(3);
+  let config = base_config();
+  let cluster_config =
+    local_cluster_config().with_failure_detector_config(FailureDetectorConfig::new().with_phi_threshold(0.0));
+  let mut coordinator = MembershipCoordinator::new(config, cluster_config, table, registry(1.0));
+
+  assert_eq!(
+    coordinator.start_member().unwrap_err(),
+    MembershipCoordinatorError::Configuration(FailureDetectorConfigError::InvalidPhiThreshold)
+  );
+  assert_eq!(coordinator.state(), MembershipCoordinatorState::Stopped);
 }
 
 #[test]
@@ -359,6 +376,22 @@ fn join_rejects_incompatible_cluster_config() {
     MembershipCoordinatorError::Membership(MembershipError::IncompatibleConfig { reason })
     if reason == "cluster.pubsub mismatch: pubsub configuration mismatch"
   ));
+}
+
+#[test]
+fn join_rejects_invalid_joining_failure_detector_config_before_compatibility_check() {
+  let table = MembershipTable::new(3);
+  let config = base_config();
+  let mut coordinator = MembershipCoordinator::new(config, local_cluster_config(), table, registry(1.0));
+  coordinator.start_member().unwrap();
+
+  let joining =
+    joining_cluster_config().with_failure_detector_config(FailureDetectorConfig::new().with_max_sample_size(0));
+
+  let err = coordinator
+    .handle_join("node-1".to_string(), "node-a".to_string(), &joining, now(1))
+    .expect_err("invalid joining failure detector config must be rejected");
+  assert_eq!(err, MembershipCoordinatorError::Configuration(FailureDetectorConfigError::ZeroMaxSampleSize));
 }
 
 #[test]

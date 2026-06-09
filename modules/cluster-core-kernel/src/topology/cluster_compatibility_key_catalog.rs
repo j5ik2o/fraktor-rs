@@ -8,8 +8,11 @@ const SENSITIVE_PROVIDER_FACTORY_REASON: &str =
 const UNOWNED_FAILURE_DETECTOR_CHOICE_REASON: &str =
   "failure detector implementation choice is not compared until cluster config owns detector selection";
 
-static REQUIRED_KEYS: [ClusterCompatibilityKey; 2] =
-  [ClusterCompatibilityKeyCatalog::PUBSUB, ClusterCompatibilityKeyCatalog::DOWNING_PROVIDER];
+static REQUIRED_KEYS: [ClusterCompatibilityKey; 3] = [
+  ClusterCompatibilityKeyCatalog::PUBSUB,
+  ClusterCompatibilityKeyCatalog::DOWNING_PROVIDER,
+  ClusterCompatibilityKeyCatalog::FAILURE_DETECTOR,
+];
 
 static CONDITIONAL_KEYS: [ClusterCompatibilityKey; 1] = [ClusterCompatibilityKeyCatalog::SPLIT_BRAIN_RESOLVER_SETTINGS];
 
@@ -31,6 +34,8 @@ impl ClusterCompatibilityKeyCatalog {
   /// Downing provider factory key excluded because implementation identity is local and sensitive.
   pub const DOWNING_PROVIDER_FACTORY: ClusterCompatibilityKey =
     ClusterCompatibilityKey::excluded("cluster.downing-provider.factory", SENSITIVE_PROVIDER_FACTORY_REASON);
+  /// Failure detector configuration compatibility key.
+  pub const FAILURE_DETECTOR: ClusterCompatibilityKey = ClusterCompatibilityKey::required("cluster.failure-detector");
   /// Failure detector implementation choice vocabulary key.
   pub const FAILURE_DETECTOR_CHOICE: ClusterCompatibilityKey =
     ClusterCompatibilityKey::excluded("cluster.failure-detector.choice", UNOWNED_FAILURE_DETECTOR_CHOICE_REASON);
