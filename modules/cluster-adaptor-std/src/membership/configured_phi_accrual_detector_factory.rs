@@ -57,5 +57,10 @@ impl FailureDetector for PhiAccrualAdapter {
 }
 
 fn millis_u64(value: Duration) -> u64 {
-  u64::try_from(value.as_millis()).unwrap_or(u64::MAX)
+  let millis = value.as_millis();
+  if millis == 0 && value > Duration::ZERO {
+    return 1;
+  }
+
+  u64::try_from(millis).unwrap_or(u64::MAX)
 }
