@@ -77,7 +77,8 @@ impl MembershipCoordinator {
   /// # Errors
   ///
   /// Returns an error when the coordinator cannot transition to member mode.
-  pub const fn start_member(&mut self) -> Result<(), MembershipCoordinatorError> {
+  pub fn start_member(&mut self) -> Result<(), MembershipCoordinatorError> {
+    self.cluster_config.validate().map_err(MembershipCoordinatorError::Configuration)?;
     self.state = MembershipCoordinatorState::Member;
     Ok(())
   }
@@ -87,7 +88,8 @@ impl MembershipCoordinator {
   /// # Errors
   ///
   /// Returns an error when the coordinator cannot transition to client mode.
-  pub const fn start_client(&mut self) -> Result<(), MembershipCoordinatorError> {
+  pub fn start_client(&mut self) -> Result<(), MembershipCoordinatorError> {
+    self.cluster_config.validate().map_err(MembershipCoordinatorError::Configuration)?;
     self.state = MembershipCoordinatorState::Client;
     Ok(())
   }
