@@ -19,7 +19,7 @@
   - _Depends:_ none
 
 - [ ] 2. コア: 順序契約・DC 到達性ラッチ・イベント併発
-- [ ] 2.1 (P) Member Ordering の公開契約を実装する
+- [x] 2.1 (P) Member Ordering の公開契約を実装する
   - 既存のペア比較（join 古さ + authority tie-break）を正本として、全順序比較・age 順整列・最古メンバー特定の pure な公開関数群を membership に追加する
   - フィルタ（active / leader-eligible）は持ち込まず順序のみを所有する
   - membership の wiring に新モジュール宣言と pub use を追加し、公開 API として到達可能にする
@@ -88,3 +88,8 @@
   - _Requirements:_ 5.1, 5.4
   - _Boundary:_ クレート横断検証（統合タスク）
   - _Depends:_ 3.1, 3.2, 3.3
+
+## Implementation Notes
+
+- 1.1: ClusterEventType の matches は const fn の網羅 match。variant 追加時は cluster_event.rs / cluster_event_type.rs / 同 matches の 3 点セットで更新する
+- 1.2: trace field 契約に FIELD_TRANSITION（"cluster.lifecycle.transition"）が設計外で追加されている（レビュー承認済み）。3.3 の std 準拠化ではこの定数を遷移種別の出力 key として使うこと
