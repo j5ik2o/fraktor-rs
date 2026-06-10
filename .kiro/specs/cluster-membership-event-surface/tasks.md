@@ -10,7 +10,7 @@
   - _Boundary:_ ClusterEvent / ClusterEventType 拡張
   - _Depends:_ none
 
-- [ ] 1.2 (P) cluster lifecycle のトレースフィールド契約を単一定義として追加する
+- [x] 1.2 (P) cluster lifecycle のトレースフィールド契約を単一定義として追加する
   - 遷移種別（join / up / leave / removal / shutdown 進行 / DC 到達性変化）ごとに一意な値を持つ定数群と、member 識別・data center を表すフィールド名定数を 1 ファイルで定義する
   - topology の wiring から公開する
   - 完了条件: 遷移種別値の一意性テストが通り、契約が単一ファイルから公開される
