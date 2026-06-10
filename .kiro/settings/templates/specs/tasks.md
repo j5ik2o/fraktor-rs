@@ -2,23 +2,28 @@
 
 ## タスク形式テンプレート
 
-作業分解に合う形式を使う:
+実行可能なすべてのタスク（every executable task / すべての executable task）に、この正規の注釈文法を用いること。
 
-### 主要タスクのみ
+### 実行作業を含むメインタスク
 - [ ] {{NUMBER}}. {{TASK_DESCRIPTION}}{{PARALLEL_MARK}}
-  - {{DETAIL_ITEM_1}} *(詳細が必要な場合だけ書く。単独で十分なタスクではdetail bulletを省略する。)*
-  - _Requirements: {{REQUIREMENT_IDS}}_
+  - {{OBSERVABLE_COMPLETION_ITEM}} *(このタスクの、観測可能な完了シグナルを具体的に記述する)*
+  - _Requirements:_ {{REQUIREMENT_IDS}} *(IDのみ。説明や括弧を付けない)*
+  - _Boundary:_ {{COMPONENT_NAMES}}
+  - _Depends:_ {{TASK_IDS_OR_NONE}}
 
-### 主要タスク + サブタスク構造
+### メインタスクとサブタスク構造
 - [ ] {{MAJOR_NUMBER}}. {{MAJOR_TASK_SUMMARY}}
 - [ ] {{MAJOR_NUMBER}}.{{SUB_NUMBER}} {{SUB_TASK_DESCRIPTION}}{{SUB_PARALLEL_MARK}}
   - {{DETAIL_ITEM_1}}
-  - {{DETAIL_ITEM_2}}
-  - {{OBSERVABLE_COMPLETION_ITEM}} *(少なくとも1つのdetail itemで、このタスクの観測可能な完了条件を書く。)*
-  - _Requirements: {{REQUIREMENT_IDS}}_ *(IDだけを書く。説明や括弧書きを追加しない。)*
-  - _Boundary: {{COMPONENT_NAMES}}_ *((P) タスクでは必須。scopeが明らかな場合は省略する。)*
-  - _Depends: {{TASK_IDS}}_ *(非自明な境界横断依存がある場合だけ書く。多くのタスクでは省略する。)*
+  - {{OBSERVABLE_COMPLETION_ITEM}} *(このタスクの、観測可能な完了シグナルを具体的に記述する)*
+  - _Requirements:_ {{REQUIREMENT_IDS}} *(IDのみ。説明や括弧を付けない)*
+  - _Boundary:_ {{COMPONENT_NAMES}}
+  - _Depends:_ {{TASK_IDS_OR_NONE}}
 
-> **並列マーカー**: 並列実行可能なタスクにだけ ` (P)` を付ける。`--sequential` modeでは省略する。
->
-> **任意のテストカバレッジ**: サブタスクが受け入れ条件に紐づく延期可能なテスト作業である場合だけ、checkboxを `- [ ]*` にし、参照する要件をdetail bulletで説明する。
+## 注釈ルール
+
+- `_Requirements:_ {{REQUIREMENT_IDS}}` には数値の要件IDを用いる。
+- `_Boundary:_ {{COMPONENT_NAMES}}` は、所有するコンポーネントまたはワークフローの境界を示す。
+- `_Depends:_ {{TASK_IDS_OR_NONE}}` は、依存がある場合にタスクIDを用いる。
+- 依存がない場合は `_Depends:_ none` が正規の文法。
+- ` (P)` は、境界が重複せず、かつ明示的な依存グラフ上で独立実行可能と示される場合にのみ付与する。
