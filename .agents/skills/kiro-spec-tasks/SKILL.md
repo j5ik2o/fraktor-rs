@@ -27,6 +27,7 @@ metadata:
 - `.kiro/specs/$1/tasks.md` (if exists, for merge mode)
 - Core steering context: `product.md`, `tech.md`, `structure.md`
 - Additional steering files only when directly relevant to requirements coverage, design boundaries, runtime prerequisites, or team conventions that affect task executability
+- `.kiro/settings/templates/specs/localized-spec-terminology.md` for localized spec terms
 
 **Validate approvals**:
 - If `-y` flag provided: Auto-approve requirements and design in spec.json. Tasks approval is also handled automatically in Step 4.
@@ -38,13 +39,13 @@ metadata:
 **Load generation rules and template**:
 - Read `rules/tasks-generation.md` from this skill's directory for principles
 - If `sequential` is false: Read `rules/tasks-parallel-analysis.md` from this skill's directory for parallel judgement criteria
-- Read `.kiro/settings/templates/specs/tasks.md` for format (supports `(P)` markers)
+- Select the matching tasks template from `spec.json.language`: `.kiro/settings/templates/specs/tasks.md` for `ja`, or `.kiro/settings/templates/specs/tasks.en.md` for `en`. Stop for unsupported languages. Both templates support `(P)` markers.
 
 #### Parallel Research
 
 The following research areas are independent and can be executed in parallel:
 1. **Context loading**: Spec documents (requirements.md, design.md), steering files
-2. **Rules loading**: tasks-generation.md, tasks-parallel-analysis.md, tasks template
+2. **Rules loading**: tasks-generation.md, tasks-parallel-analysis.md, localized spec terminology, tasks template
 
 If multi-agent is enabled, spawn sub-agents for each area above. Otherwise execute sequentially.
 
@@ -52,9 +53,6 @@ After all parallel research completes, synthesize findings before generating tas
 
 **Generate task list following all rules**:
 - Use language specified in spec.json
-- Render every natural-language heading, task title, task detail bullet, summary, and final response in the language specified in spec.json.
-- Treat English examples in rules/templates as structural examples only; do not copy their English wording into generated `tasks.md` unless spec.json language is English.
-- Keep machine-readable labels (`_Requirements:_`, `_Boundary:_`, `_Depends:_`), code identifiers, package names, API names, and domain terms already written in English unchanged when appropriate.
 - Map all requirements to tasks
 - When documenting requirement coverage, list numeric requirement IDs only (comma-separated) without descriptive suffixes, parentheses, translations, or free-form labels
 - Ensure all design components included
@@ -79,9 +77,6 @@ After all parallel research completes, synthesize findings before generating tas
   - Each executable sub-task includes an observable completion bullet
   - No implicit prerequisites remain hidden
   - `_Depends:_`, `_Boundary:_`, and `(P)` markers still match the dependency graph and architecture boundaries
-- Review language compliance:
-  - Natural-language headings, task titles, detail bullets, summary, and final response use `spec.json.language`
-  - English template phrases such as "Implementation Plan", "Foundation", "Build", "Validate", and "Task Format Template" are not present in `tasks.md` unless the target language is English
 - If issues are task-plan-local, repair the draft and re-run the review gate before writing
 - Keep the review bounded to at most 2 repair passes
 - If review exposes a real requirements/design gap or contradiction, stop and send the user back to requirements/design instead of inventing filler tasks
@@ -98,7 +93,6 @@ Before writing `tasks.md`, run one lightweight independent sanity review of the 
   - boundary overlap or ambiguous ownership between tasks
   - tasks that are too large, too vague, cross boundaries without being explicit integration tasks, or are missing a verifiable deliverable
   - contradictions introduced between requirements, design, and the task graph
-  - generated natural-language content is not in the wrong language for `spec.json.language`
 - Return one verdict:
   - `PASS`
   - `NEEDS_FIXES`
@@ -135,8 +129,8 @@ Before writing `tasks.md`, run one lightweight independent sanity review of the 
 
 ## Critical Constraints
 - **Task Integration**: Every task must connect to the system (no orphaned work)
-- **Boundary annotations**: Required for `(P)` tasks, recommended for all (`_Boundary: ComponentName_`)
-- **Explicit dependencies**: Cross-boundary non-obvious dependencies declared with `_Depends: X.X_`
+- **Boundary annotations**: Required for every executable task (`_Boundary:_ ComponentName`)
+- **Explicit dependencies**: Every executable task declares `_Depends:_ none` or a specific cross-boundary dependency such as `_Depends:_ X.X`
 - **Executable deliverable granularity**: Each task must produce a verifiable deliverable (file, endpoint, UI component, config). Infrastructure tasks (project scaffolding, manifest, host integration, build config) must be explicit — never assume they exist
 - **Observable done state**: Each executable sub-task must include at least one detail bullet that makes the completed state visible without adding new bookkeeping fields
 - **No implicit prerequisites**: If a task requires a runtime, SDK, framework setup, or config file, that setup must be a separate preceding task
@@ -186,8 +180,8 @@ Provide brief summary in the language specified in spec.json:
 - **Suggested Action**: "Refine requirements.md or design.md, then re-run `$kiro-spec-tasks $1`"
 
 **Template/Rules Missing**:
+- **Stop Execution**: The selected language-specific template and required rules files must exist
 - **User Message**: "Template or rules files missing in `.kiro/settings/`"
-- **Fallback**: Use inline basic structure with warning
 - **Suggested Action**: "Check repository setup or restore template files"
 - **Missing Numeric Requirement IDs**:
   - **Stop Execution**: All requirements in requirements.md MUST have numeric IDs. If any requirement lacks a numeric ID, stop and request that requirements.md be fixed before generating tasks.

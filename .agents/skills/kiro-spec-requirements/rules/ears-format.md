@@ -10,6 +10,7 @@ All acceptance criteria should be written in the target language configured for 
 
 For Japanese specifications (`language: "ja"`), use Japanese EARS fixed phrases.
 Do not force English trigger words such as `When`, `If`, `While`, `Where`, or `shall` into Japanese requirements.
+Existing hybrid Japanese specs with English EARS triggers remain valid for review, but new or rewritten Japanese criteria should use the Japanese phrases.
 
 ## Primary EARS Patterns
 
@@ -45,6 +46,8 @@ Do not force English trigger words such as `When`, `If`, `While`, `Where`, or `s
 
 ## Combined Patterns
 
+- **English Pattern**: While [precondition], when [event], the [system] shall [response/action]
+- **English Pattern**: When [event] and [additional condition], the [system] shall [response/action]
 - [前提] の間、[イベント] が起きたとき、[システム] は [応答] しなければならない
 - [イベント] が起き、かつ [追加条件] の場合、[システム] は [応答] しなければならない
 
@@ -57,6 +60,7 @@ Do not force English trigger words such as `When`, `If`, `While`, `Where`, or `s
 ## Quality Criteria
 
 - Requirements must be testable, verifiable, and describe a single behavior.
-- Use objective mandatory language: in Japanese, prefer `しなければならない`; avoid vague words such as `適切に`, `できるだけ`, or `なるべく`.
+- Use objective mandatory language: in English, use `shall` for mandatory behavior; in Japanese, prefer `しなければならない`.
+- Avoid vague words such as `appropriate`, `where possible`, `適切に`, `できるだけ`, or `なるべく`.
 - Follow an EARS logical pattern even when localized into Japanese.
 - Keep implementation details out of requirements unless they are directly user- or operator-observable constraints.
