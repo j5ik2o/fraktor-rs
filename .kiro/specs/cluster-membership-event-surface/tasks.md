@@ -1,7 +1,7 @@
 # 実装計画
 
 - [ ] 1. 基盤: イベント語彙とトレースフィールド契約
-- [ ] 1.1 cluster イベント語彙に shutdown 進行と DC 到達性の 4 種別を追加する
+- [x] 1.1 cluster イベント語彙に shutdown 進行と DC 到達性の 4 種別を追加する
   - shutdown 準備開始・完了（member 識別 + 観測時刻）と data center の unreachable / reachable（data center 識別 + 観測時刻）のイベントを既存 variant のフィールド規約に合わせて追加する
   - イベント種別フィルタに対応 4 種別を追加し、種別照合の網羅 match を更新する
   - 既存のイベント種別は削除・変更しない
