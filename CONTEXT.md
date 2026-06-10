@@ -71,3 +71,19 @@ _Avoid_: Failure Detector Configuration
 **Cluster Configuration Validation (クラスタ設定検証)**:
 Cluster Configuration (クラスタ設定) が Cluster Operational Contract (クラスタ運用契約) として成立するかを確認すること。builder API ではなく、install / start 境界でまとめて実行する。
 _Avoid_: Builder Validation (builder 検証)
+
+**Member Ordering (メンバー順序)**:
+Cluster Member (クラスタメンバー) の決定的な全順序の公開契約。参加の古さに基づく age ordering を含み、Downing Decision (ダウン判断) の KeepOldest や将来の singleton 選出が同じ順序結果を参照するための観測契約であって、選出や配置の決定そのものではない。
+_Avoid_: Oldest Election, Singleton Selection
+
+**Shutdown Progress Event (シャットダウン進行イベント)**:
+Cluster Member (クラスタメンバー) の shutdown 準備の開始・完了にあたる Membership State Transition (メンバーシップ状態遷移) を購読者へ知らせるイベント。full cluster shutdown を開始する command ではない。
+_Avoid_: Full Cluster Shutdown Command
+
+**Data Center Reachability (データセンター到達性)**:
+cross-DC の Availability Evidence (可用性観測証拠) から導かれる、data center 単位の reachable / unreachable の観測。member 単位の到達性とは区別され、それ自体は Downing Decision (ダウン判断) や Member Removal (メンバー除去) を実行しない。
+_Avoid_: Member-level Reachability, Downing Decision
+
+**Cluster Lifecycle Trace Field (クラスタライフサイクル トレースフィールド)**:
+cluster lifecycle の主要遷移をトレース出力で機械的に解析可能にするための、遷移種別ごとの構造化フィールド名の公開契約。フィールド名の語彙を所有するのであって、出力先や tracing 実装の選択ではない。
+_Avoid_: Log Output Format, Tracing Backend Choice
