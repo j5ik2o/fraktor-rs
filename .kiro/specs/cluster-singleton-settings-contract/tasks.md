@@ -29,7 +29,7 @@
   - _Boundary:_ ClusterSingletonManagerSettings
   - _Depends:_ 2.1
 
-- [ ] 2.3 (P) proxy 設定契約を実装する
+- [x] 2.3 (P) proxy 設定契約を実装する
   - singleton 名・role・data center・identification 間隔・buffer size を保持し、既定値（"singleton" / role なし / DC なし / 1 秒 / 1000）を適用する
   - data center 項目は membership の既存 DataCenter 型を再利用する
   - 検証で空 singleton 名・ゼロ以下の identification 間隔・10000 超の buffer size を拒否し、buffer size 0 は「バッファリングなし」として受理する

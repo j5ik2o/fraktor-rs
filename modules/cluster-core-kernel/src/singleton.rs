@@ -1,9 +1,11 @@
 //! Cluster Singleton settings, validation, and error vocabulary.
 
 mod cluster_singleton_manager_settings;
+mod cluster_singleton_proxy_settings;
 mod cluster_singleton_settings_error;
 mod lease_usage_settings;
 
 pub use cluster_singleton_manager_settings::ClusterSingletonManagerSettings;
+pub use cluster_singleton_proxy_settings::ClusterSingletonProxySettings;
 pub use cluster_singleton_settings_error::ClusterSingletonSettingsError;
 pub use lease_usage_settings::LeaseUsageSettings;
