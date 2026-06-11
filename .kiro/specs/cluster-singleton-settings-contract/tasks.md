@@ -94,7 +94,7 @@
   - _Boundary:_ ClusterExtensionInstaller
   - _Depends:_ 4.2
 
-- [ ] 4.4 (P) stuck 通知の購読識別を統合検証する
+- [x] 4.4 (P) stuck 通知の購読識別を統合検証する
   - EventStream 経由でテスト発行した stuck 通知を、対応種別フィルタの購読者だけが受信し、他種別フィルタの購読者は受信しないことを cluster の購読 API 経由で検証する
   - 完了条件: 購読フィルタの統合テストが通る
   - _Requirements:_ 7.3

@@ -39,6 +39,7 @@ use crate::{
   extension::ClusterExtensionInstaller,
   grain::{GRAIN_EVENT_STREAM_NAME, GrainEvent, GrainKey},
   membership::NodeStatus,
+  singleton::SingletonStuckPhase,
 };
 
 fn test_subscriber_handle(subscriber: impl EventStreamSubscriber) -> EventStreamSubscriberShared {
@@ -551,6 +552,55 @@ fn subscribe_with_shutdown_event_types_receives_only_shutdown_events() {
     matches!(&events[1], ClusterEvent::MemberReadyForShutdown { authority, .. } if authority == "node2:8080"),
     "2 件目は MemberReadyForShutdown であること: {:?}",
     events[1]
+  );
+}
+
+#[test]
+fn subscribe_with_singleton_stuck_filter_receives_only_stuck_events() {
+  // SingletonHandOverStuck フィルタの購読者だけが stuck 通知を受信し、
+  // 他種別フィルタ（MemberStatusChanged）の購読者は受信しないことを検証する（要件 7.3）
+  let (system, extension) = build_system_with_extension(|| Box::new(StaticIdentityLookup::new("node1:8080")));
+  extension.start_member().expect("start member");
+
+  let api = ClusterApi::try_from_system(&system).expect("cluster api");
+
+  // SingletonHandOverStuck フィルタで購読する購読者
+  let stuck_recorder = RecordingClusterEvents::new();
+  let stuck_subscriber = test_subscriber_handle(stuck_recorder.clone());
+  let _stuck_subscription = api.subscribe_no_replay(&stuck_subscriber, &[ClusterEventType::SingletonHandOverStuck]);
+
+  // 他種別フィルタ（MemberStatusChanged）で購読する購読者
+  let other_recorder = RecordingClusterEvents::new();
+  let other_subscriber = test_subscriber_handle(other_recorder.clone());
+  let _other_subscription = api.subscribe_no_replay(&other_subscriber, &[ClusterEventType::MemberStatusChanged]);
+
+  // SingletonHandOverStuck を EventStream 経由でテスト発行する
+  let event_stream = system.event_stream();
+  let stuck_event = ClusterEvent::SingletonHandOverStuck {
+    singleton_name: String::from("my-singleton"),
+    phase:          SingletonStuckPhase::HandingOver,
+    observed_at:    TimerInstant::from_ticks(1, Duration::from_secs(1)),
+  };
+  event_stream
+    .publish(&EventStreamEvent::Extension { name: String::from("cluster"), payload: AnyMessage::new(stuck_event) });
+
+  // SingletonHandOverStuck フィルタの購読者は stuck 通知を 1 件受信する
+  let stuck_events = stuck_recorder.events();
+  assert_eq!(stuck_events.len(), 1, "SingletonHandOverStuck フィルタ購読者は 1 件受信すること: {stuck_events:?}");
+  assert!(
+    matches!(
+      &stuck_events[0],
+      ClusterEvent::SingletonHandOverStuck { singleton_name, .. } if singleton_name == "my-singleton"
+    ),
+    "受信イベントは SingletonHandOverStuck であること: {:?}",
+    stuck_events[0]
+  );
+
+  // MemberStatusChanged フィルタの購読者は stuck 通知を受信しない
+  let other_events = other_recorder.events();
+  assert!(
+    other_events.is_empty(),
+    "MemberStatusChanged フィルタ購読者は SingletonHandOverStuck を受信してはならない: {other_events:?}"
   );
 }
 
