@@ -36,9 +36,7 @@ impl DistributedPubSubConfig {
     no_subscriber_behavior: PubSubNoSubscriberBehavior,
   ) -> Result<Self, PubSubError> {
     if max_delta_elements == 0 {
-      return Err(PubSubError::InvalidConfig {
-        reason: String::from("max_delta_elements must be greater than zero"),
-      });
+      return Err(PubSubError::InvalidConfig { reason: String::from("max_delta_elements must be greater than zero") });
     }
 
     Ok(Self { role, routing_mode, gossip_interval, removed_entry_ttl, max_delta_elements, no_subscriber_behavior })
