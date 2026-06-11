@@ -101,7 +101,7 @@
   - _Boundary:_ ClusterApi 購読テスト
   - _Depends:_ 3.2, 4.2
 
-- [ ] 5. 非回帰と範囲限定を検証する
+- [x] 5. 非回帰と範囲限定を検証する
   - cluster 3 クレート（kernel / typed / adaptor-std）の既存テストが無変更で通ることを確認する
   - singleton モジュールの公開 API が純粋データ型のみで、runtime 動作（oldest 選出・handover 実行・バッファリング）を提供していないことを公開面で確認する
   - 対象範囲の lint（clippy / dylint）を実行し、新規違反がないことを確認する
