@@ -45,7 +45,7 @@
 - [x] cluster-discovery-provider-interop -- SeedNodeProcess と generic discovery adapter を provider boundary に追加する。Dependencies: cluster-active-compatibility-baseline
 - [x] cluster-pubsub-mediator-protocol -- DistributedPubSubMediator、settings、Send / SendToAll path semantics、topic registry gossip / delta collection を定義する。Dependencies: cluster-membership-reachability-model, cluster-gossip-heartbeat-protocol
 - [x] cluster-message-serialization-contract -- cluster message serializer contract を std/wire と actor-core serialization の境界で定義する。Dependencies: cluster-gossip-heartbeat-protocol, cluster-pubsub-mediator-protocol
-- [ ] cluster-membership-event-surface -- Member ordering 公開契約、shutdown 進行 / DC reachability の membership イベント variant、cluster lifecycle 構造化 tracing field 契約を定義する。Dependencies: cluster-membership-reachability-model
+- [x] cluster-membership-event-surface -- Member ordering 公開契約、shutdown 進行 / DC reachability の membership イベント variant、cluster lifecycle 構造化 tracing field 契約を定義する。Dependencies: cluster-membership-reachability-model（2026-06-11 完了、PR #1982）
 - [ ] cluster-singleton-settings-contract -- Cluster Singleton の設定契約（classic/typed settings、setup、stuck 検知契約）を config validation / join compatibility に接続して定義する。Dependencies: cluster-active-compatibility-baseline
 - [ ] cluster-grain-typed-entity-facade -- GrainKey / GrainRef の typed wrapper（EntityTypeKey / EntityRef 相当）と typed ActorSystem setup 統合を定義する。Dependencies: none
 - [ ] cluster-sharding-extractor-contract -- ShardingEnvelope / ShardingMessageExtractor SPI と HashCode / Murmur2 標準実装群を定義する。Dependencies: cluster-grain-typed-entity-facade
