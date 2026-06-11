@@ -566,6 +566,24 @@ impl MembershipCoordinator {
       } else if from == NodeStatus::Suspect && status == NodeStatus::Up {
         Self::emit_reachable_event(record, now, outcome);
       }
+      // shutdown 系専用イベントの併発（順序固定: MemberStatusChanged の後）
+      match status {
+        | NodeStatus::PreparingForShutdown => {
+          outcome.member_events.push(ClusterEvent::MemberPreparingForShutdown {
+            node_id:     record.node_id.clone(),
+            authority:   record.authority.clone(),
+            observed_at: now,
+          });
+        },
+        | NodeStatus::ReadyForShutdown => {
+          outcome.member_events.push(ClusterEvent::MemberReadyForShutdown {
+            node_id:     record.node_id.clone(),
+            authority:   record.authority.clone(),
+            observed_at: now,
+          });
+        },
+        | _ => {},
+      }
     }
   }
 
@@ -606,6 +624,24 @@ impl MembershipCoordinator {
         to,
         observed_at: now,
       });
+      // shutdown 系専用イベントの併発（順序固定: MemberStatusChanged の後）
+      match to {
+        | NodeStatus::PreparingForShutdown => {
+          outcome.member_events.push(ClusterEvent::MemberPreparingForShutdown {
+            node_id:     record.node_id.clone(),
+            authority:   record.authority.clone(),
+            observed_at: now,
+          });
+        },
+        | NodeStatus::ReadyForShutdown => {
+          outcome.member_events.push(ClusterEvent::MemberReadyForShutdown {
+            node_id:     record.node_id.clone(),
+            authority:   record.authority.clone(),
+            observed_at: now,
+          });
+        },
+        | _ => {},
+      }
     }
   }
 

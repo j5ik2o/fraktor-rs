@@ -659,3 +659,190 @@ fn gossip_seen_changed_event_is_emitted() {
     ClusterEvent::SeenChanged { version, .. } if *version == MembershipVersion::new(1)
   )));
 }
+
+// タスク 2.3: shutdown 進行イベントの併発テスト
+
+#[test]
+fn gossip_preparing_for_shutdown_emits_status_changed_then_preparing_event() {
+  // gossip 経由の PreparingForShutdown 遷移で MemberStatusChanged → MemberPreparingForShutdown
+  // の順に発行される
+  let mut table = MembershipTable::new(3);
+  table.try_join("node-1".to_string(), "node-a".to_string(), "1.0.0".to_string(), vec![]).expect("join should succeed");
+  table.mark_weakly_up("node-a").expect("weakly up").expect("delta");
+  table.mark_up("node-a").expect("up").expect("delta");
+  let version = table.version();
+
+  let preparing_version = version.next();
+  let preparing_record = NodeRecord::new(
+    "node-1".to_string(),
+    "node-a".to_string(),
+    NodeStatus::PreparingForShutdown,
+    preparing_version,
+    "1.0.0".to_string(),
+    vec![String::from("frontend")],
+  );
+  let delta = MembershipDelta::new(version, preparing_version, vec![preparing_record]);
+
+  let mut coordinator = MembershipCoordinator::new(base_config(), local_cluster_config(), table, registry(1.0));
+  coordinator.start_member().unwrap();
+
+  let outcome = coordinator.handle_gossip_delta("node-b", &delta, now(1)).unwrap();
+
+  // MemberStatusChanged と MemberPreparingForShutdown の両方が発行される
+  assert!(
+    outcome.member_events.iter().any(|event| matches!(
+      event,
+      ClusterEvent::MemberStatusChanged { authority, to: NodeStatus::PreparingForShutdown, .. }
+        if authority == "node-a"
+    )),
+    "MemberStatusChanged to PreparingForShutdown should be emitted"
+  );
+  assert!(
+    outcome.member_events.iter().any(|event| matches!(
+      event,
+      ClusterEvent::MemberPreparingForShutdown { authority, .. } if authority == "node-a"
+    )),
+    "MemberPreparingForShutdown should be emitted"
+  );
+
+  // 併発順序: MemberStatusChanged → MemberPreparingForShutdown
+  let status_changed_pos = outcome
+    .member_events
+    .iter()
+    .position(|event| matches!(event, ClusterEvent::MemberStatusChanged { to: NodeStatus::PreparingForShutdown, .. }))
+    .expect("MemberStatusChanged position");
+  let preparing_pos = outcome
+    .member_events
+    .iter()
+    .position(|event| matches!(event, ClusterEvent::MemberPreparingForShutdown { .. }))
+    .expect("MemberPreparingForShutdown position");
+  assert!(status_changed_pos < preparing_pos, "MemberStatusChanged must come before MemberPreparingForShutdown");
+}
+
+#[test]
+fn gossip_ready_for_shutdown_emits_status_changed_then_ready_event() {
+  // gossip 経由の ReadyForShutdown 遷移で MemberStatusChanged → MemberReadyForShutdown
+  // の順に発行される
+  let mut table = MembershipTable::new(3);
+  table.try_join("node-1".to_string(), "node-a".to_string(), "1.0.0".to_string(), vec![]).expect("join should succeed");
+  table.mark_weakly_up("node-a").expect("weakly up").expect("delta");
+  table.mark_up("node-a").expect("up").expect("delta");
+  let version = table.version();
+
+  let ready_version = version.next();
+  let ready_record = NodeRecord::new(
+    "node-1".to_string(),
+    "node-a".to_string(),
+    NodeStatus::ReadyForShutdown,
+    ready_version,
+    "1.0.0".to_string(),
+    vec![String::from("frontend")],
+  );
+  let delta = MembershipDelta::new(version, ready_version, vec![ready_record]);
+
+  let mut coordinator = MembershipCoordinator::new(base_config(), local_cluster_config(), table, registry(1.0));
+  coordinator.start_member().unwrap();
+
+  let outcome = coordinator.handle_gossip_delta("node-b", &delta, now(1)).unwrap();
+
+  assert!(
+    outcome.member_events.iter().any(|event| matches!(
+      event,
+      ClusterEvent::MemberStatusChanged { authority, to: NodeStatus::ReadyForShutdown, .. }
+        if authority == "node-a"
+    )),
+    "MemberStatusChanged to ReadyForShutdown should be emitted"
+  );
+  assert!(
+    outcome.member_events.iter().any(|event| matches!(
+      event,
+      ClusterEvent::MemberReadyForShutdown { authority, .. } if authority == "node-a"
+    )),
+    "MemberReadyForShutdown should be emitted"
+  );
+
+  // 併発順序: MemberStatusChanged → MemberReadyForShutdown
+  let status_changed_pos = outcome
+    .member_events
+    .iter()
+    .position(|event| matches!(event, ClusterEvent::MemberStatusChanged { to: NodeStatus::ReadyForShutdown, .. }))
+    .expect("MemberStatusChanged position");
+  let ready_pos = outcome
+    .member_events
+    .iter()
+    .position(|event| matches!(event, ClusterEvent::MemberReadyForShutdown { .. }))
+    .expect("MemberReadyForShutdown position");
+  assert!(status_changed_pos < ready_pos, "MemberStatusChanged must come before MemberReadyForShutdown");
+}
+
+#[test]
+fn non_shutdown_gossip_transition_does_not_emit_shutdown_events() {
+  // 非 shutdown 系遷移では専用イベントが発行されないことを確認
+  let mut table = MembershipTable::new(3);
+  table.try_join("node-1".to_string(), "node-a".to_string(), "1.0.0".to_string(), vec![]).expect("join should succeed");
+  let version = table.version();
+
+  let up_version = version.next();
+  let up_record = NodeRecord::new(
+    "node-1".to_string(),
+    "node-a".to_string(),
+    NodeStatus::Up,
+    up_version,
+    "1.0.0".to_string(),
+    vec![],
+  );
+  let delta = MembershipDelta::new(version, up_version, vec![up_record]);
+
+  let mut coordinator = MembershipCoordinator::new(base_config(), local_cluster_config(), table, registry(1.0));
+  coordinator.start_member().unwrap();
+
+  let outcome = coordinator.handle_gossip_delta("node-b", &delta, now(1)).unwrap();
+
+  assert!(
+    !outcome.member_events.iter().any(|event| matches!(
+      event,
+      ClusterEvent::MemberPreparingForShutdown { .. } | ClusterEvent::MemberReadyForShutdown { .. }
+    )),
+    "No shutdown events should be emitted for non-shutdown transition"
+  );
+}
+
+#[test]
+fn member_status_changed_is_still_emitted_alongside_shutdown_events() {
+  // 要件 5.4: MemberStatusChanged は削除・条件変更なく維持される
+  let mut table = MembershipTable::new(3);
+  table.try_join("node-1".to_string(), "node-a".to_string(), "1.0.0".to_string(), vec![]).expect("join should succeed");
+  table.mark_weakly_up("node-a").expect("weakly up").expect("delta");
+  table.mark_up("node-a").expect("up").expect("delta");
+  let version = table.version();
+
+  let preparing_version = version.next();
+  let preparing_record = NodeRecord::new(
+    "node-1".to_string(),
+    "node-a".to_string(),
+    NodeStatus::PreparingForShutdown,
+    preparing_version,
+    "1.0.0".to_string(),
+    vec![],
+  );
+  let delta = MembershipDelta::new(version, preparing_version, vec![preparing_record]);
+
+  let mut coordinator = MembershipCoordinator::new(base_config(), local_cluster_config(), table, registry(1.0));
+  coordinator.start_member().unwrap();
+
+  let outcome = coordinator.handle_gossip_delta("node-b", &delta, now(1)).unwrap();
+
+  // MemberStatusChanged は引き続き発行される（削除・条件変更なし）
+  assert!(
+    outcome.member_events.iter().any(|event| matches!(
+      event,
+      ClusterEvent::MemberStatusChanged {
+        authority,
+        from: NodeStatus::Up,
+        to: NodeStatus::PreparingForShutdown,
+        ..
+      } if authority == "node-a"
+    )),
+    "MemberStatusChanged must still be emitted (req 5.4)"
+  );
+}

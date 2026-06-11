@@ -58,7 +58,7 @@
 
 ### 既存アーキテクチャ分析
 
-- イベント発行: 状態変更は `MembershipCoordinatorOutcome.member_events: Vec<ClusterEvent>` に蓄積され、`ClusterExtension` が EventStream（`EventStreamEvent::Extension { name: "cluster" }`）へ publish する。status 遷移の発行は coordinator 内の `emit_status_change` ヘルパーに集約されており、local command 系・gossip 系の両経路が通る。
+- イベント発行: 状態変更は `MembershipCoordinatorOutcome.member_events: Vec<ClusterEvent>` に蓄積され、`ClusterExtension` が EventStream（`EventStreamEvent::Extension { name: "cluster" }`）へ publish する。status 遷移の発行点は coordinator 内の `emit_status_change` ヘルパー（suspect / reachable / heartbeat 昇格系）と、gossip delta 適用パスの `register_membership_change` の 2 箇所である。shutdown 系状態（PreparingForShutdown / ReadyForShutdown）への遷移は現時点で gossip delta パスのみで発火する（実装時に確認された事実。当初の「両経路が `emit_status_change` を通る」という前提は誤りだった）。
 - 購読: `ClusterApi::subscribe` が `ClusterEventType` の集合でフィルタする。`ClusterEventType::matches` は網羅 match であり、variant 追加はコンパイルエラーで全対応箇所を検出できる。
 - pure 状態機械パターン: `CrossDcHeartbeat` は coordinator 非統合の独立した値型（`update_targets` / `tick` / `collect_timeouts`）で、駆動は呼び出し側責務。本設計の DC ラッチはこれと同型にする。
 - 順序判定: `oldest_authority`（coordinator）、`role_leaders`（coordinator）、`oldest_active_member`（SBR）が `is_older_than` ベースの同一比較を重複実装している。
@@ -318,8 +318,8 @@ pub enum DataCenterReachabilityTransition {
 | 要件 | 2.1, 2.2, 2.5, 5.1 |
 
 **責務と制約**
-- `emit_status_change` で `to == PreparingForShutdown` のとき `MemberPreparingForShutdown` を、`to == ReadyForShutdown` のとき `MemberReadyForShutdown` を、従来の `MemberStatusChanged` の**後に**併発する（順序固定、5.4）
-- 発行点は `emit_status_change` のみ。local command 系・gossip 系の両経路が同ヘルパーを通るため、要件 2.5 は追加の経路なしで満たされる
+- `to == PreparingForShutdown` のとき `MemberPreparingForShutdown` を、`to == ReadyForShutdown` のとき `MemberReadyForShutdown` を、従来の `MemberStatusChanged` の**後に**併発する（順序固定、5.4）
+- 発行点は `register_membership_change`（gossip delta パス — 現行の shutdown 系遷移が実際に通る経路。要件 2.5 はここで満たされる）と `emit_status_change`（local command 経路が将来追加された際の対称性のための併発。現時点でこのヘルパーを通る shutdown 系遷移は存在しない）の 2 箇所
 - 状態遷移の規則（どの status からどの status へ遷移できるか）は変更しない（5.1）
 
 **契約種別**: Event [x]

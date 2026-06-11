@@ -39,7 +39,7 @@
   - _Boundary:_ DataCenterReachabilityTable
   - _Depends:_ none
 
-- [ ] 2.3 (P) shutdown 進行イベントの併発を membership coordinator に追加する
+- [x] 2.3 (P) shutdown 進行イベントの併発を membership coordinator に追加する
   - status 遷移の発行集約点で、遷移先が shutdown 準備開始・完了のとき、従来の status 変更イベントの後に専用イベントを併発する
   - 状態遷移の規則自体は変更しない
   - local 起点の遷移と gossip 経由の遷移の両方で、併発順序（status 変更 → 専用イベント）をテストで検証する
@@ -93,3 +93,4 @@
 
 - 1.1: ClusterEventType の matches は const fn の網羅 match。variant 追加時は cluster_event.rs / cluster_event_type.rs / 同 matches の 3 点セットで更新する
 - 1.2: trace field 契約に FIELD_TRANSITION（"cluster.lifecycle.transition"）が設計外で追加されている（レビュー承認済み）。3.3 の std 準拠化ではこの定数を遷移種別の出力 key として使うこと
+- 2.3: shutdown 系遷移の実発行点は emit_status_change ではなく register_membership_change（gossip delta パス）だった。design.md は訂正済み。3.1 で coordinator を触る際は両方の発行点に注意
