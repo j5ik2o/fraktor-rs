@@ -1,5 +1,9 @@
 //! Immutable cluster compatibility key catalog.
 
+#[cfg(test)]
+#[path = "cluster_compatibility_key_catalog_test.rs"]
+mod tests;
+
 use crate::topology::ClusterCompatibilityKey;
 
 const LOCAL_ONLY_NODE_IDENTITY_REASON: &str = "local-only node identity is not compared during join compatibility";
@@ -8,10 +12,11 @@ const SENSITIVE_PROVIDER_FACTORY_REASON: &str =
 const UNOWNED_FAILURE_DETECTOR_CHOICE_REASON: &str =
   "failure detector implementation choice is not compared until cluster config owns detector selection";
 
-static REQUIRED_KEYS: [ClusterCompatibilityKey; 3] = [
+static REQUIRED_KEYS: [ClusterCompatibilityKey; 4] = [
   ClusterCompatibilityKeyCatalog::PUBSUB,
   ClusterCompatibilityKeyCatalog::DOWNING_PROVIDER,
   ClusterCompatibilityKeyCatalog::FAILURE_DETECTOR,
+  ClusterCompatibilityKeyCatalog::SINGLETON,
 ];
 
 static CONDITIONAL_KEYS: [ClusterCompatibilityKey; 1] = [ClusterCompatibilityKeyCatalog::SPLIT_BRAIN_RESOLVER_SETTINGS];
@@ -41,6 +46,8 @@ impl ClusterCompatibilityKeyCatalog {
     ClusterCompatibilityKey::excluded("cluster.failure-detector.choice", UNOWNED_FAILURE_DETECTOR_CHOICE_REASON);
   /// Pub/sub configuration compatibility key.
   pub const PUBSUB: ClusterCompatibilityKey = ClusterCompatibilityKey::required("cluster.pubsub");
+  /// Singleton configuration compatibility key.
+  pub const SINGLETON: ClusterCompatibilityKey = ClusterCompatibilityKey::required("cluster.singleton");
   /// Split Brain Resolver settings compatibility key.
   pub const SPLIT_BRAIN_RESOLVER_SETTINGS: ClusterCompatibilityKey =
     ClusterCompatibilityKey::required("cluster.split-brain-resolver.settings");
