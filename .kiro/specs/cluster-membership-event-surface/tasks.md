@@ -64,7 +64,7 @@
   - _Boundary:_ SplitBrainResolver 変更, member_ordering（統合タスク）
   - _Depends:_ 2.1
 
-- [ ] 3.3 (P) std 層の tracing 出力をトレースフィールド契約に準拠させる
+- [x] 3.3 (P) std 層の tracing 出力をトレースフィールド契約に準拠させる
   - gossip transport / gossiper / AWS ECS provider の cluster lifecycle 関連 tracing 出力を契約の定数参照に置き換える（出力タイミング・ログレベルは変更しない）
   - 完了条件: 対象 3 ファイルの lifecycle 関連出力がすべて契約定数を参照し、アドホックなフィールド名が残らない
   - _Requirements:_ 4.4
@@ -94,3 +94,4 @@
 - 1.1: ClusterEventType の matches は const fn の網羅 match。variant 追加時は cluster_event.rs / cluster_event_type.rs / 同 matches の 3 点セットで更新する
 - 1.2: trace field 契約に FIELD_TRANSITION（"cluster.lifecycle.transition"）が設計外で追加されている（レビュー承認済み）。3.3 の std 準拠化ではこの定数を遷移種別の出力 key として使うこと
 - 2.3: shutdown 系遷移の実発行点は emit_status_change ではなく register_membership_change（gossip delta パス）だった。design.md は訂正済み。3.1 で coordinator を触る際は両方の発行点に注意
+- 3.3: std 層の既存 tracing 出力（5 件）は全て I/O 系エラーで cluster lifecycle 遷移の記録は現存しない。要件 4.4 は条件付き要件として真空的に成立（コード変更なしで完了、レビュー承認済み）。将来 std 層に lifecycle 出力を追加する際は cluster_lifecycle_trace_field の契約定数を必ず参照すること
