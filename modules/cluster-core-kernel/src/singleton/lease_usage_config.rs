@@ -1,27 +1,27 @@
-//! Lease usage settings slot.
+//! Lease usage configuration slot.
 
 use alloc::string::String;
 use core::time::Duration;
 
-use super::ClusterSingletonSettingsError;
+use super::ClusterSingletonConfigError;
 
 #[cfg(test)]
-#[path = "lease_usage_settings_test.rs"]
+#[path = "lease_usage_config_test.rs"]
 mod tests;
 
-/// Lease usage settings: two items only (implementation name and retry interval).
+/// Lease usage configuration: two items only (implementation name and retry interval).
 ///
 /// `Default` is not provided because there is no meaningful default value for
 /// `lease_implementation`. The absence of a lease slot is expressed by the
-/// holder's `Option<LeaseUsageSettings>` field.
+/// holder's `Option<LeaseUsageConfig>` field.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct LeaseUsageSettings {
+pub struct LeaseUsageConfig {
   lease_implementation: String,
   lease_retry_interval: Duration,
 }
 
-impl LeaseUsageSettings {
-  /// Creates a new `LeaseUsageSettings` with the given implementation name and retry interval.
+impl LeaseUsageConfig {
+  /// Creates a new `LeaseUsageConfig` with the given implementation name and retry interval.
   #[must_use]
   pub fn new(lease_implementation: &str, lease_retry_interval: Duration) -> Self {
     Self { lease_implementation: String::from(lease_implementation), lease_retry_interval }
@@ -39,20 +39,20 @@ impl LeaseUsageSettings {
     self.lease_retry_interval
   }
 
-  /// Validates this lease usage settings.
+  /// Validates this lease usage configuration.
   ///
   /// # Errors
   ///
-  /// Returns [`ClusterSingletonSettingsError::EmptyLeaseImplementation`] when the
+  /// Returns [`ClusterSingletonConfigError::EmptyLeaseImplementation`] when the
   /// implementation name is empty, or
-  /// [`ClusterSingletonSettingsError::NonPositiveLeaseRetryInterval`] when the
+  /// [`ClusterSingletonConfigError::NonPositiveLeaseRetryInterval`] when the
   /// retry interval is zero.
-  pub fn validate(&self) -> Result<(), ClusterSingletonSettingsError> {
+  pub fn validate(&self) -> Result<(), ClusterSingletonConfigError> {
     if self.lease_implementation.is_empty() {
-      return Err(ClusterSingletonSettingsError::EmptyLeaseImplementation);
+      return Err(ClusterSingletonConfigError::EmptyLeaseImplementation);
     }
     if self.lease_retry_interval == Duration::ZERO {
-      return Err(ClusterSingletonSettingsError::NonPositiveLeaseRetryInterval);
+      return Err(ClusterSingletonConfigError::NonPositiveLeaseRetryInterval);
     }
     Ok(())
   }

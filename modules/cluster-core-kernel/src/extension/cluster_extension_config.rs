@@ -12,7 +12,7 @@ use crate::{
   downing_provider::DowningProviderCompatibility,
   failure_detector::{FailureDetectorConfig, FailureDetectorConfigError},
   pub_sub::PubSubConfig,
-  singleton::{ClusterSingletonManagerSettings, ClusterSingletonProxySettings, ClusterSingletonSettingsError},
+  singleton::{ClusterSingletonConfigError, ClusterSingletonManagerConfig, ClusterSingletonProxyConfig},
   topology::{ClusterCompatibilityKey, ClusterCompatibilityKeyCatalog},
 };
 
@@ -59,22 +59,22 @@ const JOIN_COMPATIBILITY_CHECKS: &[JoinCompatibilityCheck] = &[
     ClusterCompatibilityKeyCatalog::FAILURE_DETECTOR,
     failure_detector_config_mismatch_detail,
   ),
-  JoinCompatibilityCheck::new(ClusterCompatibilityKeyCatalog::SINGLETON, singleton_settings_mismatch_detail),
+  JoinCompatibilityCheck::new(ClusterCompatibilityKeyCatalog::SINGLETON, singleton_config_mismatch_detail),
 ];
 
 /// Configuration applied when installing the cluster extension.
 #[derive(Clone, Debug, PartialEq)]
 pub struct ClusterExtensionConfig {
-  advertised_address: String,
-  metrics_enabled: bool,
-  static_topology: Option<ClusterTopology>,
-  pubsub_config: PubSubConfig,
-  failure_detector_config: FailureDetectorConfig,
-  app_version: String,
-  roles: Vec<String>,
-  downing_provider: DowningProviderCompatibility,
-  singleton_manager_settings: ClusterSingletonManagerSettings,
-  singleton_proxy_settings: ClusterSingletonProxySettings,
+  advertised_address:       String,
+  metrics_enabled:          bool,
+  static_topology:          Option<ClusterTopology>,
+  pubsub_config:            PubSubConfig,
+  failure_detector_config:  FailureDetectorConfig,
+  app_version:              String,
+  roles:                    Vec<String>,
+  downing_provider:         DowningProviderCompatibility,
+  singleton_manager_config: ClusterSingletonManagerConfig,
+  singleton_proxy_config:   ClusterSingletonProxyConfig,
 }
 
 impl ClusterExtensionConfig {
@@ -86,16 +86,16 @@ impl ClusterExtensionConfig {
   #[must_use]
   pub fn new() -> Self {
     Self {
-      advertised_address: String::new(),
-      metrics_enabled: false,
-      static_topology: None,
-      pubsub_config: PubSubConfig::new(Duration::from_secs(3), Duration::from_secs(60)),
-      failure_detector_config: FailureDetectorConfig::new(),
-      app_version: String::from(env!("CARGO_PKG_VERSION")),
-      roles: Vec::new(),
-      downing_provider: DowningProviderCompatibility::noop(),
-      singleton_manager_settings: ClusterSingletonManagerSettings::new(),
-      singleton_proxy_settings: ClusterSingletonProxySettings::new(),
+      advertised_address:       String::new(),
+      metrics_enabled:          false,
+      static_topology:          None,
+      pubsub_config:            PubSubConfig::new(Duration::from_secs(3), Duration::from_secs(60)),
+      failure_detector_config:  FailureDetectorConfig::new(),
+      app_version:              String::from(env!("CARGO_PKG_VERSION")),
+      roles:                    Vec::new(),
+      downing_provider:         DowningProviderCompatibility::noop(),
+      singleton_manager_config: ClusterSingletonManagerConfig::new(),
+      singleton_proxy_config:   ClusterSingletonProxyConfig::new(),
     }
   }
 
@@ -241,41 +241,41 @@ impl ClusterExtensionConfig {
     SENSITIVE_JOIN_COMPATIBILITY_KEYS.contains(&key)
   }
 
-  /// Sets the singleton manager settings.
+  /// Sets the singleton manager configuration.
   #[must_use]
-  pub fn with_singleton_manager_settings(mut self, settings: ClusterSingletonManagerSettings) -> Self {
-    self.singleton_manager_settings = settings;
+  pub fn with_singleton_manager_config(mut self, config: ClusterSingletonManagerConfig) -> Self {
+    self.singleton_manager_config = config;
     self
   }
 
-  /// Sets the singleton proxy settings.
+  /// Sets the singleton proxy configuration.
   #[must_use]
-  pub fn with_singleton_proxy_settings(mut self, settings: ClusterSingletonProxySettings) -> Self {
-    self.singleton_proxy_settings = settings;
+  pub fn with_singleton_proxy_config(mut self, config: ClusterSingletonProxyConfig) -> Self {
+    self.singleton_proxy_config = config;
     self
   }
 
-  /// Returns the singleton manager settings.
+  /// Returns the singleton manager configuration.
   #[must_use]
-  pub const fn singleton_manager_settings(&self) -> &ClusterSingletonManagerSettings {
-    &self.singleton_manager_settings
+  pub const fn singleton_manager_config(&self) -> &ClusterSingletonManagerConfig {
+    &self.singleton_manager_config
   }
 
-  /// Returns the singleton proxy settings.
+  /// Returns the singleton proxy configuration.
   #[must_use]
-  pub const fn singleton_proxy_settings(&self) -> &ClusterSingletonProxySettings {
-    &self.singleton_proxy_settings
+  pub const fn singleton_proxy_config(&self) -> &ClusterSingletonProxyConfig {
+    &self.singleton_proxy_config
   }
 
   /// Validates singleton-related configuration values.
   ///
   /// # Errors
   ///
-  /// Returns [`ClusterSingletonSettingsError`] when the singleton manager or proxy settings
-  /// contain invalid values.
-  pub fn validate_singleton(&self) -> Result<(), ClusterSingletonSettingsError> {
-    self.singleton_manager_settings.validate()?;
-    self.singleton_proxy_settings.validate()
+  /// Returns [`ClusterSingletonConfigError`] when the singleton manager or proxy configuration
+  /// contains invalid values.
+  pub fn validate_singleton(&self) -> Result<(), ClusterSingletonConfigError> {
+    self.singleton_manager_config.validate()?;
+    self.singleton_proxy_config.validate()
   }
 
   /// Validates cluster extension configuration values.
@@ -373,19 +373,19 @@ fn failure_detector_config_mismatch_detail(
   if field_names.is_empty() { None } else { Some(field_names.join(", ")) }
 }
 
-fn singleton_settings_mismatch_detail(
+fn singleton_config_mismatch_detail(
   local: &ClusterExtensionConfig,
   joining: &ClusterExtensionConfig,
 ) -> Option<String> {
   let manager_fields: Vec<String> = local
-    .singleton_manager_settings
-    .difference_field_names(&joining.singleton_manager_settings)
+    .singleton_manager_config
+    .difference_field_names(&joining.singleton_manager_config)
     .into_iter()
     .map(|f| alloc::format!("manager.{f}"))
     .collect();
   let proxy_fields: Vec<String> = local
-    .singleton_proxy_settings
-    .difference_field_names(&joining.singleton_proxy_settings)
+    .singleton_proxy_config
+    .difference_field_names(&joining.singleton_proxy_config)
     .into_iter()
     .map(|f| alloc::format!("proxy.{f}"))
     .collect();

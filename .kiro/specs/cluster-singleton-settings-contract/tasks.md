@@ -5,7 +5,7 @@
   - 検証失敗の原因項目（空 singleton 名 / buffer size 範囲外 / ゼロ以下の handover リトライ間隔 / ゼロ以下の identification 間隔 / 空 lease 実装名 / ゼロ以下の lease リトライ間隔）を特定できるエラー enum と英語 Display を定義する
   - 完了条件: ワークスペースがコンパイルでき、各 variant の Display が原因項目を含むことをテストで検証できる
   - _Requirements:_ 4.2, 4.3, 4.4, 4.5
-  - _Boundary:_ singleton モジュール wiring, ClusterSingletonSettingsError
+  - _Boundary:_ singleton モジュール wiring, ClusterSingletonConfigError
   - _Depends:_ none
 
 - [ ] 2. コア: 設定契約
@@ -15,7 +15,7 @@
   - 意味のある既定値が存在しないため Default は提供せず、スロット未指定は保持側の Option で表現する前提を守る
   - 完了条件: 2 項目の保持・取得と検証拒否 2 種の単体テストが通る
   - _Requirements:_ 1.4, 4.5
-  - _Boundary:_ LeaseUsageSettings
+  - _Boundary:_ LeaseUsageConfig
   - _Depends:_ none
 
 - [x] 2.2 manager 設定契約とリトライ上限導出を実装する
@@ -26,7 +26,7 @@
   - 互換性確認用に他設定との差異フィールド名列挙を提供する
   - 完了条件: 既定値・Option 区別・検証拒否・導出の決定性（margin なし→15、margin 26s/間隔 1s→29）・差異列挙の単体テストが通る
   - _Requirements:_ 1.1, 1.2, 1.3, 1.4, 4.3, 4.4, 7.1
-  - _Boundary:_ ClusterSingletonManagerSettings
+  - _Boundary:_ ClusterSingletonManagerConfig
   - _Depends:_ 2.1
 
 - [x] 2.3 (P) proxy 設定契約を実装する
@@ -36,7 +36,7 @@
   - 互換性確認用に差異フィールド名列挙を提供する
   - 完了条件: 既定値・buffer size 0 受理・検証拒否 3 種・差異列挙の単体テストが通る
   - _Requirements:_ 2.1, 2.2, 2.3, 4.2, 4.3, 4.4
-  - _Boundary:_ ClusterSingletonProxySettings
+  - _Boundary:_ ClusterSingletonProxyConfig
   - _Depends:_ none
 
 - [x] 2.4 typed 統合設定と manager / proxy への導出を実装する
@@ -47,7 +47,7 @@
   - typed クレートの wiring に mod 宣言と pub use を追加する（module-wiring 規約に従う）
   - 完了条件: 非既定値での導出無損失と既定値一致の単体テストが通り、typed の公開 API として到達可能になる
   - _Requirements:_ 3.1, 3.2, 3.3, 3.4
-  - _Boundary:_ ClusterSingletonSettings
+  - _Boundary:_ ClusterSingletonConfig
   - _Depends:_ 2.2, 2.3
 
 - [ ] 3. 観測契約

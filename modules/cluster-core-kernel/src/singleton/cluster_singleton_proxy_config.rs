@@ -1,13 +1,13 @@
-//! Cluster Singleton proxy settings.
+//! Cluster Singleton proxy configuration.
 
 use alloc::{string::String, vec::Vec};
 use core::time::Duration;
 
-use super::ClusterSingletonSettingsError;
+use super::ClusterSingletonConfigError;
 use crate::membership::DataCenter;
 
 #[cfg(test)]
-#[path = "cluster_singleton_proxy_settings_test.rs"]
+#[path = "cluster_singleton_proxy_config_test.rs"]
 mod tests;
 
 /// Configuration for the Cluster Singleton proxy.
@@ -15,7 +15,7 @@ mod tests;
 /// Holds the operating parameters for the singleton proxy with
 /// Pekko-compatible defaults.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ClusterSingletonProxySettings {
+pub struct ClusterSingletonProxyConfig {
   singleton_name: String,
   role: Option<String>,
   data_center: Option<DataCenter>,
@@ -23,8 +23,8 @@ pub struct ClusterSingletonProxySettings {
   buffer_size: u32,
 }
 
-impl ClusterSingletonProxySettings {
-  /// Creates a new `ClusterSingletonProxySettings` with Pekko-compatible defaults.
+impl ClusterSingletonProxyConfig {
+  /// Creates a new `ClusterSingletonProxyConfig` with Pekko-compatible defaults.
   ///
   /// Defaults: singleton name `"singleton"`, no role constraint, no data center
   /// constraint, identification interval 1 s, buffer size 1000.
@@ -109,29 +109,29 @@ impl ClusterSingletonProxySettings {
     self.buffer_size
   }
 
-  /// Validates this proxy settings.
+  /// Validates this proxy configuration.
   ///
   /// # Errors
   ///
-  /// - [`ClusterSingletonSettingsError::EmptySingletonName`] when the singleton name is empty.
-  /// - [`ClusterSingletonSettingsError::NonPositiveIdentificationInterval`] when the identification
+  /// - [`ClusterSingletonConfigError::EmptySingletonName`] when the singleton name is empty.
+  /// - [`ClusterSingletonConfigError::NonPositiveIdentificationInterval`] when the identification
   ///   interval is zero.
-  /// - [`ClusterSingletonSettingsError::BufferSizeOutOfRange`] when buffer size exceeds 10000.
-  ///   Note: buffer size 0 is accepted as "no buffering" (requirement 2.3).
-  pub fn validate(&self) -> Result<(), ClusterSingletonSettingsError> {
+  /// - [`ClusterSingletonConfigError::BufferSizeOutOfRange`] when buffer size exceeds 10000. Note:
+  ///   buffer size 0 is accepted as "no buffering" (requirement 2.3).
+  pub fn validate(&self) -> Result<(), ClusterSingletonConfigError> {
     if self.singleton_name.is_empty() {
-      return Err(ClusterSingletonSettingsError::EmptySingletonName);
+      return Err(ClusterSingletonConfigError::EmptySingletonName);
     }
     if self.singleton_identification_interval == Duration::ZERO {
-      return Err(ClusterSingletonSettingsError::NonPositiveIdentificationInterval);
+      return Err(ClusterSingletonConfigError::NonPositiveIdentificationInterval);
     }
     if self.buffer_size > 10000 {
-      return Err(ClusterSingletonSettingsError::BufferSizeOutOfRange { value: self.buffer_size });
+      return Err(ClusterSingletonConfigError::BufferSizeOutOfRange { value: self.buffer_size });
     }
     Ok(())
   }
 
-  /// Returns the names of fields whose values differ from another settings instance.
+  /// Returns the names of fields whose values differ from another configuration instance.
   ///
   /// Used by join compatibility checks to enumerate mismatched fields.
   #[must_use]
@@ -158,7 +158,7 @@ impl ClusterSingletonProxySettings {
   }
 }
 
-impl Default for ClusterSingletonProxySettings {
+impl Default for ClusterSingletonProxyConfig {
   fn default() -> Self {
     Self::new()
   }

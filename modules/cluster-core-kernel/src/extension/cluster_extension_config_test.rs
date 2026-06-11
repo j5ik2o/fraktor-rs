@@ -6,7 +6,7 @@ use crate::{
   downing_provider::{DowningProviderCompatibility, SplitBrainResolverSettings, SplitBrainResolverStrategy},
   failure_detector::{FailureDetectorConfig, FailureDetectorConfigError},
   pub_sub::PubSubConfig,
-  singleton::{ClusterSingletonManagerSettings, ClusterSingletonProxySettings, ClusterSingletonSettingsError},
+  singleton::{ClusterSingletonConfigError, ClusterSingletonManagerConfig, ClusterSingletonProxyConfig},
 };
 
 #[test]
@@ -363,34 +363,33 @@ fn join_compatibility_accepts_same_pubsub_config() {
 // --- singleton 設定フィールドの保持と既定値 ---
 
 #[test]
-fn singleton_manager_settings_default_is_preserved() {
-  // ClusterExtensionConfig::new() が既定の ClusterSingletonManagerSettings を内包することを確認
+fn singleton_manager_config_default_is_preserved() {
+  // ClusterExtensionConfig::new() が既定の ClusterSingletonManagerConfig を内包することを確認
   let config = ClusterExtensionConfig::new();
-  assert_eq!(config.singleton_manager_settings(), &ClusterSingletonManagerSettings::default());
+  assert_eq!(config.singleton_manager_config(), &ClusterSingletonManagerConfig::default());
 }
 
 #[test]
-fn singleton_proxy_settings_default_is_preserved() {
-  // ClusterExtensionConfig::new() が既定の ClusterSingletonProxySettings を内包することを確認
+fn singleton_proxy_config_default_is_preserved() {
+  // ClusterExtensionConfig::new() が既定の ClusterSingletonProxyConfig を内包することを確認
   let config = ClusterExtensionConfig::new();
-  assert_eq!(config.singleton_proxy_settings(), &ClusterSingletonProxySettings::default());
+  assert_eq!(config.singleton_proxy_config(), &ClusterSingletonProxyConfig::default());
 }
 
 #[test]
-fn singleton_manager_settings_are_preserved_via_setter() {
-  // with_singleton_manager_settings で設定した値が getter で正しく返されることを確認
-  let custom =
-    ClusterSingletonManagerSettings::new().with_singleton_name("my-singleton").with_min_hand_over_retries(20);
-  let config = ClusterExtensionConfig::new().with_singleton_manager_settings(custom.clone());
-  assert_eq!(config.singleton_manager_settings(), &custom);
+fn singleton_manager_config_is_preserved_via_setter() {
+  // with_singleton_manager_config で設定した値が getter で正しく返されることを確認
+  let custom = ClusterSingletonManagerConfig::new().with_singleton_name("my-singleton").with_min_hand_over_retries(20);
+  let config = ClusterExtensionConfig::new().with_singleton_manager_config(custom.clone());
+  assert_eq!(config.singleton_manager_config(), &custom);
 }
 
 #[test]
-fn singleton_proxy_settings_are_preserved_via_setter() {
-  // with_singleton_proxy_settings で設定した値が getter で正しく返されることを確認
-  let custom = ClusterSingletonProxySettings::new().with_singleton_name("my-singleton").with_buffer_size(500);
-  let config = ClusterExtensionConfig::new().with_singleton_proxy_settings(custom.clone());
-  assert_eq!(config.singleton_proxy_settings(), &custom);
+fn singleton_proxy_config_is_preserved_via_setter() {
+  // with_singleton_proxy_config で設定した値が getter で正しく返されることを確認
+  let custom = ClusterSingletonProxyConfig::new().with_singleton_name("my-singleton").with_buffer_size(500);
+  let config = ClusterExtensionConfig::new().with_singleton_proxy_config(custom.clone());
+  assert_eq!(config.singleton_proxy_config(), &custom);
 }
 
 // --- validate_singleton の委譲検証 ---
@@ -405,17 +404,17 @@ fn validate_singleton_passes_with_default_settings() {
 #[test]
 fn validate_singleton_delegates_to_manager_and_returns_error_on_empty_singleton_name() {
   // manager 設定が不正（空名）の場合、validate_singleton がエラーを返すことを確認
-  let bad_manager = ClusterSingletonManagerSettings::new().with_singleton_name("");
-  let config = ClusterExtensionConfig::new().with_singleton_manager_settings(bad_manager);
-  assert_eq!(config.validate_singleton(), Err(ClusterSingletonSettingsError::EmptySingletonName));
+  let bad_manager = ClusterSingletonManagerConfig::new().with_singleton_name("");
+  let config = ClusterExtensionConfig::new().with_singleton_manager_config(bad_manager);
+  assert_eq!(config.validate_singleton(), Err(ClusterSingletonConfigError::EmptySingletonName));
 }
 
 #[test]
 fn validate_singleton_delegates_to_proxy_and_returns_error_on_buffer_size_out_of_range() {
   // proxy 設定が不正（buffer_size 超過）の場合、validate_singleton がエラーを返すことを確認
-  let bad_proxy = ClusterSingletonProxySettings::new().with_buffer_size(10001);
-  let config = ClusterExtensionConfig::new().with_singleton_proxy_settings(bad_proxy);
-  assert_eq!(config.validate_singleton(), Err(ClusterSingletonSettingsError::BufferSizeOutOfRange { value: 10001 }));
+  let bad_proxy = ClusterSingletonProxyConfig::new().with_buffer_size(10001);
+  let config = ClusterExtensionConfig::new().with_singleton_proxy_config(bad_proxy);
+  assert_eq!(config.validate_singleton(), Err(ClusterSingletonConfigError::BufferSizeOutOfRange { value: 10001 }));
 }
 
 #[test]
@@ -431,9 +430,9 @@ fn validate_does_not_change_signature_with_singleton_fields_added() {
 #[test]
 fn join_compatibility_accepts_same_singleton_settings() {
   // singleton 設定が一致する場合、互換性チェックが Compatible を返すことを確認（要件 5.3）
-  let settings = ClusterSingletonManagerSettings::new().with_singleton_name("my-singleton");
-  let local = ClusterExtensionConfig::new().with_singleton_manager_settings(settings.clone());
-  let joining = ClusterExtensionConfig::new().with_singleton_manager_settings(settings);
+  let settings = ClusterSingletonManagerConfig::new().with_singleton_name("my-singleton");
+  let local = ClusterExtensionConfig::new().with_singleton_manager_config(settings.clone());
+  let joining = ClusterExtensionConfig::new().with_singleton_manager_config(settings);
 
   let validation = local.check_join_compatibility(&joining);
 
@@ -444,10 +443,10 @@ fn join_compatibility_accepts_same_singleton_settings() {
 fn join_compatibility_reports_singleton_manager_mismatch_with_prefixed_field_names() {
   // manager 設定に差異がある場合、"manager."
   // プレフィックス付きフィールド名が理由に含まれることを確認（要件 5.2）
-  let local_manager = ClusterSingletonManagerSettings::new().with_singleton_name("singleton-a");
-  let joining_manager = ClusterSingletonManagerSettings::new().with_singleton_name("singleton-b");
-  let local = ClusterExtensionConfig::new().with_singleton_manager_settings(local_manager);
-  let joining = ClusterExtensionConfig::new().with_singleton_manager_settings(joining_manager);
+  let local_manager = ClusterSingletonManagerConfig::new().with_singleton_name("singleton-a");
+  let joining_manager = ClusterSingletonManagerConfig::new().with_singleton_name("singleton-b");
+  let local = ClusterExtensionConfig::new().with_singleton_manager_config(local_manager);
+  let joining = ClusterExtensionConfig::new().with_singleton_manager_config(joining_manager);
 
   let validation = local.check_join_compatibility(&joining);
 
@@ -460,10 +459,10 @@ fn join_compatibility_reports_singleton_manager_mismatch_with_prefixed_field_nam
 fn join_compatibility_reports_singleton_proxy_mismatch_with_prefixed_field_names() {
   // proxy 設定に差異がある場合、"proxy."
   // プレフィックス付きフィールド名が理由に含まれることを確認（要件 5.2）
-  let local_proxy = ClusterSingletonProxySettings::new().with_buffer_size(500);
-  let joining_proxy = ClusterSingletonProxySettings::new().with_buffer_size(1000);
-  let local = ClusterExtensionConfig::new().with_singleton_proxy_settings(local_proxy);
-  let joining = ClusterExtensionConfig::new().with_singleton_proxy_settings(joining_proxy);
+  let local_proxy = ClusterSingletonProxyConfig::new().with_buffer_size(500);
+  let joining_proxy = ClusterSingletonProxyConfig::new().with_buffer_size(1000);
+  let local = ClusterExtensionConfig::new().with_singleton_proxy_config(local_proxy);
+  let joining = ClusterExtensionConfig::new().with_singleton_proxy_config(joining_proxy);
 
   let validation = local.check_join_compatibility(&joining);
 
@@ -475,16 +474,15 @@ fn join_compatibility_reports_singleton_proxy_mismatch_with_prefixed_field_names
 #[test]
 fn join_compatibility_reports_both_manager_and_proxy_mismatch_fields() {
   // manager と proxy の両方に差異がある場合、両方の差異フィールドが結合して理由に含まれることを確認
-  let local_manager = ClusterSingletonManagerSettings::new().with_singleton_name("singleton-a");
-  let joining_manager = ClusterSingletonManagerSettings::new().with_singleton_name("singleton-b");
-  let local_proxy = ClusterSingletonProxySettings::new().with_buffer_size(500);
-  let joining_proxy = ClusterSingletonProxySettings::new().with_buffer_size(1000);
-  let local = ClusterExtensionConfig::new()
-    .with_singleton_manager_settings(local_manager)
-    .with_singleton_proxy_settings(local_proxy);
+  let local_manager = ClusterSingletonManagerConfig::new().with_singleton_name("singleton-a");
+  let joining_manager = ClusterSingletonManagerConfig::new().with_singleton_name("singleton-b");
+  let local_proxy = ClusterSingletonProxyConfig::new().with_buffer_size(500);
+  let joining_proxy = ClusterSingletonProxyConfig::new().with_buffer_size(1000);
+  let local =
+    ClusterExtensionConfig::new().with_singleton_manager_config(local_manager).with_singleton_proxy_config(local_proxy);
   let joining = ClusterExtensionConfig::new()
-    .with_singleton_manager_settings(joining_manager)
-    .with_singleton_proxy_settings(joining_proxy);
+    .with_singleton_manager_config(joining_manager)
+    .with_singleton_proxy_config(joining_proxy);
 
   let validation = local.check_join_compatibility(&joining);
 

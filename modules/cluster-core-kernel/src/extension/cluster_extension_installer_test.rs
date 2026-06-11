@@ -19,7 +19,7 @@ use crate::{
   failure_detector::FailureDetectorConfig,
   membership::NoopGossiper,
   pub_sub::{NoopClusterPubSub, cluster_pub_sub::ClusterPubSub},
-  singleton::{ClusterSingletonManagerSettings, ClusterSingletonProxySettings},
+  singleton::{ClusterSingletonManagerConfig, ClusterSingletonProxyConfig},
 };
 
 #[test]
@@ -105,7 +105,7 @@ fn install_rejects_invalid_singleton_config_with_configuration_error() {
   // 空の singleton 名 → EmptySingletonName（要件 4.4）
   let cluster_config = ClusterExtensionConfig::new()
     .with_advertised_address("node1:8080")
-    .with_singleton_manager_settings(ClusterSingletonManagerSettings::new().with_singleton_name(""));
+    .with_singleton_manager_config(ClusterSingletonManagerConfig::new().with_singleton_name(""));
   let cluster_installer = ClusterExtensionInstaller::new(cluster_config, |_event_stream, _block_list, _address| {
     Box::new(NoopClusterProvider::new())
   });
@@ -143,7 +143,7 @@ fn install_succeeds_with_default_singleton_settings() {
 fn install_rejects_singleton_proxy_with_buffer_size_out_of_range() {
   let cluster_config = ClusterExtensionConfig::new()
     .with_advertised_address("node1:8080")
-    .with_singleton_proxy_settings(ClusterSingletonProxySettings::new().with_buffer_size(10001));
+    .with_singleton_proxy_config(ClusterSingletonProxyConfig::new().with_buffer_size(10001));
   let cluster_installer = ClusterExtensionInstaller::new(cluster_config, |_event_stream, _block_list, _address| {
     Box::new(NoopClusterProvider::new())
   });

@@ -1,7 +1,7 @@
-//! Typed unified settings for Cluster Singleton manager and proxy.
+//! Typed unified configuration for Cluster Singleton manager and proxy.
 
 #[cfg(test)]
-#[path = "cluster_singleton_settings_test.rs"]
+#[path = "cluster_singleton_config_test.rs"]
 mod tests;
 
 use alloc::string::String;
@@ -9,19 +9,19 @@ use core::time::Duration;
 
 use fraktor_cluster_core_kernel_rs::{
   membership::DataCenter,
-  singleton::{ClusterSingletonManagerSettings, ClusterSingletonProxySettings, LeaseUsageSettings},
+  singleton::{ClusterSingletonManagerConfig, ClusterSingletonProxyConfig, LeaseUsageConfig},
 };
 
-/// Unified settings for Cluster Singleton that covers both manager and proxy configuration.
+/// Unified configuration for Cluster Singleton that covers both manager and proxy configuration.
 ///
 /// Provides a single place to specify all shared parameters and derives
-/// manager / proxy settings by supplying a singleton name.
+/// manager / proxy configurations by supplying a singleton name.
 ///
-/// Validation is delegated to [`ClusterSingletonManagerSettings::validate`] and
-/// [`ClusterSingletonProxySettings::validate`] — this type does not duplicate
+/// Validation is delegated to [`ClusterSingletonManagerConfig::validate`] and
+/// [`ClusterSingletonProxyConfig::validate`] — this type does not duplicate
 /// those rules.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ClusterSingletonSettings {
+pub struct ClusterSingletonConfig {
   role: Option<String>,
   data_center: Option<DataCenter>,
   singleton_identification_interval: Duration,
@@ -29,14 +29,14 @@ pub struct ClusterSingletonSettings {
   hand_over_retry_interval: Duration,
   min_hand_over_retries: u32,
   buffer_size: u32,
-  lease_settings: Option<LeaseUsageSettings>,
+  lease_config: Option<LeaseUsageConfig>,
 }
 
-impl ClusterSingletonSettings {
-  /// Creates a new `ClusterSingletonSettings` with Pekko-compatible defaults.
+impl ClusterSingletonConfig {
+  /// Creates a new `ClusterSingletonConfig` with Pekko-compatible defaults.
   ///
-  /// Defaults are identical to those of [`ClusterSingletonManagerSettings::new`] and
-  /// [`ClusterSingletonProxySettings::new`]: no role, no data center, identification
+  /// Defaults are identical to those of [`ClusterSingletonManagerConfig::new`] and
+  /// [`ClusterSingletonProxyConfig::new`]: no role, no data center, identification
   /// interval 1 s, removal margin unset, hand-over retry interval 1 s, 15 minimum
   /// retries, buffer size 1000, no lease slot.
   #[must_use]
@@ -49,7 +49,7 @@ impl ClusterSingletonSettings {
       hand_over_retry_interval: Duration::from_secs(1),
       min_hand_over_retries: 15,
       buffer_size: 1000,
-      lease_settings: None,
+      lease_config: None,
     }
   }
 
@@ -102,73 +102,73 @@ impl ClusterSingletonSettings {
     self
   }
 
-  /// Sets the lease usage settings slot (manager only).
+  /// Sets the lease usage configuration slot (manager only).
   #[must_use]
-  pub fn with_lease_settings(mut self, lease: LeaseUsageSettings) -> Self {
-    self.lease_settings = Some(lease);
+  pub fn with_lease_config(mut self, lease: LeaseUsageConfig) -> Self {
+    self.lease_config = Some(lease);
     self
   }
 
-  /// Derives a [`ClusterSingletonManagerSettings`] for the given singleton name.
+  /// Derives a [`ClusterSingletonManagerConfig`] for the given singleton name.
   ///
   /// Manager-only fields (`removal_margin`, `hand_over_retry_interval`,
-  /// `min_hand_over_retries`, `lease_settings`) are carried over unchanged.
+  /// `min_hand_over_retries`, `lease_config`) are carried over unchanged.
   /// Proxy-only fields (`data_center`, `singleton_identification_interval`,
-  /// `buffer_size`) have no effect on the derived manager settings.
+  /// `buffer_size`) have no effect on the derived manager configuration.
   ///
   /// # Postconditions
   ///
-  /// Every field present in `ClusterSingletonManagerSettings` has the same value as the
-  /// corresponding field in this settings instance (requirement 3.2).
+  /// Every field present in `ClusterSingletonManagerConfig` has the same value as the
+  /// corresponding field in this configuration instance (requirement 3.2).
   #[must_use]
-  pub fn to_manager_settings(&self, singleton_name: &str) -> ClusterSingletonManagerSettings {
-    // singleton_name は to_manager_settings の引数で上書きする
-    let mut settings = ClusterSingletonManagerSettings::new().with_singleton_name(singleton_name);
+  pub fn to_manager_config(&self, singleton_name: &str) -> ClusterSingletonManagerConfig {
+    // singleton_name は to_manager_config の引数で上書きする
+    let mut config = ClusterSingletonManagerConfig::new().with_singleton_name(singleton_name);
 
     if let Some(ref role) = self.role {
-      settings = settings.with_role(role.as_str());
+      config = config.with_role(role.as_str());
     }
     if let Some(margin) = self.removal_margin {
-      settings = settings.with_removal_margin(margin);
+      config = config.with_removal_margin(margin);
     }
-    settings = settings
+    config = config
       .with_hand_over_retry_interval(self.hand_over_retry_interval)
       .with_min_hand_over_retries(self.min_hand_over_retries);
-    if let Some(lease) = self.lease_settings.clone() {
-      settings = settings.with_lease_settings(lease);
+    if let Some(lease) = self.lease_config.clone() {
+      config = config.with_lease_config(lease);
     }
-    settings
+    config
   }
 
-  /// Derives a [`ClusterSingletonProxySettings`] for the given singleton name.
+  /// Derives a [`ClusterSingletonProxyConfig`] for the given singleton name.
   ///
   /// Proxy-only fields (`data_center`, `singleton_identification_interval`, `buffer_size`)
   /// are carried over unchanged. Manager-only fields (`removal_margin`,
-  /// `hand_over_retry_interval`, `min_hand_over_retries`, `lease_settings`) have no
-  /// effect on the derived proxy settings.
+  /// `hand_over_retry_interval`, `min_hand_over_retries`, `lease_config`) have no
+  /// effect on the derived proxy configuration.
   ///
   /// # Postconditions
   ///
-  /// Every field present in `ClusterSingletonProxySettings` has the same value as the
-  /// corresponding field in this settings instance (requirement 3.3).
+  /// Every field present in `ClusterSingletonProxyConfig` has the same value as the
+  /// corresponding field in this configuration instance (requirement 3.3).
   #[must_use]
-  pub fn to_proxy_settings(&self, singleton_name: &str) -> ClusterSingletonProxySettings {
-    let mut settings = ClusterSingletonProxySettings::new().with_singleton_name(singleton_name);
+  pub fn to_proxy_config(&self, singleton_name: &str) -> ClusterSingletonProxyConfig {
+    let mut config = ClusterSingletonProxyConfig::new().with_singleton_name(singleton_name);
 
     if let Some(ref role) = self.role {
-      settings = settings.with_role(role.as_str());
+      config = config.with_role(role.as_str());
     }
     if let Some(ref dc) = self.data_center {
-      settings = settings.with_data_center(dc.clone());
+      config = config.with_data_center(dc.clone());
     }
-    settings = settings
+    config = config
       .with_singleton_identification_interval(self.singleton_identification_interval)
       .with_buffer_size(self.buffer_size);
-    settings
+    config
   }
 }
 
-impl Default for ClusterSingletonSettings {
+impl Default for ClusterSingletonConfig {
   fn default() -> Self {
     Self::new()
   }

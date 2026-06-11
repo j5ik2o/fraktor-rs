@@ -1,12 +1,12 @@
-//! Cluster Singleton manager settings.
+//! Cluster Singleton manager configuration.
 
 use alloc::{string::String, vec::Vec};
 use core::time::Duration;
 
-use super::{ClusterSingletonSettingsError, LeaseUsageSettings};
+use super::{ClusterSingletonConfigError, LeaseUsageConfig};
 
 #[cfg(test)]
-#[path = "cluster_singleton_manager_settings_test.rs"]
+#[path = "cluster_singleton_manager_config_test.rs"]
 mod tests;
 
 /// Configuration for the Cluster Singleton manager.
@@ -14,17 +14,17 @@ mod tests;
 /// Holds the operating parameters for the singleton manager with
 /// Pekko-compatible defaults.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ClusterSingletonManagerSettings {
+pub struct ClusterSingletonManagerConfig {
   singleton_name:           String,
   role:                     Option<String>,
   removal_margin:           Option<Duration>,
   hand_over_retry_interval: Duration,
   min_hand_over_retries:    u32,
-  lease_settings:           Option<LeaseUsageSettings>,
+  lease_config:             Option<LeaseUsageConfig>,
 }
 
-impl ClusterSingletonManagerSettings {
-  /// Creates a new `ClusterSingletonManagerSettings` with Pekko-compatible defaults.
+impl ClusterSingletonManagerConfig {
+  /// Creates a new `ClusterSingletonManagerConfig` with Pekko-compatible defaults.
   ///
   /// Defaults: singleton name `"singleton"`, no role constraint, removal margin
   /// unset (`None`), hand-over retry interval 1 s, minimum hand-over retries 15,
@@ -37,7 +37,7 @@ impl ClusterSingletonManagerSettings {
       removal_margin:           None,
       hand_over_retry_interval: Duration::from_secs(1),
       min_hand_over_retries:    15,
-      lease_settings:           None,
+      lease_config:             None,
     }
   }
 
@@ -79,10 +79,10 @@ impl ClusterSingletonManagerSettings {
     self
   }
 
-  /// Sets the lease usage settings slot.
+  /// Sets the lease usage configuration slot.
   #[must_use]
-  pub fn with_lease_settings(mut self, lease: LeaseUsageSettings) -> Self {
-    self.lease_settings = Some(lease);
+  pub fn with_lease_config(mut self, lease: LeaseUsageConfig) -> Self {
+    self.lease_config = Some(lease);
     self
   }
 
@@ -118,28 +118,28 @@ impl ClusterSingletonManagerSettings {
     self.min_hand_over_retries
   }
 
-  /// Returns a reference to the lease usage settings, if configured.
+  /// Returns a reference to the lease usage configuration, if configured.
   #[must_use]
-  pub const fn lease_settings(&self) -> Option<&LeaseUsageSettings> {
-    self.lease_settings.as_ref()
+  pub const fn lease_config(&self) -> Option<&LeaseUsageConfig> {
+    self.lease_config.as_ref()
   }
 
-  /// Validates this manager settings.
+  /// Validates this manager configuration.
   ///
   /// # Errors
   ///
-  /// - [`ClusterSingletonSettingsError::EmptySingletonName`] when the singleton name is empty.
-  /// - [`ClusterSingletonSettingsError::NonPositiveHandOverRetryInterval`] when the hand-over retry
+  /// - [`ClusterSingletonConfigError::EmptySingletonName`] when the singleton name is empty.
+  /// - [`ClusterSingletonConfigError::NonPositiveHandOverRetryInterval`] when the hand-over retry
   ///   interval is zero.
-  /// - Delegates to [`LeaseUsageSettings::validate`] when a lease slot is present.
-  pub fn validate(&self) -> Result<(), ClusterSingletonSettingsError> {
+  /// - Delegates to [`LeaseUsageConfig::validate`] when a lease slot is present.
+  pub fn validate(&self) -> Result<(), ClusterSingletonConfigError> {
     if self.singleton_name.is_empty() {
-      return Err(ClusterSingletonSettingsError::EmptySingletonName);
+      return Err(ClusterSingletonConfigError::EmptySingletonName);
     }
     if self.hand_over_retry_interval == Duration::ZERO {
-      return Err(ClusterSingletonSettingsError::NonPositiveHandOverRetryInterval);
+      return Err(ClusterSingletonConfigError::NonPositiveHandOverRetryInterval);
     }
-    if let Some(lease) = &self.lease_settings {
+    if let Some(lease) = &self.lease_config {
       lease.validate()?;
     }
     Ok(())
@@ -170,7 +170,7 @@ impl ClusterSingletonManagerSettings {
     self.min_hand_over_retries.max(candidate)
   }
 
-  /// Returns the names of fields whose values differ from another settings instance.
+  /// Returns the names of fields whose values differ from another configuration instance.
   ///
   /// Used by join compatibility checks to enumerate mismatched fields.
   #[must_use]
@@ -192,15 +192,15 @@ impl ClusterSingletonManagerSettings {
     if self.min_hand_over_retries != other.min_hand_over_retries {
       names.push("min_hand_over_retries");
     }
-    if self.lease_settings != other.lease_settings {
-      names.push("lease_settings");
+    if self.lease_config != other.lease_config {
+      names.push("lease_config");
     }
 
     names
   }
 }
 
-impl Default for ClusterSingletonManagerSettings {
+impl Default for ClusterSingletonManagerConfig {
   fn default() -> Self {
     Self::new()
   }

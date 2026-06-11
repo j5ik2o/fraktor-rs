@@ -6,15 +6,15 @@ use core::{
 };
 
 #[cfg(test)]
-#[path = "cluster_singleton_settings_error_test.rs"]
+#[path = "cluster_singleton_config_error_test.rs"]
 mod tests;
 
-/// Singleton settings configuration validation errors.
+/// Singleton configuration validation errors.
 ///
 /// Each variant identifies the configuration item that caused the validation
 /// failure.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ClusterSingletonSettingsError {
+pub enum ClusterSingletonConfigError {
   /// Singleton name is an empty string.
   EmptySingletonName,
   /// Buffer size is outside the allowed range (0..=10000).
@@ -32,7 +32,7 @@ pub enum ClusterSingletonSettingsError {
   NonPositiveLeaseRetryInterval,
 }
 
-impl fmt::Display for ClusterSingletonSettingsError {
+impl fmt::Display for ClusterSingletonConfigError {
   fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
     match self {
       | Self::EmptySingletonName => f.write_str("singleton name must not be empty"),
@@ -47,4 +47,4 @@ impl fmt::Display for ClusterSingletonSettingsError {
   }
 }
 
-impl Error for ClusterSingletonSettingsError {}
+impl Error for ClusterSingletonConfigError {}
