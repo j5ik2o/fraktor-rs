@@ -77,7 +77,7 @@
   - _Boundary:_ ClusterCompatibilityKeyCatalog
   - _Depends:_ none
 
-- [ ] 4.2 cluster 拡張設定へ singleton 設定を統合し互換チェックを配線する
+- [x] 4.2 cluster 拡張設定へ singleton 設定を統合し互換チェックを配線する
   - manager / proxy 設定を既定値内包のフィールドとして cluster 拡張設定に追加し、setter / getter を既存の規約に合わせて提供する（既存 API のシグネチャは変更しない）
   - singleton 専用の検証メソッドを追加し、manager → proxy の順に検証を委譲する
   - 参加互換性チェック配列に singleton エントリを追加し、不一致時は manager. / proxy. プレフィックス付きの差異フィールド名を理由として生成し、一致時は不一致理由を生成しない
