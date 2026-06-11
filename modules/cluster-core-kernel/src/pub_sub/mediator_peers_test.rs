@@ -26,7 +26,7 @@ fn record(host: &str, uid: u64, status: NodeStatus, roles: Vec<String>) -> NodeR
 
 #[test]
 fn peers_use_role_filter_and_active_member_status() {
-  let settings = DistributedPubSubConfig::try_new(
+  let config = DistributedPubSubConfig::try_new(
     Some(String::from("pubsub")),
     PubSubRoutingMode::Random,
     Duration::from_secs(1),
@@ -34,7 +34,7 @@ fn peers_use_role_filter_and_active_member_status() {
     100,
     PubSubNoSubscriberBehavior::Drop,
   )
-  .expect("settings");
+  .expect("config");
   let active = record("node-a", 1, NodeStatus::Up, vec![String::from("pubsub")]);
   let wrong_role = record("node-b", 2, NodeStatus::Up, vec![String::from("backend")]);
   let removed = record("node-c", 3, NodeStatus::Removed, vec![String::from("pubsub")]);
@@ -42,7 +42,7 @@ fn peers_use_role_filter_and_active_member_status() {
   let state =
     CurrentClusterState::new(vec![active.clone(), wrong_role, removed, leaving], vec![], vec![], None, BTreeMap::new());
 
-  let peers = MediatorPeers::from_state(&settings, &state);
+  let peers = MediatorPeers::from_state(&config, &state);
 
   assert_eq!(peers.active_owners(), from_ref(&active.unique_address));
   assert!(peers.contains(&active.unique_address));

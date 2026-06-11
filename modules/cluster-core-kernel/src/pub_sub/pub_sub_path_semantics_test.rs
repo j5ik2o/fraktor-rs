@@ -28,9 +28,9 @@ fn path(value: &str) -> MediatorPathKey {
   MediatorPathKey::parse(value).expect("path")
 }
 
-fn settings(routing_mode: PubSubRoutingMode, behavior: PubSubNoSubscriberBehavior) -> DistributedPubSubConfig {
+fn config(routing_mode: PubSubRoutingMode, behavior: PubSubNoSubscriberBehavior) -> DistributedPubSubConfig {
   DistributedPubSubConfig::try_new(None, routing_mode, Duration::from_secs(1), Duration::from_secs(30), 100, behavior)
-    .expect("settings")
+    .expect("config")
 }
 
 #[test]
@@ -46,7 +46,7 @@ fn send_selects_one_matching_path_entry() {
   remote_bucket.put_path(key.clone(), second.clone());
   let buckets = vec![local_bucket.delivery_view(from_ref(&local)), remote_bucket.delivery_view(&[remote])];
   let mut semantics =
-    PubSubPathSemantics::new(settings(PubSubRoutingMode::Random, PubSubNoSubscriberBehavior::Drop), local);
+    PubSubPathSemantics::new(config(PubSubRoutingMode::Random, PubSubNoSubscriberBehavior::Drop), local);
 
   let intent = semantics.select_send_target(SendPathInput::new(key, payload(), false), &buckets);
 
@@ -65,7 +65,7 @@ fn random_send_does_not_pin_same_path_to_same_entry() {
   bucket.put_path(key.clone(), second.clone());
   let buckets = vec![bucket.delivery_view(from_ref(&local))];
   let mut semantics =
-    PubSubPathSemantics::new(settings(PubSubRoutingMode::Random, PubSubNoSubscriberBehavior::Drop), local);
+    PubSubPathSemantics::new(config(PubSubRoutingMode::Random, PubSubNoSubscriberBehavior::Drop), local);
 
   let first_intent = semantics.select_send_target(SendPathInput::new(key.clone(), payload(), false), &buckets);
   let second_intent = semantics.select_send_target(SendPathInput::new(key, payload(), false), &buckets);
@@ -83,7 +83,7 @@ fn path_semantics_uses_canonical_relative_key() {
   bucket.put_path(registered, target.clone());
   let buckets = vec![bucket.delivery_view(from_ref(&local))];
   let mut semantics =
-    PubSubPathSemantics::new(settings(PubSubRoutingMode::Random, PubSubNoSubscriberBehavior::Drop), local);
+    PubSubPathSemantics::new(config(PubSubRoutingMode::Random, PubSubNoSubscriberBehavior::Drop), local);
 
   let intent = semantics.select_send_target(SendPathInput::new(requested, payload(), false), &buckets);
 
@@ -116,7 +116,7 @@ fn send_local_affinity_prefers_local_owner() {
   remote_bucket.put_path(key.clone(), subscriber("remote"));
   let buckets = vec![local_bucket.delivery_view(from_ref(&local)), remote_bucket.delivery_view(&[remote])];
   let mut semantics =
-    PubSubPathSemantics::new(settings(PubSubRoutingMode::Random, PubSubNoSubscriberBehavior::Drop), local);
+    PubSubPathSemantics::new(config(PubSubRoutingMode::Random, PubSubNoSubscriberBehavior::Drop), local);
 
   let intent = semantics.select_send_target(SendPathInput::new(key, payload(), true), &buckets);
 
@@ -124,7 +124,7 @@ fn send_local_affinity_prefers_local_owner() {
 }
 
 #[test]
-fn send_round_robin_uses_settings_routing_mode() {
+fn send_round_robin_uses_config_routing_mode() {
   let local = owner("node-a", 1);
   let key = path("fraktor://sys/user/service");
   let first = subscriber("actor-1");
@@ -134,7 +134,7 @@ fn send_round_robin_uses_settings_routing_mode() {
   bucket.put_path(key.clone(), second.clone());
   let buckets = vec![bucket.delivery_view(from_ref(&local))];
   let mut semantics =
-    PubSubPathSemantics::new(settings(PubSubRoutingMode::RoundRobin, PubSubNoSubscriberBehavior::Drop), local);
+    PubSubPathSemantics::new(config(PubSubRoutingMode::RoundRobin, PubSubNoSubscriberBehavior::Drop), local);
 
   let first_intent = semantics.select_send_target(SendPathInput::new(key.clone(), payload(), false), &buckets);
   let second_intent = semantics.select_send_target(SendPathInput::new(key, payload(), false), &buckets);
@@ -156,7 +156,7 @@ fn round_robin_cursor_isolated_per_path() {
   bucket.put_path(second_key.clone(), second.clone());
   let buckets = vec![bucket.delivery_view(from_ref(&local))];
   let mut semantics =
-    PubSubPathSemantics::new(settings(PubSubRoutingMode::RoundRobin, PubSubNoSubscriberBehavior::Drop), local);
+    PubSubPathSemantics::new(config(PubSubRoutingMode::RoundRobin, PubSubNoSubscriberBehavior::Drop), local);
 
   let first_intent = semantics.select_send_target(SendPathInput::new(first_key.clone(), payload(), false), &buckets);
   let second_intent = semantics.select_send_target(SendPathInput::new(second_key, payload(), false), &buckets);
@@ -183,7 +183,7 @@ fn round_robin_cursor_prunes_paths_that_are_no_longer_registered() {
   second_bucket.put_path(second_key.clone(), second);
   let second_buckets = vec![second_bucket.delivery_view(from_ref(&local))];
   let mut semantics =
-    PubSubPathSemantics::new(settings(PubSubRoutingMode::RoundRobin, PubSubNoSubscriberBehavior::Drop), local);
+    PubSubPathSemantics::new(config(PubSubRoutingMode::RoundRobin, PubSubNoSubscriberBehavior::Drop), local);
 
   let first_intent =
     semantics.select_send_target(SendPathInput::new(first_key.clone(), payload(), false), &first_buckets);
@@ -209,8 +209,7 @@ fn send_to_all_selects_all_matching_path_entries() {
   local_bucket.put_path(key.clone(), subscriber("local"));
   remote_bucket.put_path(key.clone(), subscriber("remote"));
   let buckets = vec![local_bucket.delivery_view(from_ref(&local)), remote_bucket.delivery_view(&[remote])];
-  let semantics =
-    PubSubPathSemantics::new(settings(PubSubRoutingMode::Random, PubSubNoSubscriberBehavior::Drop), local);
+  let semantics = PubSubPathSemantics::new(config(PubSubRoutingMode::Random, PubSubNoSubscriberBehavior::Drop), local);
 
   let intent = semantics.select_send_to_all_targets(SendToAllPathInput::new(key, payload(), false), &buckets);
 
@@ -229,8 +228,7 @@ fn send_to_all_deduplicates_same_subscriber_across_buckets() {
   local_bucket.put_path(key.clone(), target.clone());
   remote_bucket.put_path(key.clone(), target.clone());
   let buckets = vec![local_bucket.delivery_view(from_ref(&local)), remote_bucket.delivery_view(&[remote])];
-  let semantics =
-    PubSubPathSemantics::new(settings(PubSubRoutingMode::Random, PubSubNoSubscriberBehavior::Drop), local);
+  let semantics = PubSubPathSemantics::new(config(PubSubRoutingMode::Random, PubSubNoSubscriberBehavior::Drop), local);
 
   let intent = semantics.select_send_to_all_targets(SendToAllPathInput::new(key, payload(), false), &buckets);
 
@@ -248,8 +246,7 @@ fn send_to_all_all_but_self_excludes_local_owner() {
   local_bucket.put_path(key.clone(), subscriber("local"));
   remote_bucket.put_path(key.clone(), remote_target.clone());
   let buckets = vec![local_bucket.delivery_view(from_ref(&local)), remote_bucket.delivery_view(&[remote])];
-  let semantics =
-    PubSubPathSemantics::new(settings(PubSubRoutingMode::Random, PubSubNoSubscriberBehavior::Drop), local);
+  let semantics = PubSubPathSemantics::new(config(PubSubRoutingMode::Random, PubSubNoSubscriberBehavior::Drop), local);
 
   let intent = semantics.select_send_to_all_targets(SendToAllPathInput::new(key, payload(), true), &buckets);
 
@@ -261,9 +258,9 @@ fn no_subscriber_uses_drop_or_dead_letter_intent() {
   let local = owner("node-a", 1);
   let key = path("fraktor://sys/user/missing");
   let mut drop_semantics =
-    PubSubPathSemantics::new(settings(PubSubRoutingMode::Random, PubSubNoSubscriberBehavior::Drop), local.clone());
+    PubSubPathSemantics::new(config(PubSubRoutingMode::Random, PubSubNoSubscriberBehavior::Drop), local.clone());
   let mut dead_letter_semantics =
-    PubSubPathSemantics::new(settings(PubSubRoutingMode::Random, PubSubNoSubscriberBehavior::DeadLetter), local);
+    PubSubPathSemantics::new(config(PubSubRoutingMode::Random, PubSubNoSubscriberBehavior::DeadLetter), local);
 
   let dropped = drop_semantics.select_send_target(SendPathInput::new(key.clone(), payload(), false), &[]);
   let dead_letter = dead_letter_semantics.select_send_target(SendPathInput::new(key, payload(), false), &[]);
@@ -277,7 +274,7 @@ fn round_robin_no_subscriber_uses_configured_no_subscriber_intent() {
   let local = owner("node-a", 1);
   let key = path("fraktor://sys/user/missing");
   let mut semantics =
-    PubSubPathSemantics::new(settings(PubSubRoutingMode::RoundRobin, PubSubNoSubscriberBehavior::DeadLetter), local);
+    PubSubPathSemantics::new(config(PubSubRoutingMode::RoundRobin, PubSubNoSubscriberBehavior::DeadLetter), local);
 
   let intent = semantics.select_send_target(SendPathInput::new(key, payload(), false), &[]);
 

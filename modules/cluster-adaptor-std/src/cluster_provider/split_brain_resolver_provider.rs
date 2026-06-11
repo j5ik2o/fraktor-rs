@@ -25,7 +25,7 @@ type LeaseBackendFactory = ArcShared<dyn Fn() -> Box<dyn StdLeaseMajorityBackend
 
 /// std lifecycle wrapper for the core Split Brain Resolver provider hook.
 pub struct StdSplitBrainResolverProvider {
-  settings:        SplitBrainResolverConfig,
+  config:          SplitBrainResolverConfig,
   hook:            Option<SplitBrainResolverProviderHook>,
   lease_backend_f: Option<LeaseBackendFactory>,
   lease_backend:   Option<Box<dyn StdLeaseMajorityBackend>>,
@@ -33,10 +33,10 @@ pub struct StdSplitBrainResolverProvider {
 }
 
 impl StdSplitBrainResolverProvider {
-  /// Creates a stopped provider with SBR settings.
+  /// Creates a stopped provider with SBR configuration.
   #[must_use]
-  pub const fn new(settings: SplitBrainResolverConfig) -> Self {
-    Self { settings, hook: None, lease_backend_f: None, lease_backend: None, stopped: false }
+  pub const fn new(config: SplitBrainResolverConfig) -> Self {
+    Self { config, hook: None, lease_backend_f: None, lease_backend: None, stopped: false }
   }
 
   /// Configures a lease backend factory used when the provider starts.
@@ -51,7 +51,7 @@ impl StdSplitBrainResolverProvider {
   /// Returns compatibility metadata for this provider binding.
   #[must_use]
   pub fn compatibility(&self) -> DowningProviderCompatibility {
-    SplitBrainResolverProviderHook::new(self.settings).compatibility()
+    SplitBrainResolverProviderHook::new(self.config).compatibility()
   }
 
   /// Returns true when the provider has an active core hook.
@@ -111,7 +111,7 @@ impl StdSplitBrainResolverProvider {
   }
 
   fn activate(&mut self) {
-    self.hook = Some(SplitBrainResolverProviderHook::new(self.settings));
+    self.hook = Some(SplitBrainResolverProviderHook::new(self.config));
     self.lease_backend = self.lease_backend_f.as_ref().map(|factory| factory());
   }
 

@@ -433,7 +433,7 @@ impl ClusterPubSub for ClusterPubSubImpl {
   }
 
   fn mediator_config(&self) -> DistributedPubSubConfig {
-    self.mediator_state.settings().clone()
+    self.mediator_state.config().clone()
   }
 
   fn mediator_status(&self) -> TopicRegistryStatus {
@@ -450,7 +450,7 @@ impl ClusterPubSub for ClusterPubSubImpl {
     TopicRegistryDeltaCollector::collect_delta(
       peer_status,
       from_ref(self.mediator_state.local_bucket()),
-      self.mediator_state.settings(),
+      self.mediator_state.config(),
     )
   }
 

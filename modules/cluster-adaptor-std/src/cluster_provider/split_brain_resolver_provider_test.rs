@@ -103,7 +103,7 @@ fn multi_observer_context_with_local_observer() -> DowningDecisionContext {
     .with_reachability_observer(node_a.unique_address)
 }
 
-fn lease_majority_settings() -> SplitBrainResolverConfig {
+fn lease_majority_config() -> SplitBrainResolverConfig {
   SplitBrainResolverConfig::new(Duration::ZERO, SplitBrainResolverStrategy::LeaseMajority, Duration::from_secs(30))
 }
 
@@ -114,7 +114,7 @@ fn start_constructs_hook_and_lease_backend_adapter() {
   let calls_for_factory = calls.clone();
   let closed_for_factory = closed.clone();
   let mut provider =
-    StdSplitBrainResolverProvider::new(lease_majority_settings()).with_lease_backend_factory(move || {
+    StdSplitBrainResolverProvider::new(lease_majority_config()).with_lease_backend_factory(move || {
       Box::new(RecordingLeaseBackend::new(
         LeaseAcquisitionOutcome::Acquired,
         calls_for_factory.clone(),
@@ -137,7 +137,7 @@ fn stop_closes_active_backend_and_rejects_decisions() {
   let calls_for_factory = calls.clone();
   let closed_for_factory = closed.clone();
   let mut provider =
-    StdSplitBrainResolverProvider::new(lease_majority_settings()).with_lease_backend_factory(move || {
+    StdSplitBrainResolverProvider::new(lease_majority_config()).with_lease_backend_factory(move || {
       Box::new(RecordingLeaseBackend::new(
         LeaseAcquisitionOutcome::Acquired,
         calls_for_factory.clone(),
@@ -163,7 +163,7 @@ fn drop_closes_active_backend() {
     let calls_for_factory = calls.clone();
     let closed_for_factory = closed.clone();
     let mut provider =
-      StdSplitBrainResolverProvider::new(lease_majority_settings()).with_lease_backend_factory(move || {
+      StdSplitBrainResolverProvider::new(lease_majority_config()).with_lease_backend_factory(move || {
         Box::new(RecordingLeaseBackend::new(
           LeaseAcquisitionOutcome::Acquired,
           calls_for_factory.clone(),
@@ -198,7 +198,7 @@ fn downing_provider_decide_context_routes_trait_path_to_lease_backend() {
   let calls_for_factory = calls.clone();
   let closed_for_factory = closed.clone();
   let mut provider =
-    StdSplitBrainResolverProvider::new(lease_majority_settings()).with_lease_backend_factory(move || {
+    StdSplitBrainResolverProvider::new(lease_majority_config()).with_lease_backend_factory(move || {
       Box::new(RecordingLeaseBackend::new(
         LeaseAcquisitionOutcome::Acquired,
         calls_for_factory.clone(),
@@ -220,7 +220,7 @@ fn downing_provider_trait_path_starts_factory_provider_lazily() {
   let closed = counter();
   let calls_for_factory = calls.clone();
   let closed_for_factory = closed.clone();
-  let provider = StdSplitBrainResolverProvider::new(lease_majority_settings()).with_lease_backend_factory(move || {
+  let provider = StdSplitBrainResolverProvider::new(lease_majority_config()).with_lease_backend_factory(move || {
     Box::new(RecordingLeaseBackend::new(
       LeaseAcquisitionOutcome::Acquired,
       calls_for_factory.clone(),

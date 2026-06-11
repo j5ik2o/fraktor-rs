@@ -58,7 +58,7 @@ fn proxy_extension_id_default_creates_proxy_extension() {
   let extension = extension_id.create_extension(&system);
 
   extension.with_read(|inner| {
-    assert_eq!(inner.settings(), PersistenceConfig::default());
+    assert_eq!(inner.config(), PersistenceConfig::default());
   });
 }
 
@@ -100,17 +100,17 @@ fn proxy_installer_reports_serialization_registration_failure() {
 }
 
 #[test]
-fn proxy_installer_preserves_explicit_settings() {
-  let settings = PersistenceConfig::default()
+fn proxy_installer_preserves_explicit_config() {
+  let config = PersistenceConfig::default()
     .with_journal_actor_config(JournalActorConfig::new(2))
     .with_snapshot_actor_config(SnapshotActorConfig::new(3));
   let installers = ExtensionInstallers::default()
-    .with_extension_installer(PersistencePluginProxyExtensionInstaller::new_with_settings(settings));
+    .with_extension_installer(PersistencePluginProxyExtensionInstaller::new_with_config(config));
   let system = build_system(installers);
   let extension = system.extended().extension_by_type::<PersistenceExtensionShared>().expect("extension");
 
   extension.with_read(|inner| {
-    assert_eq!(inner.settings().journal_actor_config(), JournalActorConfig::new(2));
-    assert_eq!(inner.settings().snapshot_actor_config(), SnapshotActorConfig::new(3));
+    assert_eq!(inner.config().journal_actor_config(), JournalActorConfig::new(2));
+    assert_eq!(inner.config().snapshot_actor_config(), SnapshotActorConfig::new(3));
   });
 }

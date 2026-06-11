@@ -19,20 +19,20 @@ use crate::{
 
 /// Installs proxy-backed persistence actors into the actor system.
 pub struct PersistencePluginProxyExtensionInstaller {
-  settings: PersistenceConfig,
+  config: PersistenceConfig,
 }
 
 impl PersistencePluginProxyExtensionInstaller {
   /// Creates a new proxy extension installer.
   #[must_use]
   pub const fn new() -> Self {
-    Self::new_with_settings(PersistenceConfig::default_config())
+    Self::new_with_config(PersistenceConfig::default_config())
   }
 
-  /// Creates a new proxy extension installer with explicit persistence settings.
+  /// Creates a new proxy extension installer with explicit persistence configuration.
   #[must_use]
-  pub const fn new_with_settings(settings: PersistenceConfig) -> Self {
-    Self { settings }
+  pub const fn new_with_config(config: PersistenceConfig) -> Self {
+    Self { config }
   }
 }
 
@@ -47,7 +47,7 @@ impl ExtensionInstaller for PersistencePluginProxyExtensionInstaller {
     register_serialization_registry_contributor(system, PersistenceSerializationContributor::new()).map_err(
       |error| ActorSystemBuildError::Configuration(format!("persistence serialization registration failed: {error}")),
     )?;
-    let extension_id = PersistencePluginProxyExtensionId::new_with_settings(self.settings);
+    let extension_id = PersistencePluginProxyExtensionId::new_with_config(self.config);
     install_extension_id(system, &extension_id);
     Ok(())
   }

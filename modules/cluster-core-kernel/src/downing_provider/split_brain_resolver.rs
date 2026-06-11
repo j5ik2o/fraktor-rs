@@ -32,29 +32,29 @@ const STABLE_AFTER_PENDING: &str = "membership has not been stable for the requi
 const DOWN_ALL_PENDING: &str = "down-all timeout has not elapsed";
 const DOWN_ALL_ELAPSED: &str = "down-all timeout elapsed";
 
-/// Evaluates Split Brain Resolver settings against a downing context.
+/// Evaluates Split Brain Resolver configuration against a downing context.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SplitBrainResolver {
-  settings: SplitBrainResolverConfig,
+  config: SplitBrainResolverConfig,
 }
 
 impl SplitBrainResolver {
-  /// Creates a resolver from immutable settings.
+  /// Creates a resolver from immutable configuration.
   #[must_use]
-  pub const fn new(settings: SplitBrainResolverConfig) -> Self {
-    Self { settings }
+  pub const fn new(config: SplitBrainResolverConfig) -> Self {
+    Self { config }
   }
 
-  /// Returns the settings used by this resolver.
+  /// Returns the configuration used by this resolver.
   #[must_use]
-  pub const fn settings(&self) -> SplitBrainResolverConfig {
-    self.settings
+  pub const fn config(&self) -> SplitBrainResolverConfig {
+    self.config
   }
 
   /// Evaluates the configured strategy without mutating membership state.
   #[must_use]
   pub fn decide(&self, context: &DowningDecisionContext) -> DowningStrategyDecision {
-    let strategy = self.settings.active_strategy();
+    let strategy = self.config.active_strategy();
 
     if context.explicit_down_authority().is_some() {
       return DowningStrategyDecision::down(
@@ -67,10 +67,10 @@ impl SplitBrainResolver {
     {
       return defer(strategy, reason);
     }
-    if self.settings.stable_after() > Duration::ZERO && context.unstable_duration() < self.settings.stable_after() {
+    if self.config.stable_after() > Duration::ZERO && context.unstable_duration() < self.config.stable_after() {
       return DowningStrategyDecision::defer(DowningDecisionTrace::stable_after_pending(
         strategy,
-        self.settings.stable_after(),
+        self.config.stable_after(),
         String::from(STABLE_AFTER_PENDING),
       ));
     }
@@ -93,7 +93,7 @@ impl SplitBrainResolver {
     context: &DowningDecisionContext,
     lease_port: &mut dyn LeaseMajorityPort,
   ) -> DowningStrategyDecision {
-    if self.settings.active_strategy() != SplitBrainResolverStrategy::LeaseMajority {
+    if self.config.active_strategy() != SplitBrainResolverStrategy::LeaseMajority {
       return self.decide(context);
     }
     if context.explicit_down_authority().is_some() {
@@ -108,10 +108,10 @@ impl SplitBrainResolver {
     if let Some(reason) = context.defer_reason() {
       return defer(SplitBrainResolverStrategy::LeaseMajority, reason);
     }
-    if self.settings.stable_after() > Duration::ZERO && context.unstable_duration() < self.settings.stable_after() {
+    if self.config.stable_after() > Duration::ZERO && context.unstable_duration() < self.config.stable_after() {
       return DowningStrategyDecision::defer(DowningDecisionTrace::stable_after_pending(
         SplitBrainResolverStrategy::LeaseMajority,
-        self.settings.stable_after(),
+        self.config.stable_after(),
         String::from(STABLE_AFTER_PENDING),
       ));
     }
@@ -169,7 +169,7 @@ impl SplitBrainResolver {
 
   fn decide_static_quorum(&self, context: &DowningDecisionContext) -> DowningStrategyDecision {
     let strategy = SplitBrainResolverStrategy::StaticQuorum;
-    let Some(quorum_size) = self.settings.static_quorum_size() else {
+    let Some(quorum_size) = self.config.static_quorum_size() else {
       return defer(strategy, STATIC_QUORUM_SIZE_MISSING);
     };
     if quorum_size == 0 {
@@ -260,7 +260,7 @@ impl SplitBrainResolver {
     if targets.is_empty() {
       return defer(strategy, NO_ACTIVE_MEMBERS);
     }
-    let timeout = self.settings.down_all_when_unstable();
+    let timeout = self.config.down_all_when_unstable();
     if timeout > Duration::ZERO && context.unstable_duration() < timeout {
       return DowningStrategyDecision::defer(DowningDecisionTrace::down_all_pending(
         strategy,

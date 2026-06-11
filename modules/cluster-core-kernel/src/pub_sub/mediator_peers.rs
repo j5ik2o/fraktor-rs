@@ -20,10 +20,8 @@ pub struct MediatorPeers {
 impl MediatorPeers {
   /// Creates mediator peers from active membership records and the role filter.
   #[must_use]
-  pub fn from_state(settings: &DistributedPubSubConfig, state: &CurrentClusterState) -> Self {
-    Self {
-      active_owners: settings.mediator_candidates(state).into_iter().map(|record| record.unique_address).collect(),
-    }
+  pub fn from_state(config: &DistributedPubSubConfig, state: &CurrentClusterState) -> Self {
+    Self { active_owners: config.mediator_candidates(state).into_iter().map(|record| record.unique_address).collect() }
   }
 
   /// Creates mediator peers from already selected owner identities.

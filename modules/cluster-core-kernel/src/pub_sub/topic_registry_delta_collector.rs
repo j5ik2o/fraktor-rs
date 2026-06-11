@@ -17,12 +17,12 @@ use crate::pub_sub::{
 pub struct TopicRegistryDeltaCollector;
 
 impl TopicRegistryDeltaCollector {
-  /// Collects local entries newer than `peer_status`, bounded by settings.
+  /// Collects local entries newer than `peer_status`, bounded by configuration.
   #[must_use]
   pub fn collect_delta(
     peer_status: &TopicRegistryStatus,
     local_buckets: &[TopicRegistryBucket],
-    settings: &DistributedPubSubConfig,
+    config: &DistributedPubSubConfig,
   ) -> TopicRegistryDelta {
     let mut entries = Vec::new();
     for bucket in local_buckets {
@@ -47,7 +47,7 @@ impl TopicRegistryDeltaCollector {
         .then(left.owner().cmp(right.owner()))
         .then(left.key().cmp(right.key()))
     });
-    entries.truncate(settings.max_delta_elements());
+    entries.truncate(config.max_delta_elements());
     TopicRegistryDelta::new(entries)
   }
 
