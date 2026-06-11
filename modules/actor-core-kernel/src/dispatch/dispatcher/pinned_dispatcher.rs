@@ -48,7 +48,7 @@ pub struct PinnedDispatcher {
 impl PinnedDispatcher {
   /// Constructs a new `PinnedDispatcher` from the supplied configuration and executor.
   ///
-  /// The configuration are normalised to `throughput = usize::MAX`,
+  /// The configuration is normalised to `throughput = usize::MAX`,
   /// `throughput_deadline = None` before being handed to [`DispatcherCore`].
   #[must_use]
   pub fn new(config: &DispatcherConfig, executor: ExecutorShared) -> Self {
