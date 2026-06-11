@@ -143,12 +143,12 @@ impl ProducerController {
     ProducerControllerCommand::register_consumer(consumer_controller)
   }
 
-  /// Creates the producer controller behavior with default settings.
+  /// Creates the producer controller behavior with default configuration.
   #[must_use]
   pub fn behavior<A>(producer_id: impl Into<String>) -> Behavior<ProducerControllerCommand<A>>
   where
     A: Clone + Send + Sync + 'static, {
-    Self::behavior_with_settings(producer_id, &ProducerControllerConfig::new(), None)
+    Self::behavior_with_config(producer_id, &ProducerControllerConfig::new(), None)
   }
 
   /// Creates the producer controller behavior with an optional durable
@@ -171,20 +171,20 @@ impl ProducerController {
   ) -> Behavior<ProducerControllerCommand<A>>
   where
     A: Clone + Send + Sync + 'static, {
-    Self::behavior_with_settings(producer_id, &ProducerControllerConfig::new(), durable_queue)
+    Self::behavior_with_config(producer_id, &ProducerControllerConfig::new(), durable_queue)
   }
 
-  /// Creates the producer controller behavior with custom settings.
+  /// Creates the producer controller behavior with custom configuration.
   #[must_use]
-  pub fn behavior_with_settings<A>(
+  pub fn behavior_with_config<A>(
     producer_id: impl Into<String>,
-    settings: &ProducerControllerConfig,
+    config: &ProducerControllerConfig,
     durable_queue_behavior: Option<Behavior<DurableProducerQueueCommand<A>>>,
   ) -> Behavior<ProducerControllerCommand<A>>
   where
     A: Clone + Send + Sync + 'static, {
     let producer_id = producer_id.into();
-    let settings = settings.clone();
+    let config = config.clone();
 
     Behaviors::setup(move |ctx| {
       let self_ref = ctx.self_ref();
@@ -256,7 +256,7 @@ impl ProducerController {
         return Behaviors::stopped();
       } else if state.with_lock(|state| state.awaiting_load)
         && let Err(error) = ctx.schedule_once(
-          settings.durable_queue_request_timeout(),
+          config.durable_queue_request_timeout(),
           self_ref.clone(),
           ProducerControllerCommand::durable_queue_load_timed_out(1),
         )
@@ -265,11 +265,11 @@ impl ProducerController {
         ctx.system().emit_log(LogLevel::Warn, message, Some(ctx.pid()), None);
       }
 
-      let runtime_settings = settings.clone();
+      let runtime_settings = config.clone();
       let runtime_load_state_adapter = load_state_adapter;
       Behaviors::receive_message(move |ctx, command: &ProducerControllerCommand<A>| {
         let command_context = ProducerCommandContext {
-          settings:           &runtime_settings,
+          config:             &runtime_settings,
           self_ref:           &self_ref,
           load_state_adapter: &runtime_load_state_adapter,
         };
@@ -282,7 +282,7 @@ impl ProducerController {
 struct ProducerCommandContext<'a, A>
 where
   A: Clone + Send + Sync + 'static, {
-  settings:           &'a ProducerControllerConfig,
+  config:             &'a ProducerControllerConfig,
   self_ref:           &'a TypedActorRef<ProducerControllerCommand<A>>,
   load_state_adapter: &'a Option<TypedActorRef<DurableProducerQueueState<A>>>,
 }
@@ -301,10 +301,10 @@ where
   let deferred = state.with_lock(|state| {
     let mut deferred = Vec::new();
     collect_producer_deferred_for_command(state, command, command_context, &mut deferred, &mut stop_self);
-    maybe_schedule_resend_first(state, command_context.settings, command_context.self_ref, ctx);
+    maybe_schedule_resend_first(state, command_context.config, command_context.self_ref, ctx);
     deferred
   });
-  execute_deferred(ctx, deferred, command_context.settings, command_context.self_ref);
+  execute_deferred(ctx, deferred, command_context.config, command_context.self_ref);
   stop_producer_after_timeout(ctx, stop_self);
   Behaviors::same()
 }
@@ -346,14 +346,14 @@ fn collect_producer_deferred_for_command<A>(
       collect_producer_load_timeout(
         state,
         *attempt,
-        command_context.settings,
+        command_context.config,
         command_context.load_state_adapter,
         deferred,
         stop_self,
       );
     },
     | ProducerControllerCommandKind::DurableQueueStoreTimedOut { seq_nr, attempt } => {
-      collect_producer_store_timeout(state, *seq_nr, *attempt, command_context.settings, deferred, stop_self);
+      collect_producer_store_timeout(state, *seq_nr, *attempt, command_context.config, deferred, stop_self);
     },
     | ProducerControllerCommandKind::ResendFirstUnconfirmed { seq_nr } => {
       collect_producer_resend_first_unconfirmed(state, *seq_nr, deferred);
@@ -435,7 +435,7 @@ fn collect_producer_durable_queue_loaded<A>(
 fn collect_producer_load_timeout<A>(
   state: &mut ProducerControllerState<A>,
   attempt: u32,
-  settings: &ProducerControllerConfig,
+  config: &ProducerControllerConfig,
   load_state_adapter: &Option<TypedActorRef<DurableProducerQueueState<A>>>,
   deferred: &mut Vec<DeferredAction<A>>,
   stop_self: &mut Option<String>,
@@ -444,7 +444,7 @@ fn collect_producer_load_timeout<A>(
   if !state.awaiting_load {
     return;
   }
-  if attempt >= settings.durable_queue_retry_attempts() {
+  if attempt >= config.durable_queue_retry_attempts() {
     *stop_self = Some(alloc::format!("ProducerController durable queue load timed out after {} attempts", attempt));
   } else if let (Some(durable_queue), Some(load_state_adapter)) =
     (state.durable_queue.clone(), load_state_adapter.clone())
@@ -461,7 +461,7 @@ fn collect_producer_store_timeout<A>(
   state: &mut ProducerControllerState<A>,
   seq_nr: SeqNr,
   attempt: u32,
-  settings: &ProducerControllerConfig,
+  config: &ProducerControllerConfig,
   deferred: &mut Vec<DeferredAction<A>>,
   stop_self: &mut Option<String>,
 ) where
@@ -472,7 +472,7 @@ fn collect_producer_store_timeout<A>(
   if pending_delivery.sequenced.seq_nr() != seq_nr {
     return;
   }
-  if attempt >= settings.durable_queue_retry_attempts() {
+  if attempt >= config.durable_queue_retry_attempts() {
     *stop_self = Some(alloc::format!(
       "ProducerController durable queue store timed out for seq_nr {} after {} attempts",
       seq_nr,
@@ -530,7 +530,7 @@ fn stop_producer_after_timeout<A>(
 
 fn maybe_schedule_resend_first<A>(
   state: &mut ProducerControllerState<A>,
-  settings: &ProducerControllerConfig,
+  config: &ProducerControllerConfig,
   self_ref: &TypedActorRef<ProducerControllerCommand<A>>,
   ctx: &TypedActorContext<'_, ProducerControllerCommand<A>>,
 ) where
@@ -547,7 +547,7 @@ fn maybe_schedule_resend_first<A>(
     return;
   }
   match ctx.schedule_once(
-    settings.durable_queue_resend_first_interval(),
+    config.durable_queue_resend_first_interval(),
     self_ref.clone(),
     ProducerControllerCommand::resend_first_unconfirmed(first_seq_nr),
   ) {
@@ -690,7 +690,7 @@ pub(crate) fn collect_on_durable_queue_message_stored<A>(
 fn execute_deferred<A>(
   ctx: &mut TypedActorContext<'_, ProducerControllerCommand<A>>,
   actions: Vec<DeferredAction<A>>,
-  settings: &ProducerControllerConfig,
+  config: &ProducerControllerConfig,
   self_ref: &TypedActorRef<ProducerControllerCommand<A>>,
 ) where
   A: Clone + Send + Sync + 'static, {
@@ -724,7 +724,7 @@ fn execute_deferred<A>(
               ProducerControllerCommand::durable_queue_store_timed_out(seq_nr, attempt)
             },
           };
-          if let Err(error) = ctx.schedule_once(settings.durable_queue_request_timeout(), self_ref.clone(), command) {
+          if let Err(error) = ctx.schedule_once(config.durable_queue_request_timeout(), self_ref.clone(), command) {
             let message = alloc::format!("ProducerController failed to schedule durable queue timeout: {:?}", error);
             ctx.system().emit_log(LogLevel::Warn, message, Some(ctx.pid()), None);
           }

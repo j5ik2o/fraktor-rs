@@ -191,7 +191,7 @@ impl ActorMaterializer {
     system: &ActorSystem,
     buffer_config: StreamBufferConfig,
     kill_switch_state: KillSwitchStateHandle,
-    stream_ref_settings: &StreamRefConfig,
+    stream_ref_config: &StreamRefConfig,
   ) -> Result<(StreamShared, Option<String>), StreamError> {
     let dispatcher = island.dispatcher().map(String::from);
     let stream_plan = island.into_stream_plan();
@@ -200,7 +200,7 @@ impl ActorMaterializer {
       buffer_config,
       kill_switch_state,
       Some(system),
-      stream_ref_settings,
+      stream_ref_config,
     );
     stream.start()?;
     Ok((StreamShared::new(stream), dispatcher))
@@ -648,7 +648,7 @@ impl Materializer for ActorMaterializer {
     let actor_system = self.system()?;
     let (plan, materialized) = graph.into_parts();
     let island_plan = IslandSplitter::split(plan);
-    let stream_ref_settings = self.config.stream_ref_settings();
+    let stream_ref_config = self.config.stream_ref_config();
     let (mut islands, crossings) = island_plan.into_parts();
     let graph_kill_switch_state = Stream::new_running_kill_switch_state();
     let mut downstream_cancellation_boundaries = Vec::new();
@@ -679,7 +679,7 @@ impl Materializer for ActorMaterializer {
         &actor_system,
         self.config.buffer_config(),
         graph_kill_switch_state.clone(),
-        &stream_ref_settings,
+        &stream_ref_config,
       ) {
         | Ok((stream, dispatcher)) => {
           streams.push(stream);

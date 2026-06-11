@@ -11,7 +11,7 @@ use fraktor_stream_core_kernel_rs::{
 };
 
 #[test]
-fn stream_ref_settings_are_reachable_from_public_core_api() {
+fn stream_ref_config_are_reachable_from_public_core_api() {
   // Given/When: crate public API から StreamRefConfig を構築する
   let settings = StreamRefConfig::new();
 
@@ -51,19 +51,19 @@ fn stream_ref_buffer_capacity_public_factory_rejects_zero() {
 }
 
 #[test]
-fn actor_materializer_config_exposes_stream_ref_settings() {
+fn actor_materializer_config_exposes_stream_ref_config() {
   // Given: StreamRef settings を明示的に差し替える
-  let stream_ref_settings = StreamRefConfig::new()
+  let stream_ref_config = StreamRefConfig::new()
     .with_buffer_capacity(64)
     .with_demand_redelivery_interval_ticks(2)
     .with_subscription_timeout_ticks(45)
     .with_termination_received_before_completion_leeway_ticks(5);
 
   // When: ActorMaterializerConfig に設定する
-  let config = ActorMaterializerConfig::new().with_stream_ref_settings(stream_ref_settings.clone());
+  let config = ActorMaterializerConfig::new().with_stream_ref_config(stream_ref_config.clone());
 
   // Then: config 経由で同じ設定が取得できる
-  assert_eq!(config.stream_ref_settings(), stream_ref_settings);
+  assert_eq!(config.stream_ref_config(), stream_ref_config);
 }
 
 #[test]

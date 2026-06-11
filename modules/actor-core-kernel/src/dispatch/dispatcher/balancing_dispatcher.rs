@@ -36,8 +36,8 @@ impl BalancingDispatcher {
   /// attaches via
   /// [`MessageDispatcher::try_create_shared_mailbox`].
   #[must_use]
-  pub fn new(settings: &DispatcherConfig, executor: ExecutorShared, shared_queue: SharedMessageQueue) -> Self {
-    Self { core: DispatcherCore::new(settings, executor), shared_queue, team: Vec::new() }
+  pub fn new(config: &DispatcherConfig, executor: ExecutorShared, shared_queue: SharedMessageQueue) -> Self {
+    Self { core: DispatcherCore::new(config, executor), shared_queue, team: Vec::new() }
   }
 
   /// Returns a clone of the shared message queue used by team members.

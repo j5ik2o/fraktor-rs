@@ -18,10 +18,10 @@ pub struct BalancingDispatcherFactory {
 }
 
 impl BalancingDispatcherFactory {
-  /// Builds a new configurator from the supplied settings and executor.
+  /// Builds a new configurator from the supplied configuration and executor.
   #[must_use]
-  pub fn new(settings: &DispatcherConfig, executor: ExecutorShared, shared_queue: SharedMessageQueue) -> Self {
-    let dispatcher = BalancingDispatcher::new(settings, executor, shared_queue);
+  pub fn new(config: &DispatcherConfig, executor: ExecutorShared, shared_queue: SharedMessageQueue) -> Self {
+    let dispatcher = BalancingDispatcher::new(config, executor, shared_queue);
     Self { shared: MessageDispatcherShared::new(Box::new(dispatcher)) }
   }
 }

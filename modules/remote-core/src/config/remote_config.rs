@@ -479,7 +479,7 @@ impl RemoteConfig {
     self
   }
 
-  /// Returns a copy with the given compression settings.
+  /// Returns a copy with the given compression configuration.
   #[must_use]
   pub const fn with_compression_config(mut self, compression_config: RemoteCompressionConfig) -> Self {
     self.compression_config = compression_config;
@@ -756,7 +756,7 @@ impl RemoteConfig {
     self.outbound_max_restarts
   }
 
-  /// Returns the compression settings surface.
+  /// Returns the compression configuration surface.
   #[must_use]
   pub const fn compression_config(&self) -> &RemoteCompressionConfig {
     &self.compression_config

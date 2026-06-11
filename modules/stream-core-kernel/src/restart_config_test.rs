@@ -66,28 +66,28 @@ fn restart_config_with_restart_on_is_cloneable() {
   assert_eq!(settings.should_restart(&error), cloned.should_restart(&error));
 }
 
-// --- log_settings tests ---
+// --- log_config tests ---
 
 #[test]
 fn restart_log_config_default_values() {
   // Given: default RestartLogConfig
-  let log_settings = RestartLogConfig::default();
+  let log_config = RestartLogConfig::default();
 
   // Then: defaults match Pekko convention
-  assert_eq!(log_settings.log_level(), RestartLogLevel::Warning);
-  assert_eq!(log_settings.critical_log_level(), RestartLogLevel::Error);
-  assert_eq!(log_settings.critical_log_level_after(), usize::MAX);
+  assert_eq!(log_config.log_level(), RestartLogLevel::Warning);
+  assert_eq!(log_config.critical_log_level(), RestartLogLevel::Error);
+  assert_eq!(log_config.critical_log_level_after(), usize::MAX);
 }
 
 #[test]
 fn restart_log_config_with_custom_values() {
   // Given: custom log settings
-  let log_settings = RestartLogConfig::new(RestartLogLevel::Debug, RestartLogLevel::Warning, 5);
+  let log_config = RestartLogConfig::new(RestartLogLevel::Debug, RestartLogLevel::Warning, 5);
 
   // Then: custom values are preserved
-  assert_eq!(log_settings.log_level(), RestartLogLevel::Debug);
-  assert_eq!(log_settings.critical_log_level(), RestartLogLevel::Warning);
-  assert_eq!(log_settings.critical_log_level_after(), 5);
+  assert_eq!(log_config.log_level(), RestartLogLevel::Debug);
+  assert_eq!(log_config.critical_log_level(), RestartLogLevel::Warning);
+  assert_eq!(log_config.critical_log_level_after(), 5);
 }
 
 #[test]
@@ -95,10 +95,10 @@ fn restart_config_default_log_config() {
   // Given: default RestartConfig
   let settings = RestartConfig::new(1, 8, 3);
 
-  // Then: log_settings uses default values
-  let log_settings = settings.log_settings();
-  assert_eq!(log_settings.log_level(), RestartLogLevel::Warning);
-  assert_eq!(log_settings.critical_log_level(), RestartLogLevel::Error);
+  // Then: log_config uses default values
+  let log_config = settings.log_config();
+  assert_eq!(log_config.log_level(), RestartLogLevel::Warning);
+  assert_eq!(log_config.critical_log_level(), RestartLogLevel::Error);
 }
 
 #[test]
@@ -107,11 +107,11 @@ fn restart_config_with_log_config_replaces_defaults() {
   let custom_log = RestartLogConfig::new(RestartLogLevel::Info, RestartLogLevel::Error, 10);
 
   // When: applying custom log settings
-  let settings = RestartConfig::new(1, 8, 3).with_log_settings(custom_log);
+  let settings = RestartConfig::new(1, 8, 3).with_log_config(custom_log);
 
   // Then: custom log settings are used
-  assert_eq!(settings.log_settings().log_level(), RestartLogLevel::Info);
-  assert_eq!(settings.log_settings().critical_log_level_after(), 10);
+  assert_eq!(settings.log_config().log_level(), RestartLogLevel::Info);
+  assert_eq!(settings.log_config().critical_log_level_after(), 10);
 }
 
 #[test]

@@ -449,12 +449,12 @@ fn settings_returns_snapshot_preserved_through_from_untyped() {
   });
   let system = TypedActorSystem::<u32>::from_untyped(untyped);
 
-  // When: settings() is called on the typed wrapper
-  let settings = system.settings();
+  // When: config() is called on the typed wrapper
+  let config = system.config();
 
   // Then: the immutable snapshot preserves the source configuration
-  assert_eq!(settings.system_name(), "wrapped-system");
-  assert_eq!(settings.start_time(), expected_start_time);
+  assert_eq!(config.system_name(), "wrapped-system");
+  assert_eq!(config.start_time(), expected_start_time);
 }
 
 #[test]

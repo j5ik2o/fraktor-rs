@@ -46,15 +46,15 @@ pub struct PinnedDispatcher {
 }
 
 impl PinnedDispatcher {
-  /// Constructs a new `PinnedDispatcher` from the supplied settings and executor.
+  /// Constructs a new `PinnedDispatcher` from the supplied configuration and executor.
   ///
-  /// The settings are normalised to `throughput = usize::MAX`,
+  /// The configuration are normalised to `throughput = usize::MAX`,
   /// `throughput_deadline = None` before being handed to [`DispatcherCore`].
   #[must_use]
-  pub fn new(settings: &DispatcherConfig, executor: ExecutorShared) -> Self {
+  pub fn new(config: &DispatcherConfig, executor: ExecutorShared) -> Self {
     // SAFETY: `usize::MAX` is non-zero on every supported target.
     let max_throughput = unsafe { NonZeroUsize::new_unchecked(usize::MAX) };
-    let normalised = settings.clone().with_throughput(max_throughput).with_throughput_deadline(None);
+    let normalised = config.clone().with_throughput(max_throughput).with_throughput_deadline(None);
     Self { core: DispatcherCore::new(&normalised, executor), owner: None }
   }
 

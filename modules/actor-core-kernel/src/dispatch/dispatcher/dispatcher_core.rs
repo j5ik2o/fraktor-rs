@@ -29,14 +29,14 @@ pub struct DispatcherCore {
 }
 
 impl DispatcherCore {
-  /// Constructs the core from an immutable settings bundle and an executor.
+  /// Constructs the core from an immutable configuration bundle and an executor.
   #[must_use]
-  pub fn new(settings: &DispatcherConfig, executor: ExecutorShared) -> Self {
+  pub fn new(config: &DispatcherConfig, executor: ExecutorShared) -> Self {
     Self {
-      id: settings.id().to_string(),
-      throughput: settings.throughput(),
-      throughput_deadline: settings.throughput_deadline(),
-      shutdown_timeout: settings.shutdown_timeout(),
+      id: config.id().to_string(),
+      throughput: config.throughput(),
+      throughput_deadline: config.throughput_deadline(),
+      shutdown_timeout: config.shutdown_timeout(),
       executor,
       inhabitants: 0,
       shutdown_schedule: ShutdownSchedule::Unscheduled,

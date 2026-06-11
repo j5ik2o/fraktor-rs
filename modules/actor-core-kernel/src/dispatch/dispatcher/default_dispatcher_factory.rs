@@ -16,10 +16,10 @@ pub struct DefaultDispatcherFactory {
 }
 
 impl DefaultDispatcherFactory {
-  /// Builds a new configurator from the supplied settings and executor.
+  /// Builds a new configurator from the supplied configuration and executor.
   #[must_use]
-  pub fn new(settings: &DispatcherConfig, executor: ExecutorShared) -> Self {
-    let dispatcher = DefaultDispatcher::new(settings, executor);
+  pub fn new(config: &DispatcherConfig, executor: ExecutorShared) -> Self {
+    let dispatcher = DefaultDispatcher::new(config, executor);
     Self { shared: MessageDispatcherShared::new(Box::new(dispatcher)) }
   }
 }

@@ -80,10 +80,10 @@ fn work_pulling_producer_controller_factory_methods_compile() {
 }
 
 #[test]
-fn work_pulling_producer_controller_with_settings_compiles() {
+fn work_pulling_producer_controller_with_config_compiles() {
   let key = ServiceKey::<ConsumerControllerCommand<u32>>::new("test-workers");
   let settings = WorkPullingProducerControllerConfig::new();
-  let _behavior = WorkPullingProducerController::behavior_with_settings::<u32>("test-producer", key, &settings, None);
+  let _behavior = WorkPullingProducerController::behavior_with_config::<u32>("test-producer", key, &settings, None);
 }
 
 #[test]
@@ -320,7 +320,7 @@ fn worker_removal_replays_unconfirmed_messages_to_self() {
 }
 
 #[test]
-fn worker_spawn_propagates_nested_producer_controller_settings() {
+fn worker_spawn_propagates_nested_producer_controller_config() {
   let mut state = WorkPullingState::<u32>::new("test-producer".to_string(), 16);
   state.demand_adapter = Some(make_typed_ref::<ProducerControllerRequestNext<u32>>());
   let self_ref = make_typed_ref::<WorkPullingProducerControllerCommand<u32>>();
@@ -333,8 +333,8 @@ fn worker_spawn_propagates_nested_producer_controller_settings() {
 
   assert!(matches!(
     deferred.last(),
-    Some(WppcDeferredAction::SpawnWorker { producer_controller_settings, .. })
-      if producer_controller_settings.durable_queue_retry_attempts() == 3
+    Some(WppcDeferredAction::SpawnWorker { producer_controller_config, .. })
+      if producer_controller_config.durable_queue_retry_attempts() == 3
   ));
 }
 
@@ -362,7 +362,7 @@ fn durable_queue_send_failure_stops_work_pulling_controller() {
   let command_context = WorkPullingCommandContext {
     producer_id: "test-producer",
     self_ref: &self_ref,
-    producer_controller_settings: &producer_settings,
+    producer_controller_config: &producer_settings,
     load_state_adapter: &load_state_adapter,
     internal_ask_timeout: Duration::from_millis(1),
     durable_queue_request_timeout: Duration::from_millis(1),

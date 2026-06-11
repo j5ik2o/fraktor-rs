@@ -360,7 +360,7 @@ fn consumer_controller_settings_accessors() {
 }
 
 #[test]
-fn producer_controller_settings_accessors() {
+fn producer_controller_config_accessors() {
   let settings = ProducerControllerConfig::new()
     .with_durable_queue_request_timeout(Duration::from_millis(15))
     .with_durable_queue_retry_attempts(2)
@@ -372,27 +372,27 @@ fn producer_controller_settings_accessors() {
 }
 
 #[test]
-fn producer_controller_behavior_with_settings_is_publicly_usable() {
+fn producer_controller_behavior_with_config_is_publicly_usable() {
   let settings = ProducerControllerConfig::new();
-  let _behavior = ProducerController::behavior_with_settings::<u32>("public-producer", &settings, None);
+  let _behavior = ProducerController::behavior_with_config::<u32>("public-producer", &settings, None);
 }
 
 #[test]
-fn work_pulling_producer_controller_settings_accessors() {
+fn work_pulling_producer_controller_config_accessors() {
   let settings = WorkPullingProducerControllerConfig::new()
     .with_internal_ask_timeout(Duration::from_millis(21))
-    .with_producer_controller_settings(ProducerControllerConfig::new().with_durable_queue_retry_attempts(4));
+    .with_producer_controller_config(ProducerControllerConfig::new().with_durable_queue_retry_attempts(4));
   assert_eq!(settings.buffer_size(), 1000);
   assert_eq!(settings.internal_ask_timeout(), Duration::from_millis(21));
-  assert_eq!(settings.producer_controller_settings().durable_queue_retry_attempts(), 4);
+  assert_eq!(settings.producer_controller_config().durable_queue_retry_attempts(), 4);
 }
 
 #[test]
-fn work_pulling_behavior_with_settings_is_publicly_usable() {
+fn work_pulling_behavior_with_config_is_publicly_usable() {
   let worker_key = ServiceKey::<ConsumerControllerCommand<u32>>::new("public-workers");
   let settings = WorkPullingProducerControllerConfig::new().with_buffer_size(8);
   let _behavior =
-    WorkPullingProducerController::behavior_with_settings::<u32>("public-wppc", worker_key, &settings, None);
+    WorkPullingProducerController::behavior_with_config::<u32>("public-wppc", worker_key, &settings, None);
 }
 
 #[test]
@@ -581,7 +581,7 @@ fn work_pulling_durable_queue_timeout_uses_nested_producer_settings() {
   let durable_events = ArcShared::new(SpinSyncMutex::new(Vec::<&'static str>::new()));
   let settings = WorkPullingProducerControllerConfig::new()
     .with_internal_ask_timeout(Duration::from_millis(10))
-    .with_producer_controller_settings(
+    .with_producer_controller_config(
       ProducerControllerConfig::new()
         .with_durable_queue_request_timeout(Duration::from_millis(30))
         .with_durable_queue_retry_attempts(1),
@@ -592,7 +592,7 @@ fn work_pulling_durable_queue_timeout_uses_nested_producer_settings() {
     let durable_events = durable_events.clone();
     let settings = settings.clone();
     move || {
-      WorkPullingProducerController::behavior_with_settings(
+      WorkPullingProducerController::behavior_with_config(
         "durable-timeout-wppc",
         worker_key.clone(),
         &settings,

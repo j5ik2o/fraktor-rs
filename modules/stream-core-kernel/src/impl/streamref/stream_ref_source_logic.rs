@@ -34,7 +34,7 @@ pub(crate) struct StreamRefSourceLogic<T> {
   handoff:       StreamRefHandoff<T>,
   endpoint:      Option<StreamRefEndpointSlot>,
   subscription:  StreamRefSourceSubscription,
-  settings:      StreamRefConfig,
+  config:        StreamRefConfig,
   waiting_ticks: u64,
   _pd:           PhantomData<fn() -> T>,
 }
@@ -62,7 +62,7 @@ impl<T> StreamRefSourceLogic<T> {
     endpoint: Option<StreamRefEndpointSlot>,
     subscription: StreamRefSourceSubscription,
   ) -> Self {
-    Self { handoff, endpoint, subscription, settings: StreamRefConfig::new(), waiting_ticks: 0, _pd: PhantomData }
+    Self { handoff, endpoint, subscription, config: StreamRefConfig::new(), waiting_ticks: 0, _pd: PhantomData }
   }
 
   fn await_subscription(&mut self) -> Result<(), StreamError> {
@@ -70,7 +70,7 @@ impl<T> StreamRefSourceLogic<T> {
       return Ok(());
     }
     self.waiting_ticks = self.waiting_ticks.saturating_add(1);
-    if self.waiting_ticks >= u64::from(self.settings.subscription_timeout_ticks()) {
+    if self.waiting_ticks >= u64::from(self.config.subscription_timeout_ticks()) {
       return Err(StreamRefHandoff::<T>::subscription_timeout_error());
     }
     Err(StreamError::WouldBlock)
@@ -211,9 +211,9 @@ where
     false
   }
 
-  fn attach_stream_ref_settings(&mut self, settings: StreamRefConfig) {
-    self.handoff.configure_buffer_capacity(settings.buffer_capacity());
-    self.settings = settings;
+  fn attach_stream_ref_config(&mut self, config: StreamRefConfig) {
+    self.handoff.configure_buffer_capacity(config.buffer_capacity());
+    self.config = config;
   }
 
   fn attach_actor_system(&mut self, system: ActorSystem) {

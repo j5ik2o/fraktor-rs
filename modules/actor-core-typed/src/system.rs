@@ -429,7 +429,7 @@ where
   ///
   /// Corresponds to Pekko's `ActorSystem.settings`.
   #[must_use]
-  pub fn settings(&self) -> TypedActorSystemConfig {
+  pub fn config(&self) -> TypedActorSystemConfig {
     TypedActorSystemConfig::new(self.inner.name(), self.inner.start_time())
   }
 
@@ -437,13 +437,13 @@ where
   ///
   /// Corresponds to Pekko's `ActorSystem.logConfiguration()`.
   pub fn log_configuration(&self) {
-    let settings = self.settings();
+    let config = self.config();
     self.log().emit(
       LogLevel::Info,
       format!(
         "typed actor system configuration: system_name={}, start_time={:?}",
-        settings.system_name(),
-        settings.start_time()
+        config.system_name(),
+        config.start_time()
       ),
     );
   }

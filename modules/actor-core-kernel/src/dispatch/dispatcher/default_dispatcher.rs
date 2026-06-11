@@ -19,10 +19,10 @@ pub struct DefaultDispatcher {
 }
 
 impl DefaultDispatcher {
-  /// Constructs a new `DefaultDispatcher` with the given settings and executor.
+  /// Constructs a new `DefaultDispatcher` with the given configuration and executor.
   #[must_use]
-  pub fn new(settings: &DispatcherConfig, executor: ExecutorShared) -> Self {
-    Self { core: DispatcherCore::new(settings, executor) }
+  pub fn new(config: &DispatcherConfig, executor: ExecutorShared) -> Self {
+    Self { core: DispatcherCore::new(config, executor) }
   }
 }
 

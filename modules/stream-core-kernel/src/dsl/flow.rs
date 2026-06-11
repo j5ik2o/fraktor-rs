@@ -772,10 +772,10 @@ where
     self.restart_flow_with_backoff(min_backoff_ticks, max_restarts)
   }
 
-  /// Enables restart semantics by explicit restart settings.
+  /// Enables restart semantics by explicit restart configuration.
   #[must_use]
-  pub fn restart_flow_with_settings(mut self, settings: RestartConfig) -> Flow<In, Out, Mat> {
-    self.graph.set_flow_restart(&Some(RestartBackoff::from_settings(settings)));
+  pub fn restart_flow_with_config(mut self, config: RestartConfig) -> Flow<In, Out, Mat> {
+    self.graph.set_flow_restart(&Some(RestartBackoff::from_config(config)));
     self
   }
 
