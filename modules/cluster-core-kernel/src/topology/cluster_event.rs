@@ -7,6 +7,7 @@ use fraktor_utils_core_rs::time::TimerInstant;
 use crate::{
   StartupMode, TopologyUpdate,
   membership::{CurrentClusterState, DataCenter, MembershipVersion, NodeStatus},
+  singleton::SingletonStuckPhase,
 };
 
 /// Event payload published via `EventStreamEvent::Extension { name: "cluster", .. }`.
@@ -143,5 +144,20 @@ pub enum ClusterEvent {
     data_center: DataCenter,
     /// Observation timestamp.
     observed_at: TimerInstant,
+  },
+  /// Singleton hand-over is stuck and not progressing.
+  ///
+  /// This variant is an **observation-only payload**.  It MUST NOT be used as a
+  /// trigger for Membership State Transitions or Downing Decisions.  Subscribers
+  /// that receive this event are expected to log or surface the stall for
+  /// operational awareness only.  The cluster extension itself will never
+  /// initiate any membership change or downing action in response to this event.
+  SingletonHandOverStuck {
+    /// Name of the singleton whose hand-over is not progressing.
+    singleton_name: String,
+    /// Phase in which the hand-over is stuck.
+    phase:          SingletonStuckPhase,
+    /// Timestamp captured when the stall was observed.
+    observed_at:    TimerInstant,
   },
 }

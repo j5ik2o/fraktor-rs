@@ -58,7 +58,7 @@
   - _Boundary:_ SingletonStuckPhase
   - _Depends:_ none
 
-- [ ] 3.2 stuck イベント variant と購読フィルタを追加する
+- [x] 3.2 stuck イベント variant と購読フィルタを追加する
   - cluster イベント語彙に stuck 通知（singleton 名・停滞局面・観測時刻）を既存 variant のフィールド規約に合わせて追加する
   - イベント種別フィルタに対応種別を追加し、種別照合の網羅 match を更新する
   - rustdoc に観測専用契約（通知を契機とした membership 遷移・down 判断の禁止）を明記し、この variant を消費するハンドラは追加しない
