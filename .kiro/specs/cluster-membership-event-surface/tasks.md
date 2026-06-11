@@ -49,7 +49,7 @@
   - _Depends:_ 1.1
 
 - [ ] 3. 統合: 重複実装の集約と std 準拠化
-- [ ] 3.1 (P) coordinator の oldest / role leader 算出を順序契約へ委譲する
+- [x] 3.1 (P) coordinator の oldest / role leader 算出を順序契約へ委譲する
   - leader 算出のプライベートな oldest 判定と role leader の比較部分を、順序契約の参照に置き換える（leader-eligible フィルタは coordinator 側に残す）
   - 2.3 の併発実装が完了した後に着手する（同一ファイルへの変更競合を避ける）
   - 完了条件: 既存の leader / role leader 算出テストが無変更で通る
