@@ -69,7 +69,7 @@ fn all_targets_unreachable_emits_became_unreachable_once() {
 
   // ターゲット追加: node-c (dc-b) を観測対象に
   let change = make_change(vec![target("node-c", 12, local_dc.clone(), remote_dc.clone())], vec![], vec![]);
-  table.apply_target_change(&change);
+  assert!(table.apply_target_change(&change).is_empty());
 
   // 1 件の観測対象が unreachable → BecameUnreachable が返る
   let ev1 = table.observe(&unreachable_evidence("node-a", 10, "node-c", 12, local_dc.clone(), remote_dc.clone()));
@@ -93,7 +93,7 @@ fn reachable_evidence_after_latch_emits_became_reachable_once() {
   let mut table = DataCenterReachabilityTable::new(local_dc.clone());
 
   let change = make_change(vec![target("node-c", 12, local_dc.clone(), remote_dc.clone())], vec![], vec![]);
-  table.apply_target_change(&change);
+  assert!(table.apply_target_change(&change).is_empty());
 
   // ラッチ状態に遷移
   let ev1 = table.observe(&unreachable_evidence("node-a", 10, "node-c", 12, local_dc.clone(), remote_dc.clone()));
@@ -121,7 +121,7 @@ fn evidence_from_self_data_center_is_ignored() {
 
   // 自 DC 宛のターゲット変更 (通常は発生しないが、万一来ても無視)
   let change = make_change(vec![target("node-b", 11, self_dc.clone(), self_dc.clone())], vec![], vec![]);
-  table.apply_target_change(&change);
+  assert!(table.apply_target_change(&change).is_empty());
 
   // remote_data_center が self_dc と同じ evidence → 無視
   let ev = table.observe(&unreachable_evidence("node-a", 10, "node-b", 11, self_dc.clone(), self_dc.clone()));
@@ -141,16 +141,14 @@ fn removing_all_targets_of_dc_deletes_entry_without_transition() {
 
   let t = target("node-c", 12, local_dc.clone(), remote_dc.clone());
   let add_change = make_change(vec![t.clone()], vec![], vec![]);
-  table.apply_target_change(&add_change);
+  assert!(table.apply_target_change(&add_change).is_empty());
 
   // unreachable 状態にしてからターゲットを除去
   let _ = table.observe(&unreachable_evidence("node-a", 10, "node-c", 12, local_dc.clone(), remote_dc.clone()));
 
+  // 観測対象がゼロになる削除では遷移を出力しない
   let remove_change = make_change(vec![], vec![t], vec![]);
-  // ターゲット除去時に遷移出力しないことを confirm する手段がないため、
-  // apply_target_change 後に observe が None を返すことと
-  // unreachable_data_centers が空であることで検証する
-  table.apply_target_change(&remove_change);
+  assert!(table.apply_target_change(&remove_change).is_empty());
 
   // エントリ削除後は unreachable ではなくなっている
   assert!(
@@ -179,9 +177,38 @@ fn partial_unreachable_does_not_trigger_transition() {
     vec![],
     vec![],
   );
-  table.apply_target_change(&change);
+  assert!(table.apply_target_change(&change).is_empty());
 
   // node-c のみ unreachable → まだ全観測対象が落ちていないので None
   let ev = table.observe(&unreachable_evidence("node-a", 10, "node-c", 12, local_dc.clone(), remote_dc.clone()));
   assert!(ev.is_none(), "partial unreachable must not trigger BecameUnreachable, got {:?}", ev);
+}
+
+// 削除の結果、残る観測対象がすべて unreachable になった DC はラッチされ遷移が出力される
+#[test]
+fn removal_leaving_only_unreachable_targets_latches_dc() {
+  let local_dc = DataCenter::new("dc-a");
+  let remote_dc = DataCenter::new("dc-b");
+
+  let mut table = DataCenterReachabilityTable::new(local_dc.clone());
+
+  let t_c = target("node-c", 12, local_dc.clone(), remote_dc.clone());
+  let t_d = target("node-d", 13, local_dc.clone(), remote_dc.clone());
+  assert!(table.apply_target_change(&make_change(vec![t_c, t_d.clone()], vec![], vec![])).is_empty());
+
+  // node-c のみ unreachable（node-d は reachable のまま）→ まだ遷移しない
+  let ev = table.observe(&unreachable_evidence("node-a", 10, "node-c", 12, local_dc.clone(), remote_dc.clone()));
+  assert!(ev.is_none(), "partial unreachable must not latch, got {:?}", ev);
+
+  // reachable な node-d が membership 変更で除去される → 残りは全 unreachable なのでラッチ
+  let transitions = table.apply_target_change(&make_change(vec![], vec![t_d], vec![]));
+  assert_eq!(transitions.len(), 1, "expected exactly one latch transition, got {:?}", transitions);
+  assert!(
+    matches!(&transitions[0], DataCenterReachabilityTransition::BecameUnreachable { data_center } if data_center == &remote_dc)
+  );
+  assert_eq!(table.unreachable_data_centers(), vec![remote_dc.clone()]);
+
+  // ラッチ済みなので同状態の evidence では再出力しない
+  let ev = table.observe(&unreachable_evidence("node-a", 10, "node-c", 12, local_dc.clone(), remote_dc.clone()));
+  assert!(ev.is_none(), "latched DC must not re-emit, got {:?}", ev);
 }

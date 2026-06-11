@@ -8,8 +8,9 @@ use fraktor_actor_core_kernel_rs::event::stream::{EventStreamEvent, EventStreamS
 use fraktor_cluster_core_kernel_rs::{
   membership::NodeStatus,
   topology::{
-    ClusterEvent, TRANSITION_DC_REACHABLE, TRANSITION_DC_UNREACHABLE, TRANSITION_JOIN, TRANSITION_LEAVE,
-    TRANSITION_REMOVAL, TRANSITION_SHUTDOWN_PREPARING, TRANSITION_SHUTDOWN_READY, TRANSITION_UP,
+    ClusterEvent, FIELD_AUTHORITY, FIELD_DATA_CENTER, FIELD_NODE_ID, FIELD_TRANSITION, TRANSITION_DC_REACHABLE,
+    TRANSITION_DC_UNREACHABLE, TRANSITION_JOIN, TRANSITION_LEAVE, TRANSITION_REMOVAL, TRANSITION_SHUTDOWN_PREPARING,
+    TRANSITION_SHUTDOWN_READY, TRANSITION_UP,
   },
 };
 use tracing::{Level, event};
@@ -19,6 +20,32 @@ const CLUSTER_EXTENSION_NAME: &str = "cluster";
 
 /// Default target name used in emitted cluster lifecycle events.
 const CLUSTER_LIFECYCLE_TARGET: &str = "fraktor::cluster::lifecycle";
+
+/// Compile-time check that two string constants are equal.
+const fn str_eq(a: &str, b: &str) -> bool {
+  let (a, b) = (a.as_bytes(), b.as_bytes());
+  if a.len() != b.len() {
+    return false;
+  }
+  let mut i = 0;
+  while i < a.len() {
+    if a[i] != b[i] {
+      return false;
+    }
+    i += 1;
+  }
+  true
+}
+
+// tracing マクロのフィールド名はリテラルトークンしか受け付けないため、
+// 下記 event! 内の表記が cluster_lifecycle_trace_field の契約定数と一致することを
+// コンパイル時に検証する（runtime 側でもキャプチャテストで照合している）
+const _: () = {
+  assert!(str_eq(FIELD_TRANSITION, "cluster.lifecycle.transition"));
+  assert!(str_eq(FIELD_NODE_ID, "node_id"));
+  assert!(str_eq(FIELD_AUTHORITY, "authority"));
+  assert!(str_eq(FIELD_DATA_CENTER, "data_center"));
+};
 
 /// Event stream subscriber that logs cluster lifecycle transitions.
 ///
@@ -57,8 +84,8 @@ impl EventStreamSubscriber for ClusterLifecycleLogSubscriber {
       return;
     };
     match cluster_event {
-      | ClusterEvent::MemberStatusChanged { node_id, authority, to, .. } => {
-        if let Some(kind) = status_transition_kind(to) {
+      | ClusterEvent::MemberStatusChanged { node_id, authority, from, to, .. } => {
+        if let Some(kind) = status_transition_kind(from, to) {
           emit_member_transition(kind, node_id, authority);
         }
       },
@@ -91,22 +118,27 @@ impl EventStreamSubscriber for ClusterLifecycleLogSubscriber {
   }
 }
 
-/// Maps a member status destination to a lifecycle transition kind.
+/// Maps a member status transition to a lifecycle transition kind.
 ///
-/// Returns `None` for statuses that have no dedicated transition kind in the
+/// Returns `None` for transitions that have no dedicated kind in the
 /// trace field contract.
-const fn status_transition_kind(to: &NodeStatus) -> Option<&'static str> {
+const fn status_transition_kind(from: &NodeStatus, to: &NodeStatus) -> Option<&'static str> {
   match to {
     | NodeStatus::Joining => Some(TRANSITION_JOIN),
     | NodeStatus::Up => Some(TRANSITION_UP),
     | NodeStatus::Leaving => Some(TRANSITION_LEAVE),
+    // 通常の leave 経路（mark_left）は Leaving を経ず Exiting へ直接遷移するため、
+    // Exiting も leave として扱う。Leaving → Exiting の連続遷移は from で二重出力を抑止する
+    | NodeStatus::Exiting => match from {
+      | NodeStatus::Leaving => None,
+      | _ => Some(TRANSITION_LEAVE),
+    },
     | NodeStatus::Removed => Some(TRANSITION_REMOVAL),
     // shutdown 進行は専用イベント（MemberPreparingForShutdown / MemberReadyForShutdown）
     // 側で出力するため、status 変更経由では出力しない（二重出力の防止）。
-    // WeaklyUp / Suspect / Exiting / Dead は契約上の遷移種別を持たない。
+    // WeaklyUp / Suspect / Dead は契約上の遷移種別を持たない。
     | NodeStatus::WeaklyUp
     | NodeStatus::Suspect
-    | NodeStatus::Exiting
     | NodeStatus::PreparingForShutdown
     | NodeStatus::ReadyForShutdown
     | NodeStatus::Dead => None,

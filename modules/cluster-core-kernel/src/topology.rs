@@ -22,7 +22,11 @@ pub use cluster_compatibility_key_catalog::ClusterCompatibilityKeyCatalog;
 pub use cluster_compatibility_key_set::ClusterCompatibilityKeySet;
 pub use cluster_event::ClusterEvent;
 pub use cluster_event_type::ClusterEventType;
-pub use cluster_lifecycle_trace_field::*;
+pub use cluster_lifecycle_trace_field::{
+  FIELD_AUTHORITY, FIELD_DATA_CENTER, FIELD_NODE_ID, FIELD_TRANSITION, TRANSITION_DC_REACHABLE,
+  TRANSITION_DC_UNREACHABLE, TRANSITION_JOIN, TRANSITION_LEAVE, TRANSITION_REMOVAL, TRANSITION_SHUTDOWN_PREPARING,
+  TRANSITION_SHUTDOWN_READY, TRANSITION_UP,
+};
 pub use cluster_metrics::ClusterMetrics;
 pub use cluster_metrics_snapshot::ClusterMetricsSnapshot;
 pub use cluster_topology::ClusterTopology;

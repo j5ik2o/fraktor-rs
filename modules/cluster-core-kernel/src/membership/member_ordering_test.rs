@@ -1,7 +1,9 @@
 use alloc::{string::String, vec};
 
+use fraktor_remote_core_rs::address::{Address, UniqueAddress};
+
 use super::{age_ordered, member_age_order, oldest_member};
-use crate::membership::{MembershipVersion, NodeRecord, NodeStatus};
+use crate::membership::{DataCenter, MembershipVersion, NodeRecord, NodeStatus};
 
 fn make_record(authority: &str, join_v: u64) -> NodeRecord {
   NodeRecord::new(
@@ -88,10 +90,39 @@ fn member_age_order_is_antisymmetric() {
   let ab = member_age_order(&a, &b);
   let ba = member_age_order(&b, &a);
 
-  // 反対称性: a < b なら b > a
+  // 全順序の対称性: cmp(a, b) = cmp(b, a).reverse()
   match ab {
     | Ordering::Less => assert_eq!(ba, Ordering::Greater),
     | Ordering::Greater => assert_eq!(ba, Ordering::Less),
     | Ordering::Equal => assert_eq!(ba, Ordering::Equal),
   }
+}
+
+// join_version と authority が同一の別 incarnation でも全順序が一意に決まる
+#[test]
+fn member_age_order_breaks_tie_by_incarnation() {
+  use core::cmp::Ordering;
+
+  let make_incarnation = |uid: u64| {
+    NodeRecord::new_with_identity(
+      UniqueAddress::new(Address::new("fraktor-cluster", "n1", 4000), uid),
+      DataCenter::default(),
+      String::from("node"),
+      NodeStatus::Up,
+      MembershipVersion::new(7),
+      String::from("1.0.0"),
+      vec![],
+    )
+  };
+  let old_incarnation = make_incarnation(1);
+  let new_incarnation = make_incarnation(2);
+
+  assert_eq!(member_age_order(&old_incarnation, &new_incarnation), Ordering::Less);
+  assert_eq!(member_age_order(&new_incarnation, &old_incarnation), Ordering::Greater);
+
+  // 入力順に依存せず oldest が一意に決まる
+  let forward = [old_incarnation.clone(), new_incarnation.clone()];
+  let reversed = [new_incarnation, old_incarnation];
+  assert_eq!(oldest_member(&forward).map(|r| r.unique_address.uid()), Some(1));
+  assert_eq!(oldest_member(&reversed).map(|r| r.unique_address.uid()), Some(1));
 }

@@ -41,7 +41,8 @@ impl DcState {
 /// Invariants:
 /// - The entry for `self_data_center` is never present.
 /// - A [`DataCenterReachabilityTransition::BecameUnreachable`] transition is emitted exactly once
-///   when all observed targets for a DC become unreachable (latch).
+///   when all observed targets for a DC become unreachable (latch), either via evidence or via a
+///   target removal that leaves only unreachable targets.
 /// - A [`DataCenterReachabilityTransition::BecameReachable`] transition is emitted once when at
 ///   least one target becomes reachable again after the latch.
 /// - DCs whose target set becomes empty are removed without emitting a transition.
@@ -59,12 +60,20 @@ impl DataCenterReachabilityTable {
   }
 
   /// Synchronizes the observed target set from a cross-DC heartbeat target
-  /// change.
+  /// change and returns latch transitions caused by removals.
   ///
   /// Added targets are inserted with reachable status as default.
   /// Removed targets are deleted.  DCs whose target set becomes empty are
-  /// removed without emitting a transition.
-  pub fn apply_target_change(&mut self, change: &CrossDcHeartbeatTargetChange) {
+  /// removed without emitting a transition.  When a removal leaves a DC whose
+  /// remaining targets are all unreachable, the DC is latched and a
+  /// [`DataCenterReachabilityTransition::BecameUnreachable`] transition is
+  /// returned.  Added targets default to reachable as "not yet observed", so
+  /// additions never release an existing latch without actual evidence.
+  #[must_use = "latch transitions must be published or explicitly ignored"]
+  pub fn apply_target_change(
+    &mut self,
+    change: &CrossDcHeartbeatTargetChange,
+  ) -> Vec<DataCenterReachabilityTransition> {
     for target in &change.added {
       // 自 DC への変更は入力段階で無視する（不変条件: 自 DC エントリなし）
       if target.remote_data_center == self.self_data_center {
@@ -90,6 +99,17 @@ impl DataCenterReachabilityTable {
     for dc in &empty_dcs {
       self.dc_states.remove(dc);
     }
+
+    // 削除の結果「残る観測対象がすべて unreachable」になった DC はラッチを再評価する。
+    // ここで latch を立てないと、次の evidence が来るまで DC が reachable 扱いのままになる
+    let mut transitions = Vec::new();
+    for (dc, state) in &mut self.dc_states {
+      if !state.latched_unreachable && state.all_unreachable() {
+        state.latched_unreachable = true;
+        transitions.push(DataCenterReachabilityTransition::BecameUnreachable { data_center: dc.clone() });
+      }
+    }
+    transitions
   }
 
   /// Feeds availability evidence and returns a latched transition when the

@@ -11,8 +11,10 @@ use super::NodeRecord;
 
 /// Total order comparison by membership age (oldest first).
 ///
-/// Delegates to [`NodeRecord::is_older_than`] to derive an [`Ordering`]
-/// that satisfies antisymmetry, transitivity, and totality.
+/// Delegates to [`NodeRecord::is_older_than`] for the age semantics
+/// (join version, then authority tie-break), with a final tie-break on
+/// the unique address so that distinct incarnations of the same authority
+/// still form a deterministic total order.
 #[must_use]
 pub fn member_age_order(a: &NodeRecord, b: &NodeRecord) -> Ordering {
   if a.is_older_than(b) {
@@ -20,7 +22,10 @@ pub fn member_age_order(a: &NodeRecord, b: &NodeRecord) -> Ordering {
   } else if b.is_older_than(a) {
     Ordering::Greater
   } else {
-    Ordering::Equal
+    // is_older_than が相互に false（join_version と authority が同一）でも、
+    // gossip merge では別 incarnation の record が併存し得るため、
+    // unique_address（incarnation 込み）で最終 tie-break して全順序を保つ
+    a.unique_address.cmp(&b.unique_address)
   }
 }
 
@@ -35,5 +40,5 @@ pub fn age_ordered<'a>(records: &'a [NodeRecord]) -> Vec<&'a NodeRecord> {
 /// Returns the oldest member, or `None` when `records` is empty.
 #[must_use]
 pub fn oldest_member(records: &[NodeRecord]) -> Option<&NodeRecord> {
-  age_ordered(records).into_iter().next()
+  records.iter().min_by(|a, b| member_age_order(a, b))
 }

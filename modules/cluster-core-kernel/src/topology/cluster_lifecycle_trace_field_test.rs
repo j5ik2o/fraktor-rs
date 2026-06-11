@@ -2,9 +2,9 @@
 // 遷移種別ごとに一意な値を持つことを exhaustive に検証する
 
 use crate::topology::cluster_lifecycle_trace_field::{
-  FIELD_AUTHORITY, FIELD_DATA_CENTER, FIELD_NODE_ID, TRANSITION_DC_REACHABLE, TRANSITION_DC_UNREACHABLE,
-  TRANSITION_JOIN, TRANSITION_LEAVE, TRANSITION_REMOVAL, TRANSITION_SHUTDOWN_PREPARING, TRANSITION_SHUTDOWN_READY,
-  TRANSITION_UP,
+  FIELD_AUTHORITY, FIELD_DATA_CENTER, FIELD_NODE_ID, FIELD_TRANSITION, TRANSITION_DC_REACHABLE,
+  TRANSITION_DC_UNREACHABLE, TRANSITION_JOIN, TRANSITION_LEAVE, TRANSITION_REMOVAL, TRANSITION_SHUTDOWN_PREPARING,
+  TRANSITION_SHUTDOWN_READY, TRANSITION_UP,
 };
 
 #[test]
@@ -30,8 +30,9 @@ fn transition_kind_values_are_unique() {
 
 #[test]
 fn field_name_constants_are_defined() {
-  // member 識別・data center のフィールド名が空でないことを確認する（要件 4.2）
+  // member 識別・data center・遷移種別のフィールド名が空でないことを確認する（要件 4.2）
   assert!(!FIELD_NODE_ID.is_empty());
   assert!(!FIELD_AUTHORITY.is_empty());
   assert!(!FIELD_DATA_CENTER.is_empty());
+  assert!(!FIELD_TRANSITION.is_empty());
 }

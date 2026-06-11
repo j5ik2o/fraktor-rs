@@ -244,7 +244,7 @@ n/a へ移動: `ClusterClient` / `ClusterClientReceptionist` / `ClusterClientSet
 
 ## 内部モジュール構造ギャップ
 
-今回は API / 実動作ギャップが支配的なため、内部モジュール構造ギャップの詳細分析は省略する。固定スコープ概念カバレッジは 55% で、判定基準（カバレッジ 80% 以上、または hard/medium 未実装 5 件以下）を満たさない。
+今回は API / 実動作ギャップが支配的なため、内部モジュール構造ギャップの詳細分析は省略する。固定スコープ概念カバレッジは 58% で、判定基準（カバレッジ 80% 以上、または hard/medium 未実装 5 件以下）を満たさない。
 
 次版で構造分析へ進む場合の観点:
 
@@ -342,7 +342,7 @@ ClusterClient 系（deprecated）、`@InternalApi` 型、JMX / HOCON / JFR / Jav
 
 ## まとめ
 
-cluster は membership / gossip / heartbeat / reachability / downing decision model / typed Cluster facade / Grain runtime / PubSub / discovery provider / message serializer contract という基礎契約は強く、カテゴリ 1, 2, 4, 5, 7, 10 は 73〜93% のカバレッジに達している。全体カバレッジは 83/151 (55%) で、未実装の大半は Cluster Singleton（0%）、Distributed Data / CRDT（0%）、Pekko sharding public API 形態（41%）の 3 領域に集中している。
+cluster は membership / gossip / heartbeat / reachability / downing decision model / typed Cluster facade / Grain runtime / PubSub / discovery provider / message serializer contract という基礎契約は強く、カテゴリ 1, 2, 4, 5, 7, 10 は 73〜93% のカバレッジに達している。全体カバレッジは 87/151 (58%) で、未実装の大半は Cluster Singleton（0%）、Distributed Data / CRDT（0%）、Pekko sharding public API 形態（41%）の 3 領域に集中している。
 
 低コストで parity を前進できるのは、Phase 1 の `Member.ordering` 公開契約、shutdown / DC reachability イベント型、routee 更新の std 配線、mediator 全体 `Count`、基本 CRDT 型群（`Flag` / `GCounter` / `PNCounter` / consistency levels）、および Phase 2 の `prepareForFullClusterShutdown` command path（kernel + typed を 1 change で閉じられる）である。
 

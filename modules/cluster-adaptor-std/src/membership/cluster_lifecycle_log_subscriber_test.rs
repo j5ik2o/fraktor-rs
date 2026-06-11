@@ -180,7 +180,6 @@ fn intermediate_status_changes_do_not_emit() {
   let cases = [
     NodeStatus::WeaklyUp,
     NodeStatus::Suspect,
-    NodeStatus::Exiting,
     NodeStatus::PreparingForShutdown,
     NodeStatus::ReadyForShutdown,
     NodeStatus::Dead,
@@ -189,6 +188,24 @@ fn intermediate_status_changes_do_not_emit() {
     let captured = capture_events(&member_status_changed(status));
     assert!(captured.is_empty(), "status {status:?} should not emit a lifecycle trace");
   }
+}
+
+#[test]
+fn exiting_emits_leave_transition_without_duplication() {
+  // 通常の leave 経路: mark_left は Leaving を経ず Exiting へ直接遷移する → leave トレースが出る
+  let captured = capture_events(&member_status_changed(NodeStatus::Exiting));
+  assert_eq!(captured.len(), 1);
+  assert!(contains(&captured[0], FIELD_TRANSITION, TRANSITION_LEAVE));
+
+  // Leaving → Exiting と連続遷移した場合は二重出力しない
+  let leaving_to_exiting = cluster_extension_event(ClusterEvent::MemberStatusChanged {
+    node_id:     String::from("node-1"),
+    authority:   String::from("127.0.0.1:7000"),
+    from:        NodeStatus::Leaving,
+    to:          NodeStatus::Exiting,
+    observed_at: TimerInstant::from_ticks(5, Duration::from_secs(1)),
+  });
+  assert!(capture_events(&leaving_to_exiting).is_empty());
 }
 
 #[test]
