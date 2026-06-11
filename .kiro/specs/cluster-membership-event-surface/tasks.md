@@ -57,7 +57,7 @@
   - _Boundary:_ MembershipCoordinator 変更, member_ordering（統合タスク）
   - _Depends:_ 2.1, 2.3
 
-- [ ] 3.2 (P) SBR KeepOldest の oldest 判定を順序契約へ委譲する
+- [x] 3.2 (P) SBR KeepOldest の oldest 判定を順序契約へ委譲する
   - SBR 内のプライベートな oldest 判定を削除し、active フィルタ済み集合への順序契約適用に置き換える（判定規則・trace 形状は変更しない）
   - 完了条件: 既存の split brain resolver テストが無変更で通る
   - _Requirements:_ 1.5
