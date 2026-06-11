@@ -8,7 +8,7 @@ use alloc::vec::Vec;
 
 use fraktor_remote_core_rs::address::UniqueAddress;
 
-use super::DistributedPubSubSettings;
+use super::DistributedPubSubConfig;
 use crate::membership::CurrentClusterState;
 
 /// Active mediator owner identities selected from membership.
@@ -20,7 +20,7 @@ pub struct MediatorPeers {
 impl MediatorPeers {
   /// Creates mediator peers from active membership records and the role filter.
   #[must_use]
-  pub fn from_state(settings: &DistributedPubSubSettings, state: &CurrentClusterState) -> Self {
+  pub fn from_state(settings: &DistributedPubSubConfig, state: &CurrentClusterState) -> Self {
     Self {
       active_owners: settings.mediator_candidates(state).into_iter().map(|record| record.unique_address).collect(),
     }

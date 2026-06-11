@@ -5,7 +5,7 @@ use fraktor_remote_core_rs::address::{Address, UniqueAddress};
 
 use crate::{
   membership::{CurrentClusterState, DataCenter, MembershipVersion, NodeRecord, NodeStatus},
-  pub_sub::{DistributedPubSubSettings, MediatorPeers, PubSubNoSubscriberBehavior, PubSubRoutingMode},
+  pub_sub::{DistributedPubSubConfig, MediatorPeers, PubSubNoSubscriberBehavior, PubSubRoutingMode},
 };
 
 fn unique_address(host: &str, uid: u64) -> UniqueAddress {
@@ -26,7 +26,7 @@ fn record(host: &str, uid: u64, status: NodeStatus, roles: Vec<String>) -> NodeR
 
 #[test]
 fn peers_use_role_filter_and_active_member_status() {
-  let settings = DistributedPubSubSettings::try_new(
+  let settings = DistributedPubSubConfig::try_new(
     Some(String::from("pubsub")),
     PubSubRoutingMode::Random,
     Duration::from_secs(1),

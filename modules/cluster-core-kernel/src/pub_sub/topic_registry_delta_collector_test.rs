@@ -6,7 +6,7 @@ use fraktor_remote_core_rs::address::{Address, UniqueAddress};
 use crate::{
   activation::ClusterIdentity,
   pub_sub::{
-    DistributedPubSubSettings, MediatorPathKey, PubSubNoSubscriberBehavior, PubSubRoutingMode, PubSubSubscriber,
+    DistributedPubSubConfig, MediatorPathKey, PubSubNoSubscriberBehavior, PubSubRoutingMode, PubSubSubscriber,
     PubSubTopic, TopicRegistryApplyOutcome, TopicRegistryBucket, TopicRegistryDelta, TopicRegistryDeltaCollector,
     TopicRegistryDeltaEntry, TopicRegistryEntry, TopicRegistryEntryKey, TopicRegistryEntryKind, TopicRegistryStatus,
     TopicRegistryVersion,
@@ -25,8 +25,8 @@ fn path(value: &str) -> MediatorPathKey {
   MediatorPathKey::parse(value).expect("path")
 }
 
-fn settings(max_delta_elements: usize) -> DistributedPubSubSettings {
-  DistributedPubSubSettings::try_new(
+fn settings(max_delta_elements: usize) -> DistributedPubSubConfig {
+  DistributedPubSubConfig::try_new(
     None,
     PubSubRoutingMode::Random,
     Duration::from_secs(1),

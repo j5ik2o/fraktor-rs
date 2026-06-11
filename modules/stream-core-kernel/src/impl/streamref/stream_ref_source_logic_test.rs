@@ -20,8 +20,8 @@ use crate::{
   r#impl::streamref::{StreamRefEndpointSlot, StreamRefHandoff},
   stage::{StageActorEnvelope, StageActorReceive},
   stream_ref::{
-    StreamRefOnSubscribeHandshake, StreamRefRemoteStreamCompleted, StreamRefRemoteStreamFailure,
-    StreamRefSequencedOnNext, StreamRefSettings,
+    StreamRefConfig, StreamRefOnSubscribeHandshake, StreamRefRemoteStreamCompleted, StreamRefRemoteStreamFailure,
+    StreamRefSequencedOnNext,
   },
 };
 
@@ -112,7 +112,7 @@ fn temp_demand_failing_actor(system: &ActorSystem) -> ActorRef {
 fn awaiting_remote_subscription_fails_after_configured_ticks() {
   let handoff = StreamRefHandoff::<u32>::new();
   let mut logic = StreamRefSourceLogic::awaiting_remote_subscription(handoff);
-  logic.attach_stream_ref_settings(StreamRefSettings::new().with_subscription_timeout_ticks(1));
+  logic.attach_stream_ref_settings(StreamRefConfig::new().with_subscription_timeout_ticks(1));
 
   let error = logic.pull().expect_err("subscription timeout");
 

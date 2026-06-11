@@ -15,7 +15,7 @@ use fraktor_stream_core_kernel_rs::{
   materialization::{
     ActorMaterializer, ActorMaterializerConfig, Completion, KeepBoth, KeepRight, StreamFuture, StreamNotUsed,
   },
-  stream_ref::{SinkRef, SourceRef, StreamRefSettings},
+  stream_ref::{SinkRef, SourceRef, StreamRefConfig},
 };
 
 struct GuardianActor;
@@ -108,7 +108,7 @@ fn source_ref_and_sink_ref_are_one_shot_owned_conversions() {
 #[test]
 fn sink_ref_source_fails_when_remote_sink_never_subscribes_before_timeout() {
   // Given: subscription timeout を 1 tick に縮めた materializer
-  let settings = StreamRefSettings::new().with_subscription_timeout_ticks(1);
+  let settings = StreamRefConfig::new().with_subscription_timeout_ticks(1);
   let config =
     ActorMaterializerConfig::default().with_drive_interval(Duration::from_millis(1)).with_stream_ref_settings(settings);
   let mut materializer = build_materializer_with_config(config);
@@ -118,7 +118,7 @@ fn sink_ref_source_fails_when_remote_sink_never_subscribes_before_timeout() {
   let materialized = graph.run(&mut materializer).expect("materialize sink ref");
   let (_sink_ref, received): (SinkRef<u32>, StreamFuture<Vec<u32>>) = materialized.into_materialized();
 
-  // Then: materializer の StreamRefSettings から来た timeout tick により local Source が失敗する
+  // Then: materializer の StreamRefConfig から来た timeout tick により local Source が失敗する
   let error = poll_completion(&received).expect_err("subscription timeout");
   assert!(matches!(error, StreamError::StreamRefSubscriptionTimeout { .. }));
 }

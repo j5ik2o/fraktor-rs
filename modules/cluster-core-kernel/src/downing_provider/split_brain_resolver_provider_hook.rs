@@ -11,7 +11,7 @@ use fraktor_utils_core_rs::time::TimerInstant;
 use super::{
   DowningDecision, DowningDecisionContext, DowningDecisionTrace, DowningInput, DowningProvider,
   DowningProviderCompatibility, DowningStrategyDecision, LeaseAcquisitionOutcome, LeaseMajorityPort,
-  SplitBrainResolver, SplitBrainResolverSettings,
+  SplitBrainResolver, SplitBrainResolverConfig,
 };
 use crate::ClusterProviderError;
 
@@ -28,7 +28,7 @@ pub struct SplitBrainResolverProviderHook {
 impl SplitBrainResolverProviderHook {
   /// Creates a hook and its provider compatibility metadata from settings.
   #[must_use]
-  pub fn new(settings: SplitBrainResolverSettings) -> Self {
+  pub fn new(settings: SplitBrainResolverConfig) -> Self {
     let compatibility = Self::expected_compatibility(settings);
     Self { compatibility, resolver: SplitBrainResolver::new(settings) }
   }
@@ -40,7 +40,7 @@ impl SplitBrainResolverProviderHook {
   /// Returns [`ClusterProviderError::DownFailed`] when the metadata does not match the supplied
   /// settings.
   pub fn from_compatibility(
-    settings: SplitBrainResolverSettings,
+    settings: SplitBrainResolverConfig,
     compatibility: DowningProviderCompatibility,
   ) -> Result<Self, ClusterProviderError> {
     if !Self::compatibility_matches(settings, &compatibility) {
@@ -90,11 +90,11 @@ impl SplitBrainResolverProviderHook {
     Ok(Self::provider_decision(context, &strategy_decision))
   }
 
-  fn expected_compatibility(settings: SplitBrainResolverSettings) -> DowningProviderCompatibility {
+  fn expected_compatibility(settings: SplitBrainResolverConfig) -> DowningProviderCompatibility {
     DowningProviderCompatibility::new(SPLIT_BRAIN_RESOLVER_PROVIDER_KEY).with_split_brain_resolver_settings(settings)
   }
 
-  fn compatibility_matches(settings: SplitBrainResolverSettings, compatibility: &DowningProviderCompatibility) -> bool {
+  fn compatibility_matches(settings: SplitBrainResolverConfig, compatibility: &DowningProviderCompatibility) -> bool {
     let expected = Self::expected_compatibility(settings);
     compatibility.provider_key() == expected.provider_key()
       && compatibility.sbr_settings_identity() == expected.sbr_settings_identity()

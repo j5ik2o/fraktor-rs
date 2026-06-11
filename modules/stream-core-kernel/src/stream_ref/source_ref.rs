@@ -23,8 +23,8 @@ use crate::{
   materialization::StreamNotUsed,
   stage::{StageActor, StageActorEnvelope, StageActorReceive, StageKind},
   stream_ref::{
-    StreamRefAck, StreamRefCumulativeDemand, StreamRefOnSubscribeHandshake, StreamRefRemoteStreamCompleted,
-    StreamRefRemoteStreamFailure, StreamRefSequencedOnNext, StreamRefSettings,
+    StreamRefAck, StreamRefConfig, StreamRefCumulativeDemand, StreamRefOnSubscribeHandshake,
+    StreamRefRemoteStreamCompleted, StreamRefRemoteStreamFailure, StreamRefSequencedOnNext,
   },
 };
 
@@ -98,7 +98,7 @@ struct ActorBackedSourceRefLogic<T> {
   endpoint_actor: Option<StageActor>,
   startup_error:  Option<StreamError>,
   waiting_ticks:  u64,
-  settings:       StreamRefSettings,
+  settings:       StreamRefConfig,
   _pd:            PhantomData<fn() -> T>,
 }
 
@@ -110,7 +110,7 @@ impl<T> ActorBackedSourceRefLogic<T> {
       endpoint_actor: None,
       startup_error: None,
       waiting_ticks: 0,
-      settings: StreamRefSettings::new(),
+      settings: StreamRefConfig::new(),
       _pd: PhantomData,
     }
   }
@@ -212,7 +212,7 @@ where
     false
   }
 
-  fn attach_stream_ref_settings(&mut self, settings: StreamRefSettings) {
+  fn attach_stream_ref_settings(&mut self, settings: StreamRefConfig) {
     self.handoff.configure_buffer_capacity(settings.buffer_capacity());
     self.settings = settings;
   }

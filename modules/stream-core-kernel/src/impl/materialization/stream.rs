@@ -10,7 +10,7 @@ use crate::{
   r#impl::{fusing::StreamBufferConfig, interpreter::graph_interpreter::GraphInterpreter},
   materialization::DriveOutcome,
   snapshot::StreamSnapshot,
-  stream_ref::StreamRefSettings,
+  stream_ref::StreamRefConfig,
 };
 
 static STREAM_ID_COUNTER: AtomicU64 = AtomicU64::new(1);
@@ -48,7 +48,7 @@ impl Stream {
     buffer_config: StreamBufferConfig,
     kill_switch_state: KillSwitchStateHandle,
     actor_system: Option<&ActorSystem>,
-    stream_ref_settings: &StreamRefSettings,
+    stream_ref_settings: &StreamRefConfig,
   ) -> Self {
     let linked_kill_switch_states = plan.shared_kill_switch_states().to_vec();
     Self {

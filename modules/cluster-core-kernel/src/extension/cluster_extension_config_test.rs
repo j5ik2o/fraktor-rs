@@ -3,7 +3,7 @@ use core::time::Duration;
 use super::*;
 use crate::{
   ClusterTopology, ConfigValidation, JoinConfigCompatChecker,
-  downing_provider::{DowningProviderCompatibility, SplitBrainResolverSettings, SplitBrainResolverStrategy},
+  downing_provider::{DowningProviderCompatibility, SplitBrainResolverConfig, SplitBrainResolverStrategy},
   failure_detector::{FailureDetectorConfig, FailureDetectorConfigError},
   pub_sub::PubSubConfig,
   singleton::{ClusterSingletonConfigError, ClusterSingletonManagerConfig, ClusterSingletonProxyConfig},
@@ -206,13 +206,13 @@ fn join_compatibility_reports_downing_provider_mismatch() {
 
 #[test]
 fn join_compatibility_reports_sbr_settings_mismatch_when_both_sides_configure_sbr() {
-  let local_sbr = SplitBrainResolverSettings::new(
+  let local_sbr = SplitBrainResolverConfig::new(
     Duration::from_secs(20),
     SplitBrainResolverStrategy::KeepMajority,
     Duration::from_secs(15),
   );
   let joining_sbr =
-    SplitBrainResolverSettings::new(Duration::from_secs(20), SplitBrainResolverStrategy::KeepOldest, Duration::ZERO);
+    SplitBrainResolverConfig::new(Duration::from_secs(20), SplitBrainResolverStrategy::KeepOldest, Duration::ZERO);
   let local = ClusterExtensionConfig::new().with_downing_provider_compatibility(
     DowningProviderCompatibility::new("split-brain-resolver").with_split_brain_resolver_settings(local_sbr),
   );
@@ -223,13 +223,13 @@ fn join_compatibility_reports_sbr_settings_mismatch_when_both_sides_configure_sb
   let validation = local.check_join_compatibility(&joining);
 
   assert_eq!(validation, ConfigValidation::Incompatible {
-    reason: "cluster.split-brain-resolver.settings mismatch: split brain resolver settings mismatch".to_string(),
+    reason: "cluster.split-brain-resolver.config mismatch: split brain resolver config mismatch".to_string(),
   });
 }
 
 #[test]
 fn join_compatibility_reports_sbr_settings_mismatch_against_missing_sbr_settings() {
-  let sbr = SplitBrainResolverSettings::new(
+  let sbr = SplitBrainResolverConfig::new(
     Duration::from_secs(20),
     SplitBrainResolverStrategy::KeepOldest,
     Duration::from_secs(15),
@@ -243,13 +243,13 @@ fn join_compatibility_reports_sbr_settings_mismatch_against_missing_sbr_settings
   let validation = local.check_join_compatibility(&joining);
 
   assert_eq!(validation, ConfigValidation::Incompatible {
-    reason: "cluster.split-brain-resolver.settings mismatch: split brain resolver settings mismatch".to_string(),
+    reason: "cluster.split-brain-resolver.config mismatch: split brain resolver config mismatch".to_string(),
   });
 }
 
 #[test]
 fn sbr_settings_checker_ignores_non_sbr_provider_pairs() {
-  let sbr = SplitBrainResolverSettings::new(
+  let sbr = SplitBrainResolverConfig::new(
     Duration::from_secs(20),
     SplitBrainResolverStrategy::KeepOldest,
     Duration::from_secs(15),
@@ -265,12 +265,12 @@ fn sbr_settings_checker_ignores_non_sbr_provider_pairs() {
 
 #[test]
 fn join_compatibility_reports_sbr_timing_mismatch_when_strategy_matches() {
-  let local_sbr = SplitBrainResolverSettings::new(
+  let local_sbr = SplitBrainResolverConfig::new(
     Duration::from_secs(20),
     SplitBrainResolverStrategy::KeepMajority,
     Duration::from_secs(15),
   );
-  let joining_sbr = SplitBrainResolverSettings::new(
+  let joining_sbr = SplitBrainResolverConfig::new(
     Duration::from_secs(21),
     SplitBrainResolverStrategy::KeepMajority,
     Duration::from_secs(15),
@@ -285,13 +285,13 @@ fn join_compatibility_reports_sbr_timing_mismatch_when_strategy_matches() {
   let validation = local.check_join_compatibility(&joining);
 
   assert_eq!(validation, ConfigValidation::Incompatible {
-    reason: "cluster.split-brain-resolver.settings mismatch: split brain resolver settings mismatch".to_string(),
+    reason: "cluster.split-brain-resolver.config mismatch: split brain resolver config mismatch".to_string(),
   });
 }
 
 #[test]
 fn join_compatibility_accepts_same_sbr_settings() {
-  let sbr = SplitBrainResolverSettings::new(
+  let sbr = SplitBrainResolverConfig::new(
     Duration::from_secs(20),
     SplitBrainResolverStrategy::KeepMajority,
     Duration::from_secs(15),
@@ -310,7 +310,7 @@ fn join_compatibility_accepts_same_sbr_settings() {
 
 #[test]
 fn join_compatibility_ignores_static_quorum_size_for_non_static_quorum_strategy() {
-  let local_sbr = SplitBrainResolverSettings::new(
+  let local_sbr = SplitBrainResolverConfig::new(
     Duration::from_secs(20),
     SplitBrainResolverStrategy::KeepMajority,
     Duration::from_secs(15),

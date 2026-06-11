@@ -20,7 +20,7 @@ use fraktor_actor_core_kernel_rs::{
 use fraktor_utils_core_rs::sync::{DefaultMutex, SharedLock};
 
 use crate::{
-  config::PersistenceSettings,
+  config::PersistenceConfig,
   error::PersistenceError,
   journal::{Journal, JournalActor, JournalActorConfig, PersistencePluginProxyActor, PersistencePluginProxyCommand},
   snapshot::{SnapshotActor, SnapshotActorConfig, SnapshotStore},
@@ -36,7 +36,7 @@ const SET_SNAPSHOT_PLUGIN_TARGET_FAILED: &str = "set snapshot plugin target fail
 pub struct PersistenceExtension {
   journal_actor:  ActorRef,
   snapshot_actor: ActorRef,
-  settings:       PersistenceSettings,
+  settings:       PersistenceConfig,
 }
 
 impl PersistenceExtension {
@@ -57,7 +57,7 @@ impl PersistenceExtension {
     for<'a> S::LoadFuture<'a>: Send + 'static,
     for<'a> S::DeleteOneFuture<'a>: Send + 'static,
     for<'a> S::DeleteManyFuture<'a>: Send + 'static, {
-    Self::new_with_settings(system, journal, snapshot_store, PersistenceSettings::default())
+    Self::new_with_settings(system, journal, snapshot_store, PersistenceConfig::default())
   }
 
   /// Creates a new persistence extension with explicit settings.
@@ -69,7 +69,7 @@ impl PersistenceExtension {
     system: &ActorSystem,
     journal: J,
     snapshot_store: S,
-    settings: PersistenceSettings,
+    settings: PersistenceConfig,
   ) -> Result<Self, PersistenceError>
   where
     J: Journal + Clone + Send + Sync + 'static,
@@ -99,7 +99,7 @@ impl PersistenceExtension {
   ///
   /// Returns `PersistenceError::MessagePassing` when proxy actor creation fails.
   pub fn new_proxy(system: &ActorSystem) -> Result<Self, PersistenceError> {
-    Self::new_proxy_with_settings(system, PersistenceSettings::default())
+    Self::new_proxy_with_settings(system, PersistenceConfig::default())
   }
 
   /// Creates a persistence extension backed by proxy actors and explicit settings.
@@ -107,10 +107,7 @@ impl PersistenceExtension {
   /// # Errors
   ///
   /// Returns `PersistenceError::MessagePassing` when proxy actor creation fails.
-  pub fn new_proxy_with_settings(
-    system: &ActorSystem,
-    settings: PersistenceSettings,
-  ) -> Result<Self, PersistenceError> {
+  pub fn new_proxy_with_settings(system: &ActorSystem, settings: PersistenceConfig) -> Result<Self, PersistenceError> {
     let journal_actor = spawn_system_actor(system, JOURNAL_ACTOR_NAME, PersistencePluginProxyActor::new)?;
     let snapshot_actor = spawn_system_actor(system, SNAPSHOT_ACTOR_NAME, PersistencePluginProxyActor::new)?;
     Ok(Self { journal_actor, snapshot_actor, settings })
@@ -152,7 +149,7 @@ impl PersistenceExtension {
 
   /// Returns the settings used to create the runtime actors.
   #[must_use]
-  pub const fn settings(&self) -> PersistenceSettings {
+  pub const fn settings(&self) -> PersistenceConfig {
     self.settings
   }
 }

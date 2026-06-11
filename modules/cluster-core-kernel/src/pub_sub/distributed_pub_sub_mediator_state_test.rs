@@ -6,7 +6,7 @@ use fraktor_remote_core_rs::address::{Address, UniqueAddress};
 use crate::{
   activation::ClusterIdentity,
   pub_sub::{
-    DistributedPubSubMediatorState, DistributedPubSubSettings, MediatorCommand, MediatorCommandOutcome,
+    DistributedPubSubConfig, DistributedPubSubMediatorState, MediatorCommand, MediatorCommandOutcome,
     MediatorDeliveryIntent, MediatorDeliveryMode, MediatorPathKey, MediatorQueryResult, PubSubEnvelope,
     PubSubNoSubscriberBehavior, PubSubRoutingMode, PubSubSubscriber, PubSubTopic, TopicRegistryBucket,
     TopicRegistryDelta, TopicRegistryDeltaEntry, TopicRegistryEntry, TopicRegistryEntryKey, TopicRegistryEntryKind,
@@ -33,8 +33,8 @@ fn publish_targets(outcome: MediatorCommandOutcome) -> Vec<PubSubSubscriber> {
   }
 }
 
-fn settings(behavior: PubSubNoSubscriberBehavior) -> DistributedPubSubSettings {
-  DistributedPubSubSettings::try_new(
+fn settings(behavior: PubSubNoSubscriberBehavior) -> DistributedPubSubConfig {
+  DistributedPubSubConfig::try_new(
     None,
     PubSubRoutingMode::RoundRobin,
     Duration::from_secs(1),
@@ -45,8 +45,8 @@ fn settings(behavior: PubSubNoSubscriberBehavior) -> DistributedPubSubSettings {
   .expect("settings")
 }
 
-fn random_settings(behavior: PubSubNoSubscriberBehavior) -> DistributedPubSubSettings {
-  DistributedPubSubSettings::try_new(
+fn random_settings(behavior: PubSubNoSubscriberBehavior) -> DistributedPubSubConfig {
+  DistributedPubSubConfig::try_new(
     None,
     PubSubRoutingMode::Random,
     Duration::from_secs(1),

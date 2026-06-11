@@ -1,7 +1,7 @@
 use core::time::Duration;
 
 use super::SubscriptionTimeoutConfig;
-use crate::{SupervisionStrategy, r#impl::fusing::StreamBufferConfig, stream_ref::StreamRefSettings};
+use crate::{SupervisionStrategy, r#impl::fusing::StreamBufferConfig, stream_ref::StreamRefConfig};
 
 #[cfg(test)]
 #[path = "actor_materializer_config_test.rs"]
@@ -16,7 +16,7 @@ pub struct ActorMaterializerConfig {
   debug_logging:         bool,
   output_burst_limit:    usize,
   max_fixed_buffer_size: usize,
-  stream_ref_settings:   StreamRefSettings,
+  stream_ref_settings:   StreamRefConfig,
 }
 
 impl ActorMaterializerConfig {
@@ -31,7 +31,7 @@ impl ActorMaterializerConfig {
       debug_logging:         false,
       output_burst_limit:    1000,
       max_fixed_buffer_size: 1_000_000_000,
-      stream_ref_settings:   StreamRefSettings::new(),
+      stream_ref_settings:   StreamRefConfig::new(),
     }
   }
 
@@ -79,7 +79,7 @@ impl ActorMaterializerConfig {
 
   /// Returns the configured stream reference settings.
   #[must_use]
-  pub fn stream_ref_settings(&self) -> StreamRefSettings {
+  pub fn stream_ref_settings(&self) -> StreamRefConfig {
     self.stream_ref_settings.clone()
   }
 
@@ -134,7 +134,7 @@ impl ActorMaterializerConfig {
 
   /// Updates the stream reference settings.
   #[must_use]
-  pub const fn with_stream_ref_settings(mut self, stream_ref_settings: StreamRefSettings) -> Self {
+  pub const fn with_stream_ref_settings(mut self, stream_ref_settings: StreamRefConfig) -> Self {
     self.stream_ref_settings = stream_ref_settings;
     self
   }

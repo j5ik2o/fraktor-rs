@@ -23,8 +23,8 @@ use crate::{
   ClusterEvent, StartupMode, TopologyUpdate,
   grain::{KindRegistry, TOPIC_ACTOR_KIND},
   pub_sub::{
-    DeliverBatchRequest, DeliveryEndpointShared, DeliveryReport, DistributedPubSubMediatorState,
-    DistributedPubSubSettings, MediatorCommand, MediatorCommandOutcome, PubSubBatch, PubSubBroker, PubSubConfig,
+    DeliverBatchRequest, DeliveryEndpointShared, DeliveryReport, DistributedPubSubConfig,
+    DistributedPubSubMediatorState, MediatorCommand, MediatorCommandOutcome, PubSubBatch, PubSubBroker, PubSubConfig,
     PubSubEnvelope, PubSubError, PubSubEvent, PubSubSubscriber, PubSubTopic, PubSubTopicOptions, PublishAck,
     PublishOptions, PublishRejectReason, PublishRequest, SubscriberDeliveryReport, TopicRegistryApplyOutcome,
     TopicRegistryDelta, TopicRegistryDeltaCollector, TopicRegistryEntryKind, TopicRegistryStatus,
@@ -72,7 +72,7 @@ impl ClusterPubSubImpl {
     registry_snapshot: &KindRegistry,
   ) -> Self {
     let has_topic_actor_kind = registry_snapshot.contains(TOPIC_ACTOR_KIND);
-    let mediator_settings = DistributedPubSubSettings::default();
+    let mediator_settings = DistributedPubSubConfig::default();
     let mediator_owner = mediator_owner_from_address("pubsub");
     Self {
       event_stream,
@@ -102,7 +102,7 @@ impl ClusterPubSubImpl {
 
   /// Creates a new PubSubImpl with custom distributed mediator settings.
   #[must_use]
-  pub fn with_mediator_settings(mut self, settings: DistributedPubSubSettings) -> Self {
+  pub fn with_mediator_settings(mut self, settings: DistributedPubSubConfig) -> Self {
     let local_owner = self.mediator_state.local_owner().clone();
     self.mediator_state = DistributedPubSubMediatorState::new(settings, local_owner);
     self
@@ -432,7 +432,7 @@ impl ClusterPubSub for ClusterPubSubImpl {
     Ok(PublishAck::accepted())
   }
 
-  fn mediator_settings(&self) -> DistributedPubSubSettings {
+  fn mediator_settings(&self) -> DistributedPubSubConfig {
     self.mediator_state.settings().clone()
   }
 

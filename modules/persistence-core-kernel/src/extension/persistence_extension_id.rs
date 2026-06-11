@@ -3,7 +3,7 @@
 use fraktor_actor_core_kernel_rs::{actor::extension::ExtensionId, system::ActorSystem};
 
 use crate::{
-  config::PersistenceSettings,
+  config::PersistenceConfig,
   extension::{PersistenceExtension, PersistenceExtensionShared},
   journal::Journal,
   snapshot::SnapshotStore,
@@ -13,19 +13,19 @@ use crate::{
 pub struct PersistenceExtensionId<J, S> {
   journal:        J,
   snapshot_store: S,
-  settings:       PersistenceSettings,
+  settings:       PersistenceConfig,
 }
 
 impl<J, S> PersistenceExtensionId<J, S> {
   /// Creates a new identifier with the provided journal and snapshot store.
   #[must_use]
   pub const fn new(journal: J, snapshot_store: S) -> Self {
-    Self::new_with_settings(journal, snapshot_store, PersistenceSettings::default_settings())
+    Self::new_with_settings(journal, snapshot_store, PersistenceConfig::default_config())
   }
 
   /// Creates a new identifier with explicit persistence settings.
   #[must_use]
-  pub const fn new_with_settings(journal: J, snapshot_store: S, settings: PersistenceSettings) -> Self {
+  pub const fn new_with_settings(journal: J, snapshot_store: S, settings: PersistenceConfig) -> Self {
     Self { journal, snapshot_store, settings }
   }
 }

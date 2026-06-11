@@ -17,7 +17,7 @@ fn catalog_exposes_conditional_stable_key_names() {
   let conditional_names: Vec<_> =
     ClusterCompatibilityKeyCatalog::conditional_keys().iter().map(|key| key.name()).collect();
 
-  assert_eq!(conditional_names, vec!["cluster.split-brain-resolver.settings"]);
+  assert_eq!(conditional_names, vec!["cluster.split-brain-resolver.config"]);
 }
 
 #[test]

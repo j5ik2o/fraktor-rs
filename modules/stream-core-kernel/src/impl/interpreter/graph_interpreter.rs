@@ -21,7 +21,7 @@ use crate::{
   materialization::DriveOutcome,
   shape::PortId,
   snapshot::RunningInterpreter,
-  stream_ref::StreamRefSettings,
+  stream_ref::StreamRefConfig,
 };
 
 struct FlowStagePorts {
@@ -87,14 +87,14 @@ impl GraphInterpreter {
   /// Panics when the provided plan is structurally invalid.
   #[must_use]
   pub(crate) fn new(plan: StreamPlan, buffer_config: StreamBufferConfig) -> Self {
-    Self::new_with_materializer_context(plan, buffer_config, None, &StreamRefSettings::new())
+    Self::new_with_materializer_context(plan, buffer_config, None, &StreamRefConfig::new())
   }
 
   pub(crate) fn new_with_materializer_context(
     plan: StreamPlan,
     buffer_config: StreamBufferConfig,
     actor_system: Option<&ActorSystem>,
-    stream_ref_settings: &StreamRefSettings,
+    stream_ref_settings: &StreamRefConfig,
   ) -> Self {
     let compiled = CompiledGraphPlan::compile(plan, buffer_config);
     let mut stages = compiled.stages;
@@ -132,7 +132,7 @@ impl GraphInterpreter {
   fn attach_materializer_context(
     stages: &mut [StageDefinition],
     actor_system: Option<&ActorSystem>,
-    stream_ref_settings: &StreamRefSettings,
+    stream_ref_settings: &StreamRefConfig,
   ) {
     for stage in stages {
       match stage {

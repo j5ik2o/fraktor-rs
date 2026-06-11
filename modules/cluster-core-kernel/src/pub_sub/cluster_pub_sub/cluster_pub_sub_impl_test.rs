@@ -21,7 +21,7 @@ use crate::{
   grain::KindRegistry,
   pub_sub::{
     DeliverBatchRequest, DeliveryEndpoint, DeliveryEndpointShared, DeliveryReport, DeliveryStatus,
-    DistributedPubSubSettings, MediatorCommand, MediatorCommandOutcome, MediatorDeliveryIntent, MediatorDeliveryMode,
+    DistributedPubSubConfig, MediatorCommand, MediatorCommandOutcome, MediatorDeliveryIntent, MediatorDeliveryMode,
     MediatorPathKey, PubSubBatch, PubSubConfig, PubSubEnvelope, PubSubError, PubSubEvent, PubSubNoSubscriberBehavior,
     PubSubRoutingMode, PubSubSubscriber, PubSubTopic, PublishAck, PublishOptions, PublishRequest,
     SubscriberDeliveryReport, TopicRegistryApplyOutcome, TopicRegistryDelta, TopicRegistryDeltaEntry,
@@ -232,7 +232,7 @@ fn custom_mediator_settings_are_exposed() {
   let mut registry = KindRegistry::new();
   registry.register_all(Vec::new());
   let event_stream: EventStreamShared = EventStreamShared::default();
-  let mediator_settings = DistributedPubSubSettings::try_new(
+  let mediator_settings = DistributedPubSubConfig::try_new(
     Some(String::from("backend")),
     PubSubRoutingMode::RoundRobin,
     Duration::from_secs(2),

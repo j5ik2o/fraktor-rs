@@ -1,5 +1,5 @@
 #[cfg(test)]
-#[path = "stream_ref_settings_test.rs"]
+#[path = "stream_ref_config_test.rs"]
 mod tests;
 
 const DEFAULT_BUFFER_CAPACITY: usize = 32;
@@ -9,18 +9,18 @@ const DEFAULT_FINAL_TERMINATION_SIGNAL_DEADLINE_TICKS: u32 = 2;
 
 /// Settings specific to stream references.
 ///
-/// Mirrors Pekko's `StreamRefSettings` as an immutable value object. Duration
+/// Mirrors Pekko's `StreamRefConfig` as an immutable value object. Duration
 /// settings are represented as scheduler ticks to keep `stream-core-kernel` independent
 /// from runtime-specific time facilities.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct StreamRefSettings {
+pub struct StreamRefConfig {
   buffer_capacity: usize,
   demand_redelivery_interval_ticks: u32,
   subscription_timeout_ticks: u32,
   final_termination_signal_deadline_ticks: u32,
 }
 
-impl StreamRefSettings {
+impl StreamRefConfig {
   /// Creates stream reference settings with reference defaults.
   #[must_use]
   pub const fn new() -> Self {
@@ -93,7 +93,7 @@ impl StreamRefSettings {
   }
 }
 
-impl Default for StreamRefSettings {
+impl Default for StreamRefConfig {
   fn default() -> Self {
     Self::new()
   }

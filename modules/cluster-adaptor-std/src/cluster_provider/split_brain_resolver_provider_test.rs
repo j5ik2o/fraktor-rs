@@ -4,7 +4,7 @@ use core::time::Duration;
 use fraktor_cluster_core_kernel_rs::{
   downing_provider::{
     DowningDecision, DowningDecisionContext, DowningInput, DowningProvider, LeaseAcquisitionOutcome,
-    SplitBrainResolverSettings, SplitBrainResolverStrategy,
+    SplitBrainResolverConfig, SplitBrainResolverStrategy,
   },
   extension::ClusterProviderError,
   membership::{DataCenter, MembershipSnapshot, MembershipVersion, NodeRecord, NodeStatus, ReachabilityMatrix},
@@ -103,8 +103,8 @@ fn multi_observer_context_with_local_observer() -> DowningDecisionContext {
     .with_reachability_observer(node_a.unique_address)
 }
 
-fn lease_majority_settings() -> SplitBrainResolverSettings {
-  SplitBrainResolverSettings::new(Duration::ZERO, SplitBrainResolverStrategy::LeaseMajority, Duration::from_secs(30))
+fn lease_majority_settings() -> SplitBrainResolverConfig {
+  SplitBrainResolverConfig::new(Duration::ZERO, SplitBrainResolverStrategy::LeaseMajority, Duration::from_secs(30))
 }
 
 #[test]
@@ -179,7 +179,7 @@ fn drop_closes_active_backend() {
 
 #[test]
 fn downing_provider_decide_delegates_to_core_hook() {
-  let mut provider = StdSplitBrainResolverProvider::new(SplitBrainResolverSettings::new(
+  let mut provider = StdSplitBrainResolverProvider::new(SplitBrainResolverConfig::new(
     Duration::ZERO,
     SplitBrainResolverStrategy::KeepMajority,
     Duration::from_secs(30),
@@ -238,7 +238,7 @@ fn downing_provider_trait_path_starts_factory_provider_lazily() {
 
 #[test]
 fn downing_provider_decide_context_preserves_unstable_duration() {
-  let mut provider = StdSplitBrainResolverProvider::new(SplitBrainResolverSettings::new(
+  let mut provider = StdSplitBrainResolverProvider::new(SplitBrainResolverConfig::new(
     Duration::from_secs(20),
     SplitBrainResolverStrategy::KeepMajority,
     Duration::from_secs(30),
@@ -257,7 +257,7 @@ fn downing_provider_decide_context_preserves_unstable_duration() {
 
 #[test]
 fn downing_provider_decide_context_preserves_local_reachability_observer() {
-  let mut provider = StdSplitBrainResolverProvider::new(SplitBrainResolverSettings::new(
+  let mut provider = StdSplitBrainResolverProvider::new(SplitBrainResolverConfig::new(
     Duration::ZERO,
     SplitBrainResolverStrategy::KeepMajority,
     Duration::from_secs(30),

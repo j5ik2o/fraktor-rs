@@ -1,7 +1,7 @@
-//! Distributed pub-sub mediator settings.
+//! Distributed pub-sub mediator configuration.
 
 #[cfg(test)]
-#[path = "distributed_pub_sub_settings_test.rs"]
+#[path = "distributed_pub_sub_config_test.rs"]
 mod tests;
 
 use alloc::{string::String, vec::Vec};
@@ -10,9 +10,9 @@ use core::time::Duration;
 use super::{PubSubError, PubSubNoSubscriberBehavior, PubSubRoutingMode};
 use crate::membership::{CurrentClusterState, NodeRecord};
 
-/// Configuration contract for distributed pub-sub mediator behavior.
+/// Configuration for distributed pub-sub mediator behavior.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct DistributedPubSubSettings {
+pub struct DistributedPubSubConfig {
   role:                   Option<String>,
   routing_mode:           PubSubRoutingMode,
   gossip_interval:        Duration,
@@ -21,12 +21,12 @@ pub struct DistributedPubSubSettings {
   no_subscriber_behavior: PubSubNoSubscriberBehavior,
 }
 
-impl DistributedPubSubSettings {
-  /// Creates settings after validating bounded-delta configuration.
+impl DistributedPubSubConfig {
+  /// Creates a configuration after validating bounded-delta parameters.
   ///
   /// # Errors
   ///
-  /// Returns [`PubSubError::InvalidSettings`] when `max_delta_elements` is zero.
+  /// Returns [`PubSubError::InvalidConfig`] when `max_delta_elements` is zero.
   pub fn try_new(
     role: Option<String>,
     routing_mode: PubSubRoutingMode,
@@ -36,7 +36,7 @@ impl DistributedPubSubSettings {
     no_subscriber_behavior: PubSubNoSubscriberBehavior,
   ) -> Result<Self, PubSubError> {
     if max_delta_elements == 0 {
-      return Err(PubSubError::InvalidSettings {
+      return Err(PubSubError::InvalidConfig {
         reason: String::from("max_delta_elements must be greater than zero"),
       });
     }
@@ -93,7 +93,7 @@ impl DistributedPubSubSettings {
   }
 }
 
-impl Default for DistributedPubSubSettings {
+impl Default for DistributedPubSubConfig {
   fn default() -> Self {
     Self {
       role:                   None,

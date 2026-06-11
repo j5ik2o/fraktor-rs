@@ -1,6 +1,6 @@
 use fraktor_actor_core_kernel_rs::system::ActorSystem;
 
-use crate::{DynValue, StreamError, stream_ref::StreamRefSettings};
+use crate::{DynValue, StreamError, stream_ref::StreamRefConfig};
 
 /// Source-stage callback contract used by adaptor implementations.
 ///
@@ -56,7 +56,7 @@ pub trait SourceLogic: Send {
   }
 
   /// Attaches stream reference settings resolved by the materializer.
-  fn attach_stream_ref_settings(&mut self, _settings: StreamRefSettings) {}
+  fn attach_stream_ref_settings(&mut self, _settings: StreamRefConfig) {}
 
   /// Attaches the actor system resolved by the materializer.
   fn attach_actor_system(&mut self, system: ActorSystem) {

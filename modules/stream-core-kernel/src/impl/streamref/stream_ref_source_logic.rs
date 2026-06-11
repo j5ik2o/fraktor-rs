@@ -15,8 +15,8 @@ use crate::{
   DynValue, SourceLogic, StreamError,
   stage::{StageActor, StageActorEnvelope, StageActorReceive},
   stream_ref::{
-    StreamRefOnSubscribeHandshake, StreamRefRemoteStreamCompleted, StreamRefRemoteStreamFailure,
-    StreamRefSequencedOnNext, StreamRefSettings,
+    StreamRefConfig, StreamRefOnSubscribeHandshake, StreamRefRemoteStreamCompleted, StreamRefRemoteStreamFailure,
+    StreamRefSequencedOnNext,
   },
 };
 
@@ -34,7 +34,7 @@ pub(crate) struct StreamRefSourceLogic<T> {
   handoff:       StreamRefHandoff<T>,
   endpoint:      Option<StreamRefEndpointSlot>,
   subscription:  StreamRefSourceSubscription,
-  settings:      StreamRefSettings,
+  settings:      StreamRefConfig,
   waiting_ticks: u64,
   _pd:           PhantomData<fn() -> T>,
 }
@@ -62,7 +62,7 @@ impl<T> StreamRefSourceLogic<T> {
     endpoint: Option<StreamRefEndpointSlot>,
     subscription: StreamRefSourceSubscription,
   ) -> Self {
-    Self { handoff, endpoint, subscription, settings: StreamRefSettings::new(), waiting_ticks: 0, _pd: PhantomData }
+    Self { handoff, endpoint, subscription, settings: StreamRefConfig::new(), waiting_ticks: 0, _pd: PhantomData }
   }
 
   fn await_subscription(&mut self) -> Result<(), StreamError> {
@@ -211,7 +211,7 @@ where
     false
   }
 
-  fn attach_stream_ref_settings(&mut self, settings: StreamRefSettings) {
+  fn attach_stream_ref_settings(&mut self, settings: StreamRefConfig) {
     self.handoff.configure_buffer_capacity(settings.buffer_capacity());
     self.settings = settings;
   }

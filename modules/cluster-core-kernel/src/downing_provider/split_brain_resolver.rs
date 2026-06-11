@@ -11,7 +11,7 @@ use fraktor_remote_core_rs::address::UniqueAddress;
 
 use super::{
   DowningDecisionContext, DowningDecisionTrace, DowningStrategyDecision, LeaseAcquisitionOutcome, LeaseMajorityPort,
-  SplitBrainResolverSettings, SplitBrainResolverStrategy,
+  SplitBrainResolverConfig, SplitBrainResolverStrategy,
 };
 use crate::membership::{NodeRecord, ReachabilityStatus, oldest_member};
 
@@ -35,19 +35,19 @@ const DOWN_ALL_ELAPSED: &str = "down-all timeout elapsed";
 /// Evaluates Split Brain Resolver settings against a downing context.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SplitBrainResolver {
-  settings: SplitBrainResolverSettings,
+  settings: SplitBrainResolverConfig,
 }
 
 impl SplitBrainResolver {
   /// Creates a resolver from immutable settings.
   #[must_use]
-  pub const fn new(settings: SplitBrainResolverSettings) -> Self {
+  pub const fn new(settings: SplitBrainResolverConfig) -> Self {
     Self { settings }
   }
 
   /// Returns the settings used by this resolver.
   #[must_use]
-  pub const fn settings(&self) -> SplitBrainResolverSettings {
+  pub const fn settings(&self) -> SplitBrainResolverConfig {
     self.settings
   }
 

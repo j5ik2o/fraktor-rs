@@ -13,7 +13,7 @@ use alloc::{
 use fraktor_remote_core_rs::address::UniqueAddress;
 
 use crate::pub_sub::{
-  DistributedPubSubSettings, MediatorDeliveryIntent, MediatorDeliveryMode, MediatorPathKey, PubSubEnvelope,
+  DistributedPubSubConfig, MediatorDeliveryIntent, MediatorDeliveryMode, MediatorPathKey, PubSubEnvelope,
   PubSubNoSubscriberBehavior, PubSubRoutingMode, PubSubSubscriber, SendPathInput, SendToAllPathInput,
   TopicRegistryBucketView, TopicRegistryEntryKind,
 };
@@ -21,7 +21,7 @@ use crate::pub_sub::{
 /// Selects path delivery targets from topic registry bucket views.
 #[derive(Debug, Clone)]
 pub struct PubSubPathSemantics {
-  settings:            DistributedPubSubSettings,
+  settings:            DistributedPubSubConfig,
   local_owner:         UniqueAddress,
   round_robin_cursors: BTreeMap<MediatorPathKey, usize>,
   random_cursor:       usize,
@@ -30,7 +30,7 @@ pub struct PubSubPathSemantics {
 impl PubSubPathSemantics {
   /// Creates a path selector.
   #[must_use]
-  pub const fn new(settings: DistributedPubSubSettings, local_owner: UniqueAddress) -> Self {
+  pub const fn new(settings: DistributedPubSubConfig, local_owner: UniqueAddress) -> Self {
     Self { settings, local_owner, round_robin_cursors: BTreeMap::new(), random_cursor: 0 }
   }
 

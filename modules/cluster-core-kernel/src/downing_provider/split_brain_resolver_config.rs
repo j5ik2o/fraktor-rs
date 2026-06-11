@@ -1,20 +1,20 @@
-//! Split Brain Resolver settings used for join compatibility checks.
+//! Split Brain Resolver configuration used for join compatibility checks.
 
 use core::time::Duration;
 
 use super::SplitBrainResolverStrategy;
 
-/// Split Brain Resolver settings exposed by cluster configuration.
+/// Split Brain Resolver configuration exposed by cluster configuration.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct SplitBrainResolverSettings {
+pub struct SplitBrainResolverConfig {
   stable_after:           Duration,
   active_strategy:        SplitBrainResolverStrategy,
   down_all_when_unstable: Duration,
   static_quorum_size:     Option<usize>,
 }
 
-impl SplitBrainResolverSettings {
-  /// Creates settings with explicit timing and active strategy.
+impl SplitBrainResolverConfig {
+  /// Creates a configuration with explicit timing and active strategy.
   #[must_use]
   pub const fn new(
     stable_after: Duration,
@@ -24,7 +24,7 @@ impl SplitBrainResolverSettings {
     Self { stable_after, active_strategy, down_all_when_unstable, static_quorum_size: None }
   }
 
-  /// Returns settings with a fixed static quorum size.
+  /// Returns a configuration with a fixed static quorum size.
   #[must_use]
   pub const fn with_static_quorum_size(mut self, static_quorum_size: usize) -> Self {
     self.static_quorum_size = Some(static_quorum_size);

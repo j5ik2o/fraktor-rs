@@ -19,7 +19,7 @@ static REQUIRED_KEYS: [ClusterCompatibilityKey; 4] = [
   ClusterCompatibilityKeyCatalog::SINGLETON,
 ];
 
-static CONDITIONAL_KEYS: [ClusterCompatibilityKey; 1] = [ClusterCompatibilityKeyCatalog::SPLIT_BRAIN_RESOLVER_SETTINGS];
+static CONDITIONAL_KEYS: [ClusterCompatibilityKey; 1] = [ClusterCompatibilityKeyCatalog::SPLIT_BRAIN_RESOLVER_CONFIG];
 
 static EXCLUDED_KEYS: [ClusterCompatibilityKey; 3] = [
   ClusterCompatibilityKeyCatalog::ADVERTISED_ADDRESS,
@@ -48,9 +48,9 @@ impl ClusterCompatibilityKeyCatalog {
   pub const PUBSUB: ClusterCompatibilityKey = ClusterCompatibilityKey::required("cluster.pubsub");
   /// Singleton configuration compatibility key.
   pub const SINGLETON: ClusterCompatibilityKey = ClusterCompatibilityKey::required("cluster.singleton");
-  /// Split Brain Resolver settings compatibility key.
-  pub const SPLIT_BRAIN_RESOLVER_SETTINGS: ClusterCompatibilityKey =
-    ClusterCompatibilityKey::required("cluster.split-brain-resolver.settings");
+  /// Split Brain Resolver config compatibility key.
+  pub const SPLIT_BRAIN_RESOLVER_CONFIG: ClusterCompatibilityKey =
+    ClusterCompatibilityKey::required("cluster.split-brain-resolver.config");
 
   /// Returns required keys compared by join compatibility.
   #[must_use]

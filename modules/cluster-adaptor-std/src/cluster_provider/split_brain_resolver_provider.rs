@@ -10,7 +10,7 @@ use core::time::Duration;
 use fraktor_cluster_core_kernel_rs::{
   downing_provider::{
     DowningDecision, DowningDecisionContext, DowningInput, DowningProvider, DowningProviderCompatibility,
-    LeaseAcquisitionOutcome, LeaseMajorityPort, SplitBrainResolverProviderHook, SplitBrainResolverSettings,
+    LeaseAcquisitionOutcome, LeaseMajorityPort, SplitBrainResolverConfig, SplitBrainResolverProviderHook,
   },
   extension::ClusterProviderError,
 };
@@ -25,7 +25,7 @@ type LeaseBackendFactory = ArcShared<dyn Fn() -> Box<dyn StdLeaseMajorityBackend
 
 /// std lifecycle wrapper for the core Split Brain Resolver provider hook.
 pub struct StdSplitBrainResolverProvider {
-  settings:        SplitBrainResolverSettings,
+  settings:        SplitBrainResolverConfig,
   hook:            Option<SplitBrainResolverProviderHook>,
   lease_backend_f: Option<LeaseBackendFactory>,
   lease_backend:   Option<Box<dyn StdLeaseMajorityBackend>>,
@@ -35,7 +35,7 @@ pub struct StdSplitBrainResolverProvider {
 impl StdSplitBrainResolverProvider {
   /// Creates a stopped provider with SBR settings.
   #[must_use]
-  pub const fn new(settings: SplitBrainResolverSettings) -> Self {
+  pub const fn new(settings: SplitBrainResolverConfig) -> Self {
     Self { settings, hook: None, lease_backend_f: None, lease_backend: None, stopped: false }
   }
 

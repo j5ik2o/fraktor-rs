@@ -13,7 +13,7 @@ use alloc::{
 use fraktor_remote_core_rs::address::UniqueAddress;
 
 use super::{
-  DistributedPubSubSettings, MediatorAcknowledgement, MediatorCommand, MediatorCommandOutcome, MediatorDeliveryIntent,
+  DistributedPubSubConfig, MediatorAcknowledgement, MediatorCommand, MediatorCommandOutcome, MediatorDeliveryIntent,
   MediatorDeliveryMode, MediatorQuery, MediatorQueryResult, PubSubEnvelope, PubSubError, PubSubNoSubscriberBehavior,
   PubSubPathSemantics, PubSubRoutingMode, PubSubSubscriber, PubSubTopic, SendPathInput, SendToAllPathInput,
   TopicRegistryApplyOutcome, TopicRegistryBucket, TopicRegistryBucketView, TopicRegistryDelta,
@@ -23,7 +23,7 @@ use super::{
 /// Registry-backed mediator state for pub-sub commands.
 #[derive(Debug, Clone)]
 pub struct DistributedPubSubMediatorState {
-  settings:              DistributedPubSubSettings,
+  settings:              DistributedPubSubConfig,
   local_owner:           UniqueAddress,
   local_bucket:          TopicRegistryBucket,
   remote_buckets:        BTreeMap<UniqueAddress, TopicRegistryBucket>,
@@ -35,7 +35,7 @@ pub struct DistributedPubSubMediatorState {
 impl DistributedPubSubMediatorState {
   /// Creates mediator state for one local owner.
   #[must_use]
-  pub fn new(settings: DistributedPubSubSettings, local_owner: UniqueAddress) -> Self {
+  pub fn new(settings: DistributedPubSubConfig, local_owner: UniqueAddress) -> Self {
     Self {
       local_bucket: TopicRegistryBucket::new(local_owner.clone()),
       path_semantics: PubSubPathSemantics::new(settings.clone(), local_owner.clone()),
@@ -49,7 +49,7 @@ impl DistributedPubSubMediatorState {
 
   /// Returns mediator settings.
   #[must_use]
-  pub const fn settings(&self) -> &DistributedPubSubSettings {
+  pub const fn settings(&self) -> &DistributedPubSubConfig {
     &self.settings
   }
 

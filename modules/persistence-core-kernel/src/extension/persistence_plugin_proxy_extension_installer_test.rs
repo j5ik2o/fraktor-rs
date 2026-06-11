@@ -13,7 +13,7 @@ use fraktor_actor_core_kernel_rs::{
 use fraktor_utils_core_rs::sync::{ArcShared, SharedAccess, WeakShared};
 
 use crate::{
-  config::PersistenceSettings,
+  config::PersistenceConfig,
   extension::{
     PersistenceExtensionShared, PersistencePluginProxyExtensionId, PersistencePluginProxyExtensionInstaller,
   },
@@ -58,7 +58,7 @@ fn proxy_extension_id_default_creates_proxy_extension() {
   let extension = extension_id.create_extension(&system);
 
   extension.with_read(|inner| {
-    assert_eq!(inner.settings(), PersistenceSettings::default());
+    assert_eq!(inner.settings(), PersistenceConfig::default());
   });
 }
 
@@ -101,7 +101,7 @@ fn proxy_installer_reports_serialization_registration_failure() {
 
 #[test]
 fn proxy_installer_preserves_explicit_settings() {
-  let settings = PersistenceSettings::default()
+  let settings = PersistenceConfig::default()
     .with_journal_actor_config(JournalActorConfig::new(2))
     .with_snapshot_actor_config(SnapshotActorConfig::new(3));
   let installers = ExtensionInstallers::default()

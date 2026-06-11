@@ -5,12 +5,12 @@ use fraktor_remote_core_rs::address::{Address, UniqueAddress};
 
 use crate::{
   membership::{CurrentClusterState, DataCenter, MembershipVersion, NodeRecord, NodeStatus},
-  pub_sub::{DistributedPubSubSettings, PubSubError, PubSubNoSubscriberBehavior, PubSubRoutingMode},
+  pub_sub::{DistributedPubSubConfig, PubSubError, PubSubNoSubscriberBehavior, PubSubRoutingMode},
 };
 
 #[test]
 fn default_settings_match_mediator_contract() {
-  let settings = DistributedPubSubSettings::default();
+  let settings = DistributedPubSubConfig::default();
 
   assert_eq!(settings.role(), None);
   assert_eq!(settings.routing_mode(), PubSubRoutingMode::Random);
@@ -22,7 +22,7 @@ fn default_settings_match_mediator_contract() {
 
 #[test]
 fn try_new_rejects_zero_max_delta_elements() {
-  let result = DistributedPubSubSettings::try_new(
+  let result = DistributedPubSubConfig::try_new(
     None,
     PubSubRoutingMode::Random,
     Duration::from_secs(1),
@@ -32,7 +32,7 @@ fn try_new_rejects_zero_max_delta_elements() {
   );
 
   assert!(
-    matches!(result, Err(PubSubError::InvalidSettings { reason }) if reason == "max_delta_elements must be greater than zero")
+    matches!(result, Err(PubSubError::InvalidConfig { reason }) if reason == "max_delta_elements must be greater than zero")
   );
 }
 
@@ -47,13 +47,13 @@ fn routing_mode_rejects_unsupported_name() {
   let result = PubSubRoutingMode::try_from_name("consistent-hashing");
 
   assert!(
-    matches!(result, Err(PubSubError::InvalidSettings { reason }) if reason == "unsupported routing mode: consistent-hashing")
+    matches!(result, Err(PubSubError::InvalidConfig { reason }) if reason == "unsupported routing mode: consistent-hashing")
   );
 }
 
 #[test]
 fn try_new_keeps_dead_letter_behavior() {
-  let settings = DistributedPubSubSettings::try_new(
+  let settings = DistributedPubSubConfig::try_new(
     None,
     PubSubRoutingMode::Random,
     Duration::from_secs(1),
@@ -68,7 +68,7 @@ fn try_new_keeps_dead_letter_behavior() {
 
 #[test]
 fn role_filter_keeps_only_active_members_with_matching_role() {
-  let settings = DistributedPubSubSettings::try_new(
+  let settings = DistributedPubSubConfig::try_new(
     Some(String::from("pubsub")),
     PubSubRoutingMode::RoundRobin,
     Duration::from_millis(500),

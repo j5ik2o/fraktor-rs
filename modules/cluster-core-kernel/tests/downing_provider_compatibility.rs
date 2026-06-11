@@ -1,7 +1,7 @@
 use core::time::Duration;
 
 use fraktor_cluster_core_kernel_rs::downing_provider::{
-  DowningProviderCompatibility, SplitBrainResolverSettings, SplitBrainResolverStrategy,
+  DowningProviderCompatibility, SplitBrainResolverConfig, SplitBrainResolverStrategy,
 };
 
 #[test]
@@ -21,7 +21,7 @@ fn split_brain_resolver_strategy_returns_pekko_identifiers() {
 
 #[test]
 fn split_brain_resolver_settings_preserve_active_strategy_and_durations() {
-  let settings = SplitBrainResolverSettings::new(
+  let settings = SplitBrainResolverConfig::new(
     Duration::from_secs(20),
     SplitBrainResolverStrategy::KeepMajority,
     Duration::from_secs(15),
@@ -45,7 +45,7 @@ fn downing_provider_compatibility_preserves_provider_key() {
 
 #[test]
 fn downing_provider_compatibility_preserves_split_brain_resolver_settings() {
-  let settings = SplitBrainResolverSettings::new(
+  let settings = SplitBrainResolverConfig::new(
     Duration::from_secs(20),
     SplitBrainResolverStrategy::KeepMajority,
     Duration::from_secs(15),
@@ -64,7 +64,7 @@ fn downing_provider_compatibility_preserves_split_brain_resolver_settings() {
 
 #[test]
 fn non_static_quorum_identity_ignores_static_quorum_size() {
-  let settings = SplitBrainResolverSettings::new(
+  let settings = SplitBrainResolverConfig::new(
     Duration::from_secs(20),
     SplitBrainResolverStrategy::KeepMajority,
     Duration::from_secs(15),
@@ -88,7 +88,7 @@ fn downing_provider_compatibility_rejects_empty_provider_key() {
 
 #[test]
 fn split_brain_resolver_settings_identity_uses_strategy_identifier_and_durations() {
-  let settings = SplitBrainResolverSettings::new(
+  let settings = SplitBrainResolverConfig::new(
     Duration::from_millis(2500),
     SplitBrainResolverStrategy::StaticQuorum,
     Duration::from_millis(750),

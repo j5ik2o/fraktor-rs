@@ -2,7 +2,7 @@
 
 use alloc::{format, string::String};
 
-use super::{SplitBrainResolverSettings, SplitBrainResolverStrategy};
+use super::{SplitBrainResolverConfig, SplitBrainResolverStrategy};
 
 pub(crate) const NOOP_DOWNING_PROVIDER_KEY: &str = "noop";
 const EMPTY_DOWNING_PROVIDER_KEY_REASON: &str = "downing provider compatibility key must not be empty";
@@ -11,7 +11,7 @@ const EMPTY_DOWNING_PROVIDER_KEY_REASON: &str = "downing provider compatibility 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct DowningProviderCompatibility {
   provider_key:                  String,
-  split_brain_resolver_settings: Option<SplitBrainResolverSettings>,
+  split_brain_resolver_settings: Option<SplitBrainResolverConfig>,
   sbr_settings_identity:         Option<String>,
 }
 
@@ -42,7 +42,7 @@ impl DowningProviderCompatibility {
 
   /// Returns optional Split Brain Resolver settings.
   #[must_use]
-  pub const fn split_brain_resolver_settings(&self) -> Option<&SplitBrainResolverSettings> {
+  pub const fn split_brain_resolver_settings(&self) -> Option<&SplitBrainResolverConfig> {
     self.split_brain_resolver_settings.as_ref()
   }
 
@@ -54,14 +54,14 @@ impl DowningProviderCompatibility {
 
   /// Attaches Split Brain Resolver settings to this compatibility identity.
   #[must_use]
-  pub fn with_split_brain_resolver_settings(mut self, settings: SplitBrainResolverSettings) -> Self {
+  pub fn with_split_brain_resolver_settings(mut self, settings: SplitBrainResolverConfig) -> Self {
     self.split_brain_resolver_settings = Some(settings);
     self.sbr_settings_identity = Some(format_sbr_settings_identity(settings));
     self
   }
 }
 
-fn format_sbr_settings_identity(settings: SplitBrainResolverSettings) -> String {
+fn format_sbr_settings_identity(settings: SplitBrainResolverConfig) -> String {
   let mut identity = format!(
     "stable-after-nanos={};active-strategy={};down-all-when-unstable-nanos={}",
     settings.stable_after().as_nanos(),

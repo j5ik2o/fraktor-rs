@@ -17,8 +17,8 @@ use crate::{
   materialization::{StreamDone, StreamFuture},
   stage::{StageActor, StageActorEnvelope, StageActorReceive},
   stream_ref::{
-    StreamRefCumulativeDemand, StreamRefOnSubscribeHandshake, StreamRefRemoteStreamCompleted,
-    StreamRefRemoteStreamFailure, StreamRefSequencedOnNext, StreamRefSettings,
+    StreamRefConfig, StreamRefCumulativeDemand, StreamRefOnSubscribeHandshake, StreamRefRemoteStreamCompleted,
+    StreamRefRemoteStreamFailure, StreamRefSequencedOnNext,
   },
 };
 
@@ -37,7 +37,7 @@ pub(crate) struct StreamRefSinkLogic<T> {
   endpoint:        Option<StreamRefEndpointSlot>,
   subscription:    StreamRefSinkSubscription,
   completion:      Option<StreamFuture<StreamDone>>,
-  settings:        StreamRefSettings,
+  settings:        StreamRefConfig,
   demand_started:  bool,
   terminal_queued: bool,
   waiting_ticks:   u64,
@@ -73,7 +73,7 @@ impl<T> StreamRefSinkLogic<T> {
       endpoint,
       subscription,
       completion,
-      settings: StreamRefSettings::new(),
+      settings: StreamRefConfig::new(),
       demand_started: false,
       terminal_queued: false,
       waiting_ticks: 0,
@@ -294,7 +294,7 @@ where
     self.terminal_queued && self.handoff.has_pending_protocols()
   }
 
-  fn attach_stream_ref_settings(&mut self, settings: StreamRefSettings) {
+  fn attach_stream_ref_settings(&mut self, settings: StreamRefConfig) {
     self.handoff.configure_buffer_capacity(settings.buffer_capacity());
     self.settings = settings;
   }

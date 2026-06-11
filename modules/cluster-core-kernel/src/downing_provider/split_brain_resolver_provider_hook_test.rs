@@ -8,7 +8,7 @@ use crate::{
   ClusterProviderError,
   downing_provider::{
     DowningDecision, DowningDecisionContext, DowningInput, DowningProvider, DowningProviderCompatibility,
-    LeaseAcquisitionOutcome, LeaseMajorityPort, SplitBrainResolverProviderHook, SplitBrainResolverSettings,
+    LeaseAcquisitionOutcome, LeaseMajorityPort, SplitBrainResolverConfig, SplitBrainResolverProviderHook,
     SplitBrainResolverStrategy,
   },
   membership::{DataCenter, MembershipSnapshot, MembershipVersion, NodeRecord, NodeStatus, ReachabilityMatrix},
@@ -75,7 +75,7 @@ fn minority_observer_context() -> DowningDecisionContext {
 
 #[test]
 fn provider_hook_exposes_sbr_compatibility_metadata() {
-  let settings = SplitBrainResolverSettings::new(
+  let settings = SplitBrainResolverConfig::new(
     Duration::from_secs(20),
     SplitBrainResolverStrategy::KeepMajority,
     Duration::from_secs(30),
@@ -95,9 +95,9 @@ fn provider_hook_exposes_sbr_compatibility_metadata() {
 #[test]
 fn provider_hook_rejects_mismatched_metadata() {
   let settings =
-    SplitBrainResolverSettings::new(Duration::ZERO, SplitBrainResolverStrategy::KeepMajority, Duration::from_secs(30));
+    SplitBrainResolverConfig::new(Duration::ZERO, SplitBrainResolverStrategy::KeepMajority, Duration::from_secs(30));
   let compatibility = DowningProviderCompatibility::new("split-brain-resolver").with_split_brain_resolver_settings(
-    SplitBrainResolverSettings::new(Duration::ZERO, SplitBrainResolverStrategy::KeepOldest, Duration::from_secs(30)),
+    SplitBrainResolverConfig::new(Duration::ZERO, SplitBrainResolverStrategy::KeepOldest, Duration::from_secs(30)),
   );
 
   let err = SplitBrainResolverProviderHook::from_compatibility(settings, compatibility).expect_err("metadata mismatch");
@@ -109,7 +109,7 @@ fn provider_hook_rejects_mismatched_metadata() {
 #[test]
 fn provider_hook_accepts_identity_compatible_non_static_quorum_metadata() {
   let settings =
-    SplitBrainResolverSettings::new(Duration::ZERO, SplitBrainResolverStrategy::KeepMajority, Duration::from_secs(30));
+    SplitBrainResolverConfig::new(Duration::ZERO, SplitBrainResolverStrategy::KeepMajority, Duration::from_secs(30));
   let compatibility = DowningProviderCompatibility::new("split-brain-resolver")
     .with_split_brain_resolver_settings(settings.with_static_quorum_size(3));
 
@@ -121,7 +121,7 @@ fn provider_hook_accepts_identity_compatible_non_static_quorum_metadata() {
 #[test]
 fn provider_hook_maps_explicit_down_without_membership_snapshot() {
   let settings =
-    SplitBrainResolverSettings::new(Duration::ZERO, SplitBrainResolverStrategy::KeepMajority, Duration::from_secs(30));
+    SplitBrainResolverConfig::new(Duration::ZERO, SplitBrainResolverStrategy::KeepMajority, Duration::from_secs(30));
   let mut hook = SplitBrainResolverProviderHook::new(settings);
 
   let decision = hook.decide(&DowningInput::explicit_down("node-a:2552"));
@@ -132,7 +132,7 @@ fn provider_hook_maps_explicit_down_without_membership_snapshot() {
 #[test]
 fn provider_hook_downing_provider_decide_context_uses_membership_context() {
   let settings =
-    SplitBrainResolverSettings::new(Duration::ZERO, SplitBrainResolverStrategy::KeepMajority, Duration::from_secs(30));
+    SplitBrainResolverConfig::new(Duration::ZERO, SplitBrainResolverStrategy::KeepMajority, Duration::from_secs(30));
   let mut hook = SplitBrainResolverProviderHook::new(settings);
   let downing_provider: &mut dyn DowningProvider = &mut hook;
 
@@ -144,7 +144,7 @@ fn provider_hook_downing_provider_decide_context_uses_membership_context() {
 #[test]
 fn provider_hook_returns_down_when_local_observer_is_downing_target() {
   let settings =
-    SplitBrainResolverSettings::new(Duration::ZERO, SplitBrainResolverStrategy::KeepMajority, Duration::from_secs(30));
+    SplitBrainResolverConfig::new(Duration::ZERO, SplitBrainResolverStrategy::KeepMajority, Duration::from_secs(30));
   let mut hook = SplitBrainResolverProviderHook::new(settings);
 
   let decision = hook.decide_context(&minority_observer_context());
@@ -155,7 +155,7 @@ fn provider_hook_returns_down_when_local_observer_is_downing_target() {
 #[test]
 fn provider_hook_prioritizes_explicit_down_before_lease_backend_failure() {
   let settings =
-    SplitBrainResolverSettings::new(Duration::ZERO, SplitBrainResolverStrategy::LeaseMajority, Duration::from_secs(30));
+    SplitBrainResolverConfig::new(Duration::ZERO, SplitBrainResolverStrategy::LeaseMajority, Duration::from_secs(30));
   let mut hook = SplitBrainResolverProviderHook::new(settings);
 
   let decision = hook.decide(&DowningInput::explicit_down("node-a:2552"));
@@ -166,7 +166,7 @@ fn provider_hook_prioritizes_explicit_down_before_lease_backend_failure() {
 #[test]
 fn provider_hook_maps_decision_failure_to_cluster_provider_error() {
   let settings =
-    SplitBrainResolverSettings::new(Duration::ZERO, SplitBrainResolverStrategy::LeaseMajority, Duration::from_secs(30));
+    SplitBrainResolverConfig::new(Duration::ZERO, SplitBrainResolverStrategy::LeaseMajority, Duration::from_secs(30));
   let mut hook = SplitBrainResolverProviderHook::new(settings);
 
   let err = hook.decide_context(&majority_context()).expect_err("missing lease backend");
@@ -178,7 +178,7 @@ fn provider_hook_maps_decision_failure_to_cluster_provider_error() {
 #[test]
 fn provider_hook_routes_context_to_lease_port() {
   let settings =
-    SplitBrainResolverSettings::new(Duration::ZERO, SplitBrainResolverStrategy::LeaseMajority, Duration::from_secs(30));
+    SplitBrainResolverConfig::new(Duration::ZERO, SplitBrainResolverStrategy::LeaseMajority, Duration::from_secs(30));
   let mut hook = SplitBrainResolverProviderHook::new(settings);
   let mut lease_port = RecordingLeasePort { outcome: LeaseAcquisitionOutcome::Acquired, calls: 0 };
 
@@ -191,7 +191,7 @@ fn provider_hook_routes_context_to_lease_port() {
 #[test]
 fn provider_hook_with_lease_returns_down_when_local_observer_is_downing_target() {
   let settings =
-    SplitBrainResolverSettings::new(Duration::ZERO, SplitBrainResolverStrategy::LeaseMajority, Duration::from_secs(30));
+    SplitBrainResolverConfig::new(Duration::ZERO, SplitBrainResolverStrategy::LeaseMajority, Duration::from_secs(30));
   let mut hook = SplitBrainResolverProviderHook::new(settings);
   let mut lease_port = RecordingLeasePort { outcome: LeaseAcquisitionOutcome::Acquired, calls: 0 };
 

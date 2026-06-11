@@ -3,25 +3,25 @@
 use fraktor_actor_core_kernel_rs::{actor::extension::ExtensionId, system::ActorSystem};
 
 use crate::{
-  config::PersistenceSettings,
+  config::PersistenceConfig,
   extension::{PersistenceExtension, PersistenceExtensionShared},
 };
 
 /// Registers and instantiates a persistence extension backed by proxy actors.
 pub struct PersistencePluginProxyExtensionId {
-  settings: PersistenceSettings,
+  settings: PersistenceConfig,
 }
 
 impl PersistencePluginProxyExtensionId {
   /// Creates a new proxy extension identifier.
   #[must_use]
   pub const fn new() -> Self {
-    Self::new_with_settings(PersistenceSettings::default_settings())
+    Self::new_with_settings(PersistenceConfig::default_config())
   }
 
   /// Creates a new proxy extension identifier with explicit settings.
   #[must_use]
-  pub const fn new_with_settings(settings: PersistenceSettings) -> Self {
+  pub const fn new_with_settings(settings: PersistenceConfig) -> Self {
     Self { settings }
   }
 }

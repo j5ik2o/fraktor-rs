@@ -38,7 +38,7 @@ use crate::{
   shape::{Inlet, Outlet, PortId},
   snapshot::{ConnectionState, InterpreterSnapshot},
   stage::{AsyncCallback, StageKind, TimerGraphStageLogic},
-  stream_ref::StreamRefSettings,
+  stream_ref::StreamRefConfig,
 };
 
 fn drive_to_completion(interpreter: &mut GraphInterpreter) {
@@ -188,7 +188,7 @@ fn materializer_context_is_attached_to_source_and_sink_logic() {
     plan,
     StreamBufferConfig::default(),
     Some(&system),
-    &StreamRefSettings::new(),
+    &StreamRefConfig::new(),
   );
 
   drive_to_completion(&mut interpreter);

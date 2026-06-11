@@ -18,7 +18,7 @@ use crate::{
 
 const PUBSUB_CONFIGURATION_MISMATCH_REASON: &str = "pubsub configuration mismatch";
 const DOWNING_PROVIDER_KEY_MISMATCH_REASON: &str = "downing provider compatibility key mismatch";
-const SBR_SETTINGS_MISMATCH_REASON: &str = "split brain resolver settings mismatch";
+const SBR_CONFIG_MISMATCH_REASON: &str = "split brain resolver config mismatch";
 const SPLIT_BRAIN_RESOLVER_PROVIDER_KEY: &str = "split-brain-resolver";
 const PUBSUB_SUBSCRIBER_TIMEOUT_KEY: &str = "fraktor.cluster.pubsub.subscriber-timeout";
 const PUBSUB_SUSPENDED_TTL_KEY: &str = "fraktor.cluster.pubsub.suspended-ttl";
@@ -52,7 +52,7 @@ const JOIN_COMPATIBILITY_CHECKS: &[JoinCompatibilityCheck] = &[
   JoinCompatibilityCheck::new(ClusterCompatibilityKeyCatalog::PUBSUB, pubsub_config_mismatch_detail),
   JoinCompatibilityCheck::new(ClusterCompatibilityKeyCatalog::DOWNING_PROVIDER, downing_provider_key_mismatch_detail),
   JoinCompatibilityCheck::new(
-    ClusterCompatibilityKeyCatalog::SPLIT_BRAIN_RESOLVER_SETTINGS,
+    ClusterCompatibilityKeyCatalog::SPLIT_BRAIN_RESOLVER_CONFIG,
     split_brain_resolver_settings_mismatch_detail,
   ),
   JoinCompatibilityCheck::new(
@@ -361,7 +361,7 @@ fn split_brain_resolver_settings_mismatch_detail(
   if split_brain_resolver_settings_are_compatible(local, joining) {
     None
   } else {
-    Some(String::from(SBR_SETTINGS_MISMATCH_REASON))
+    Some(String::from(SBR_CONFIG_MISMATCH_REASON))
   }
 }
 

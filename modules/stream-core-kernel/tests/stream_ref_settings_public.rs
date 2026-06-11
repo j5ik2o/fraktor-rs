@@ -7,13 +7,13 @@ use fraktor_stream_core_kernel_rs::{
     StreamRefSubscriptionTimeout,
   },
   materialization::ActorMaterializerConfig,
-  stream_ref::StreamRefSettings,
+  stream_ref::StreamRefConfig,
 };
 
 #[test]
 fn stream_ref_settings_are_reachable_from_public_core_api() {
-  // Given/When: crate public API から StreamRefSettings を構築する
-  let settings = StreamRefSettings::new();
+  // Given/When: crate public API から StreamRefConfig を構築する
+  let settings = StreamRefConfig::new();
 
   // Then: reference.conf 相当の default 値へ到達できる
   assert_eq!(settings.buffer_capacity(), 32);
@@ -53,7 +53,7 @@ fn stream_ref_buffer_capacity_public_factory_rejects_zero() {
 #[test]
 fn actor_materializer_config_exposes_stream_ref_settings() {
   // Given: StreamRef settings を明示的に差し替える
-  let stream_ref_settings = StreamRefSettings::new()
+  let stream_ref_settings = StreamRefConfig::new()
     .with_buffer_capacity(64)
     .with_demand_redelivery_interval_ticks(2)
     .with_subscription_timeout_ticks(45)

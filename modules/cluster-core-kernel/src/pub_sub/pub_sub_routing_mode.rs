@@ -19,13 +19,13 @@ impl PubSubRoutingMode {
   ///
   /// # Errors
   ///
-  /// Returns [`PubSubError::InvalidSettings`] when the value is not supported by distributed
+  /// Returns [`PubSubError::InvalidConfig`] when the value is not supported by distributed
   /// pub-sub.
   pub fn try_from_name(value: &str) -> Result<Self, PubSubError> {
     match value {
       | "random" => Ok(Self::Random),
       | "round-robin" => Ok(Self::RoundRobin),
-      | other => Err(PubSubError::InvalidSettings { reason: format!("unsupported routing mode: {other}") }),
+      | other => Err(PubSubError::InvalidConfig { reason: format!("unsupported routing mode: {other}") }),
     }
   }
 }
