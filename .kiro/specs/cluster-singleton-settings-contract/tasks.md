@@ -39,7 +39,7 @@
   - _Boundary:_ ClusterSingletonProxySettings
   - _Depends:_ none
 
-- [ ] 2.4 typed 統合設定と manager / proxy への導出を実装する
+- [x] 2.4 typed 統合設定と manager / proxy への導出を実装する
   - cluster-core-typed に、manager / proxy 共通項目（role・data center・identification 間隔・removal margin・handover リトライ間隔・最小リトライ回数・buffer size・lease スロット)を一括指定できる統合設定を追加する
   - singleton 名を与えて manager 設定・proxy 設定を導出し、対応項目の値を変化させずに引き継ぐ
   - 既定の統合設定からの導出が kernel の既定値と一致することを保証する
@@ -109,3 +109,7 @@
   - _Requirements:_ 8.1, 8.2, 8.3
   - _Boundary:_ 検証（全コンポーネント横断）
   - _Depends:_ 4.3, 4.4
+
+## Implementation Notes
+
+- 2.3: kernel は `#![deny(clippy::missing_const_for_fn)]`。`Option<&T>` を返す getter（`as_ref()` 利用）も `pub const fn` にすること（2.3 のレビュー rejection の原因）
