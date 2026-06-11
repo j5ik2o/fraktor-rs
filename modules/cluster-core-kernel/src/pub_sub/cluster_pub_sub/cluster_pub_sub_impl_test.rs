@@ -228,11 +228,11 @@ fn publish_rejects_when_no_subscribers() {
 }
 
 #[test]
-fn custom_mediator_settings_are_exposed() {
+fn custom_mediator_config_are_exposed() {
   let mut registry = KindRegistry::new();
   registry.register_all(Vec::new());
   let event_stream: EventStreamShared = EventStreamShared::default();
-  let mediator_settings = DistributedPubSubConfig::try_new(
+  let mediator_config = DistributedPubSubConfig::try_new(
     Some(String::from("backend")),
     PubSubRoutingMode::RoundRobin,
     Duration::from_secs(2),
@@ -242,9 +242,9 @@ fn custom_mediator_settings_are_exposed() {
   )
   .expect("settings");
 
-  let pubsub = make_pubsub(event_stream, &registry, Vec::new()).with_mediator_settings(mediator_settings.clone());
+  let pubsub = make_pubsub(event_stream, &registry, Vec::new()).with_mediator_config(mediator_config.clone());
 
-  assert_eq!(pubsub.mediator_settings(), mediator_settings);
+  assert_eq!(pubsub.mediator_config(), mediator_config);
 }
 
 #[test]

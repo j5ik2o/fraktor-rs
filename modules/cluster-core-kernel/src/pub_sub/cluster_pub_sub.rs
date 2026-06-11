@@ -52,7 +52,7 @@ pub trait ClusterPubSub: Send + Sync {
   fn publish(&mut self, request: PublishRequest) -> Result<PublishAck, PubSubError>;
 
   /// Returns distributed mediator configuration used by this pub/sub implementation.
-  fn mediator_settings(&self) -> DistributedPubSubConfig {
+  fn mediator_config(&self) -> DistributedPubSubConfig {
     DistributedPubSubConfig::default()
   }
 

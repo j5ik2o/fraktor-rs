@@ -9,7 +9,7 @@ const DEFAULT_FINAL_TERMINATION_SIGNAL_DEADLINE_TICKS: u32 = 2;
 
 /// Settings specific to stream references.
 ///
-/// Mirrors Pekko's `StreamRefConfig` as an immutable value object. Duration
+/// Mirrors Pekko's `StreamRefSettings` as an immutable value object. Duration
 /// settings are represented as scheduler ticks to keep `stream-core-kernel` independent
 /// from runtime-specific time facilities.
 #[derive(Debug, Clone, PartialEq, Eq)]

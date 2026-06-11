@@ -91,13 +91,13 @@ impl SplitBrainResolverProviderHook {
   }
 
   fn expected_compatibility(settings: SplitBrainResolverConfig) -> DowningProviderCompatibility {
-    DowningProviderCompatibility::new(SPLIT_BRAIN_RESOLVER_PROVIDER_KEY).with_split_brain_resolver_settings(settings)
+    DowningProviderCompatibility::new(SPLIT_BRAIN_RESOLVER_PROVIDER_KEY).with_split_brain_resolver_config(settings)
   }
 
   fn compatibility_matches(settings: SplitBrainResolverConfig, compatibility: &DowningProviderCompatibility) -> bool {
     let expected = Self::expected_compatibility(settings);
     compatibility.provider_key() == expected.provider_key()
-      && compatibility.sbr_settings_identity() == expected.sbr_settings_identity()
+      && compatibility.sbr_config_identity() == expected.sbr_config_identity()
   }
 
   const fn evaluation_time() -> TimerInstant {

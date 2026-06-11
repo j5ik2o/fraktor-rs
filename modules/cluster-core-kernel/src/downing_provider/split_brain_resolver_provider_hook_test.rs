@@ -85,9 +85,9 @@ fn provider_hook_exposes_sbr_compatibility_metadata() {
   let compatibility = hook.compatibility();
 
   assert_eq!(compatibility.provider_key(), "split-brain-resolver");
-  assert_eq!(compatibility.split_brain_resolver_settings(), Some(&settings));
+  assert_eq!(compatibility.split_brain_resolver_config(), Some(&settings));
   assert_eq!(
-    compatibility.sbr_settings_identity(),
+    compatibility.sbr_config_identity(),
     Some("stable-after-nanos=20000000000;active-strategy=keep-majority;down-all-when-unstable-nanos=30000000000"),
   );
 }
@@ -96,7 +96,7 @@ fn provider_hook_exposes_sbr_compatibility_metadata() {
 fn provider_hook_rejects_mismatched_metadata() {
   let settings =
     SplitBrainResolverConfig::new(Duration::ZERO, SplitBrainResolverStrategy::KeepMajority, Duration::from_secs(30));
-  let compatibility = DowningProviderCompatibility::new("split-brain-resolver").with_split_brain_resolver_settings(
+  let compatibility = DowningProviderCompatibility::new("split-brain-resolver").with_split_brain_resolver_config(
     SplitBrainResolverConfig::new(Duration::ZERO, SplitBrainResolverStrategy::KeepOldest, Duration::from_secs(30)),
   );
 
@@ -111,7 +111,7 @@ fn provider_hook_accepts_identity_compatible_non_static_quorum_metadata() {
   let settings =
     SplitBrainResolverConfig::new(Duration::ZERO, SplitBrainResolverStrategy::KeepMajority, Duration::from_secs(30));
   let compatibility = DowningProviderCompatibility::new("split-brain-resolver")
-    .with_split_brain_resolver_settings(settings.with_static_quorum_size(3));
+    .with_split_brain_resolver_config(settings.with_static_quorum_size(3));
 
   let hook = SplitBrainResolverProviderHook::from_compatibility(settings, compatibility);
 

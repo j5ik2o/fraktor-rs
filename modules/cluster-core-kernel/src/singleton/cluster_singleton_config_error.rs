@@ -1,4 +1,4 @@
-//! Singleton settings validation errors.
+//! Singleton configuration validation errors.
 
 use core::{
   error::Error,
