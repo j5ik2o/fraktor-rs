@@ -18,7 +18,7 @@
   - _Boundary:_ LeaseUsageSettings
   - _Depends:_ none
 
-- [ ] 2.2 manager 設定契約とリトライ上限導出を実装する
+- [x] 2.2 manager 設定契約とリトライ上限導出を実装する
   - singleton 名・role・removal margin・handover リトライ間隔・最小リトライ回数・lease スロットを保持し、Pekko 互換の既定値（"singleton" / role なし / margin 未指定 / 1 秒 / 15 回 / lease なし）を適用する
   - removal margin の未指定は明示値と型で区別できる形（Option）で保持する
   - 検証で空 singleton 名とゼロ以下の handover リトライ間隔を拒否し、lease 保持時は lease 検証へ委譲する
