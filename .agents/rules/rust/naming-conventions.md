@@ -12,6 +12,14 @@ fraktor-rs はアクターフレームワークであり、Pekko / protoactor-go
 `SupervisorStrategy`、`Behavior`、`Props` 等のドメイン用語は参照実装に合わせること。
 責務別命名パターン（`*Policy` 等）との衝突が生じた場合は、参照実装の命名を採用する。
 
+### 例外: 設定型のサフィックスは `*Config` に統一
+
+**設定値を保持する型のサフィックスは、Pekko 由来の名称（`*Settings`）であっても `*Config` に統一する。**
+
+- ドメイン用語の優先は語幹（`ClusterSingletonManager` / `SplitBrainResolver` 等）に適用し、サフィックスには適用しない
+- `*Settings` と `*Config` の混在は禁止（例: Pekko の `ClusterSingletonManagerSettings` は fraktor では `ClusterSingletonManagerConfig`）
+- 関連する互換キー文字列・フィールド名・アクセサ名も `config` 系で揃える
+
 ## 禁止サフィックス（ambiguous-suffix-lint で機械的に強制）
 
 禁止サフィックスと責務別の代替案は `../avoiding-ambiguous-suffixes.md` を正とする。
