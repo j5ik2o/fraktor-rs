@@ -38,6 +38,7 @@ use crate::{
   downing_provider::{DowningDecision, DowningInput, DowningProvider, DowningProviderCompatibility},
   extension::ClusterExtensionInstaller,
   grain::{GRAIN_EVENT_STREAM_NAME, GrainEvent, GrainKey},
+  membership::NodeStatus,
 };
 
 fn test_subscriber_handle(subscriber: impl EventStreamSubscriber) -> EventStreamSubscriberShared {
@@ -484,6 +485,73 @@ fn subscribe_panics_when_event_type_filter_is_empty() {
   let subscriber = test_subscriber_handle(recorder);
 
   drop(api.subscribe(&subscriber, ClusterSubscriptionInitialStateMode::AsEvents, &[]));
+}
+
+#[test]
+fn subscribe_with_shutdown_event_types_receives_only_shutdown_events() {
+  // 購読フィルタに MemberPreparingForShutdown / MemberReadyForShutdown のみを指定した購読者が
+  // MemberStatusChanged は受信せず、shutdown 進行イベントのみを受信することを検証する（要件 2.4）
+  let (system, extension) = build_system_with_extension(|| Box::new(StaticIdentityLookup::new("node1:8080")));
+  extension.start_member().expect("start member");
+
+  let api = ClusterApi::try_from_system(&system).expect("cluster api");
+  let recorder = RecordingClusterEvents::new();
+  let subscriber = test_subscriber_handle(recorder.clone());
+  let _subscription = api.subscribe_no_replay(&subscriber, &[
+    ClusterEventType::MemberPreparingForShutdown,
+    ClusterEventType::MemberReadyForShutdown,
+  ]);
+
+  // MemberStatusChanged を publish（フィルタ外なので受信しないはず）
+  let event_stream = system.event_stream();
+  let status_changed = ClusterEvent::MemberStatusChanged {
+    node_id:     String::from("node2"),
+    authority:   String::from("node2:8080"),
+    from:        NodeStatus::Joining,
+    to:          NodeStatus::Up,
+    observed_at: TimerInstant::from_ticks(1, Duration::from_secs(1)),
+  };
+  event_stream.publish(&EventStreamEvent::Extension {
+    name:    String::from("cluster"),
+    payload: AnyMessage::new(status_changed),
+  });
+
+  // MemberPreparingForShutdown を publish（フィルタ内なので受信するはず）
+  let preparing = ClusterEvent::MemberPreparingForShutdown {
+    node_id:     String::from("node2"),
+    authority:   String::from("node2:8080"),
+    observed_at: TimerInstant::from_ticks(2, Duration::from_secs(1)),
+  };
+  event_stream
+    .publish(&EventStreamEvent::Extension { name: String::from("cluster"), payload: AnyMessage::new(preparing) });
+
+  // MemberReadyForShutdown を publish（フィルタ内なので受信するはず）
+  let ready = ClusterEvent::MemberReadyForShutdown {
+    node_id:     String::from("node2"),
+    authority:   String::from("node2:8080"),
+    observed_at: TimerInstant::from_ticks(3, Duration::from_secs(1)),
+  };
+  event_stream
+    .publish(&EventStreamEvent::Extension { name: String::from("cluster"), payload: AnyMessage::new(ready) });
+
+  let events = recorder.events();
+  // MemberStatusChanged は受信していない
+  assert!(
+    !events.iter().any(|e| matches!(e, ClusterEvent::MemberStatusChanged { .. })),
+    "MemberStatusChanged はフィルタ外なので受信してはならない: {events:?}"
+  );
+  // shutdown 進行イベントは 2 件受信している
+  assert_eq!(events.len(), 2, "受信イベント数が 2 件であること: {events:?}");
+  assert!(
+    matches!(&events[0], ClusterEvent::MemberPreparingForShutdown { authority, .. } if authority == "node2:8080"),
+    "1 件目は MemberPreparingForShutdown であること: {:?}",
+    events[0]
+  );
+  assert!(
+    matches!(&events[1], ClusterEvent::MemberReadyForShutdown { authority, .. } if authority == "node2:8080"),
+    "2 件目は MemberReadyForShutdown であること: {:?}",
+    events[1]
+  );
 }
 
 fn run_scheduler(system: &ActorSystem, duration: Duration) {

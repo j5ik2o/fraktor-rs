@@ -1,42 +1,25 @@
 # cluster モジュール ギャップ分析
 
-更新日: 2026-06-05 (cluster-message-serialization-contract evidence reflected)
+更新日: 2026-06-11 (parity 分母再構成 + 全カテゴリ再検証)
 
 ## 位置づけ
 
-この文書は、`cluster-*` を Apache Pekko Cluster / Cluster Sharding 互換ロードマップとして扱うためのものではない。fraktor-rs の `cluster-*` は、Proto.Actor-Go 型の Virtual Actor / Grain runtime を主軸にする。Pekko は parity target ではなく、大規模運用で必要になる membership、reachability、downing、placement、rebalance などの失敗ケースと設計論点を確認する参照実装として扱う。
+fraktor-rs の `cluster-*` は、Proto.Actor-Go 型の Virtual Actor / Grain runtime を主軸にする。直近の実装順序は [2026-05-25_cluster-grain-runtime-roadmap.md](../plan/2026-05-25_cluster-grain-runtime-roadmap.md) と個別の OpenSpec change が管理する。
 
-実装ロードマップは [2026-05-25_cluster-grain-runtime-roadmap.md](../plan/2026-05-25_cluster-grain-runtime-roadmap.md) を正とする。この gap analysis に列挙された typed Cluster API の未実装部分、Cluster Singleton、Cluster Client、Distributed Data、Pekko Sharding public API などは、未実装であること自体を直近の実装優先度とはみなさない。
-
-現在の実装優先度は、Grain identity lookup、placement resolution、activation / passivation、membership topology update、cluster provider boundary、failure observation、downing decision contract を固めることにある。
-
-詳細な Pekko gap table は、これらの運用 contract を設計するときの比較材料であり、raw API parity の backlog ではない。
-
-### Deferred Pekko concepts
-
-以下の Pekko 概念は、将来個別の OpenSpec change が採用するまで deferred とする。詳細表に出てくる場合も、現時点では比較 evidence として読む。
-
-- typed Cluster API wrapper のうち未実装部分
-- Cluster Singleton / ShardCoordinator parity
-- Cluster Client / Receptionist
-- Distributed Data / CRDT Replicator
-- sharding delivery controllers
-- replicated sharding / direct replication
-- broad Pekko public API compatibility
-- Pekko serializer binary compatibility
+一方、この文書は Pekko 比較スコープにおける **parity 完了のための全量計画** を提示する。実装優先度（Phase 1〜3）には YAGNI を適用せず、未要求であっても parity ギャップである限り順位付けの対象に含める。各 Phase の項目をどの時点で着手するかは roadmap / OpenSpec 側の判断であり、この文書はギャップの「漏れのない台帳」と「埋める順序」を提供する。
 
 ## 比較スコープ定義
 
-この調査は、Apache Pekko cluster 配下の raw API 数をそのまま移植対象にするものではない。fraktor-rs の `cluster` では、cluster membership と virtual actor / sharding 相当の分散配置契約を対象にし、JVM 実装技術、Java/Scala DSL convenience、testkit、`cluster-metrics` は parity 分母から除外する。
+cluster membership と virtual actor / sharding 相当の分散配置契約を対象にし、JVM 実装技術、Java/Scala DSL convenience、testkit、`cluster-metrics` は parity 分母から除外する。Pekko submodule は `2dc8960074bfe269da1686609eb88663cb50ad8b` を参照した。
 
 ### 対象に含めるもの
 
 | 領域 | fraktor-rs | Pekko 参照 |
 |------|------------|------------|
-| cluster core | `modules/cluster-core-kernel/src/` (`activation`, `membership`, `extension`, `pub_sub`, `topology`) | `references/pekko/cluster/src/main/scala/org/apache/pekko/cluster/` |
+| cluster core | `modules/cluster-core-kernel/src/` (`activation`, `cluster_provider`, `downing_provider`, `extension`, `failure_detector`, `grain`, `membership`, `message_serialization`, `outbound`, `pub_sub`, `topology`) | `references/pekko/cluster/src/main/scala/org/apache/pekko/cluster/` |
 | typed cluster contract | `modules/cluster-core-typed/src/` | `references/pekko/cluster-typed/src/main/scala/` |
 | sharding / virtual actor | `modules/cluster-core-kernel/src/grain/`, `modules/cluster-core-kernel/src/activation/` | `references/pekko/cluster-sharding/`, `references/pekko/cluster-sharding-typed/` |
-| cluster tools | `modules/cluster-core-kernel/src/pub_sub/` | `references/pekko/cluster-tools/src/main/scala/org/apache/pekko/cluster/pubsub/`, `singleton/`, `client/` |
+| cluster tools | `modules/cluster-core-kernel/src/pub_sub/` | `references/pekko/cluster-tools/src/main/scala/org/apache/pekko/cluster/pubsub/`, `singleton/` |
 | distributed data | 対応モジュールなし | `references/pekko/distributed-data/src/main/scala/org/apache/pekko/cluster/ddata/` |
 | std adapter | `modules/cluster-adaptor-std/src/` | gossip transport / provider / discovery adapter として Rust で再現可能な契約 |
 
@@ -44,357 +27,325 @@
 
 | 除外項目 | 理由 |
 |----------|------|
-| `cluster-metrics` | スキル定義で明示的に別スコープ。fraktor 側に簡易 metrics はあるが parity 分母には入れない |
+| `cluster-metrics` | スキル定義で明示的に別スコープ |
+| `ClusterClient` / `ClusterClientReceptionist` / `ClusterClientSettings` / `ClusterReceptionistSettings` | Pekko 本体で全面 `@deprecated`（gRPC 移行推奨）。deprecated は n/a 対象 |
+| `@InternalApi` / `private[...]` の型（SBR 内部 `DowningStrategy` 実装、typed `ClusterReceptionist`、Replicator 内部プロトコル等） | 公開契約ではない |
 | Kubernetes / discovery backend 固有実装の完全互換 | backend 実装技術ごとの互換は std adapter の別調査対象 |
-| multi-node-testkit / cluster tests / typed tests | runtime API ではない |
+| multi-node-testkit / cluster tests / typed tests / `TestEntityRef` | runtime API ではない |
 | Java DSL / Scala DSL convenience / implicit syntax | Rust API として再現する対象ではない |
 | JVM management / JMX / HOCON dynamic loading / classloader | JVM 固有 |
 | protobuf serializer の完全バイナリ互換 | contract 接続は対象だが、JVM serializer 実装そのものは対象外 |
-| JFR / log marker の JVM 固有 event class | Rust 側は tracing / event stream contract として扱う |
+| JFR / log marker の JVM 固有 event class | Rust 側は tracing / event stream contract として扱う（構造化ログマーカー契約自体はカテゴリ1で対象） |
+| `RemoveInternalClusterShardingData` | JVM persistence データ migration utility |
+
+### 分母再構成（2026-06-11）
+
+旧版の分母「約 121 概念」を、公開契約単位で再検証して **151 概念** に再構成した。主な変更:
+
+- ClusterClient 系 4 概念を deprecated として n/a へ移動（カテゴリ6 から除外）
+- SBR の `DowningStrategy` 実装クラス・`SplitBrainResolverSettings` は全て `@InternalApi private[sbr]` のため分母から除外（カテゴリ3 を 8 → 5 へ縮小）
+- typed API のコマンド・購読・イベント型を概念単位で明示（カテゴリ5 を 7 → 14 へ拡大）
+- sharding の query protocol、health check、passivation strategy settings、allocation SPI、settings 契約の漏れを追加（カテゴリ8 を 19 → 27 へ拡大）
+- ddata の CRDT 全種・Replicator プロトコル・durable store・typed adapter を概念単位で明示（カテゴリ9 を 18 → 27 へ拡大）
+- membership / lifecycle に ClusterSettings 契約、Member ordering、CoordinatedShutdownLeave、ClusterLogMarker、ClusterScope、Multi-DC 設定を追加（カテゴリ1 を 17 → 22 へ拡大）
 
 ### raw 抽出値の扱い
 
-固定スコープ対象ディレクトリを `src/main` ベースで raw 抽出すると、Pekko 側は型宣言 857 件、主要 `def` 3027 件が見つかる。Pekko submodule は `2dc8960074bfe269da1686609eb88663cb50ad8b` を参照した。これには private / internal / JVM 固有 / DSL wrapper / serializer 実装が含まれるため、parity カバレッジ分母には使わない。
-
-fraktor-rs 側はスキル指定の `pub` 系抽出で、型 294 件 (core-kernel: 263, core-typed: 9, std: 22)、公開メソッド 825 件 (core-kernel: 714, core-typed: 32, std: 79)。ただし、この数には `pub(crate)` の helper も含まれる。
+fraktor-rs 側はスキル指定の `pub` 系抽出で、型 297 件 (core-kernel: 265, core-typed: 9, std: 23)、公開メソッド 843 件 (core-kernel: 730, core-typed: 32, std: 81)。この数には `pub(crate)` の helper も含まれる参考値であり、parity カバレッジ分母には使わない。Pekko 側 raw 抽出（型宣言 857 件 / 主要 `def` 3027 件）も同様に参考値。
 
 ## サマリー
 
 | 指標 | 値 |
 |------|-----|
-| Pekko 固定スコープ対象概念 | 約 121 |
-| fraktor-rs 固定スコープ対応概念 | 約 73 |
-| 固定スコープ概念カバレッジ | 約 73/121 (60%) |
-| raw public type declarations | 294 (core-kernel: 263, core-typed: 9, std: 22) |
-| raw public method declarations | 825 (core-kernel: 714, core-typed: 32, std: 79) |
-| hard gap | 16 |
-| medium gap | 16 |
-| easy gap | 8 |
-| trivial gap | 2 |
+| Pekko 固定スコープ対象概念 | 151 |
+| fraktor-rs 固定スコープ対応概念（実装済み） | 87 |
+| 固定スコープ概念カバレッジ | 87/151 (58%) |
+| 部分実装 | 12 |
+| 未対応 | 52 |
+| raw public type declarations | 297 (core-kernel: 265, core-typed: 9, std: 23) |
+| raw public method declarations | 843 (core-kernel: 730, core-typed: 32, std: 81) |
+| hard / medium / easy / trivial gap | 11 / 26 / 17 / 3 |
 | panic 系スタブ | 0 件 |
 | 機能 placeholder / TODO | 0 件 |
 
-注: ここでの `raw public` は `pub(crate)` など内部到達可能な `pub` を含む参考値であり、crate 外から到達可能な外部公開 API 数ではない。
+注: `raw public` は `pub(crate)` など内部到達可能な `pub` を含む参考値であり、crate 外から到達可能な外部公開 API 数ではない。
 
-cluster は、membership table、gossip dissemination、full gossip state merge / tombstone / seen digest、dedicated heartbeat evidence、failure detector registry、downing/SBR decision model、typed cluster facade、Grain/Placement/Identity、PubSub broker / topic registry gossip、UDP gossip transport などの基礎部品はかなり揃っている。一方で Pekko comparison の範囲で見ると、SBR runtime actor / down execution loop、cluster singleton/client、Pekko sharding の public API、Distributed Data/CRDT が大きく未実装である。
+### 前回 (2026-06-05) からの判定変更
 
-旧版は raw Scala 宣言数をサマリーに置きつつ、`cluster-metrics` を混ぜ、`ShardedDaemonProcess` や typed API を YAGNI で n/a にしていた。固定スコープ版では、JVM 固有以外の public runtime contract を comparison gap として保持する。ただし、直近の implementation backlog は cluster Grain runtime roadmap 側で管理する。
+| 項目 | 旧判定 | 新判定 | 根拠 |
+|------|--------|--------|------|
+| std `ClusterApi` wrapper parity | 部分実装（get/request/down のみ） | 実装済み | `ClusterApi`（core-kernel）に `join` / `leave` / `subscribe` / `subscribe_no_replay` / `unsubscribe` / `current_state` / `self_authority` / `remote_path_of` / `down` / `get` / `request` / `request_future` がフルセットで存在。std は core API を直接使う設計で独自 wrapper は不要 |
+| membership-driven routee add/remove | 実装済み (core policy) | 部分実装 | core policy（`ClusterRouterPool::update_from_members`）は完了だが、ClusterEvent 購読 → routee 更新の std 配線が未実装で end-to-end では動かない |
+| `SubscriptionInitialStateMode` | 分母外 | 実装済み | `ClusterSubscriptionInitialStateMode` が extension モジュールに存在 |
+| pub-sub query | mediator protocol に包含 | 概念分離して実装済み/部分実装 | `MediatorQuery::CurrentTopics` / `SubscriberCount` は実装済み。mediator 全体の `Count`（トピック横断 subscriber 総数）のみ未対応 |
+| `MembershipCoordinatorDriver` | 実装済み概念として列挙 | 公開型ではない | `pub(super)`。`TokioGossiper` の内部実装であり外部 API には露出しない |
+
+備考: `ClusterPubSub` trait は `pub_sub::cluster_pub_sub::ClusterPubSub` のネストパスでのみ公開されており、トップレベル `pub_sub` への re-export はない（実装済み判定は維持、公開面の整理は別件）。`NodeStatus` の Pekko `Down` 相当は `Dead` バリアント（別名実装済み）。
 
 ## 層別カバレッジ
 
 | 層 | Pekko 対応範囲 | fraktor-rs 現状 | 評価 |
 |----|----------------|-----------------|------|
-| core / membership | `Cluster`, `Member`, `MemberStatus`, `CurrentClusterState`, `ClusterEvent`, `Gossip`, `Reachability` | `ClusterExtension`, `ClusterApi`, `NodeRecord`, `NodeStatus`, `CurrentClusterState`, `MembershipCoordinator`, `GossipDisseminationCoordinator`, `ReachabilityMatrix`, `GossipStateModel`, `HeartbeatProtocolState`, `CrossDcHeartbeat` | UniqueAddress、data center、WeaklyUp、reachability matrix、gossip envelope、full gossip merge / tombstone / seen digest、dedicated heartbeat evidence、SeedNodeProcess の core contract はある |
-| core / downing | `DowningProvider`, `NoDowning`, SBR | `DowningProvider`, `DowningInput`, `DowningDecisionContext`, `DowningStrategyDecision`, `DowningDecisionTrace`, `FailureObservation`, `IndirectConnectionEvidence`, `NoopDowningProvider`, `SplitBrainResolver`, `LeaseMajorityPort`, `SplitBrainResolverProviderHook` | core decision model は SBR strategy と lease majority outcome を評価できる。SBR runtime actor / reachability change subscription / down execution loop は未実装 |
-| core / typed | typed `Cluster`, command, subscription, singleton, sharding typed API | `modules/cluster-core-typed` に typed `Cluster` / command / state subscription / self events / setup がある | typed Cluster の薄い facade はあるが、singleton / sharding typed API は未実装 |
-| core / virtual actor | `ClusterSharding`, `EntityRef`, `EntityTypeKey`, `ShardRegion`, coordinator | `GrainRef`, `GrainKey`, `VirtualActorRegistry`, `PlacementCoordinatorCore`, `PartitionIdentityLookup` | protoactor-go style の同等機能は強いが Pekko public API と remember/rebalance が不足 |
-| core / distributed state | `DistributedData`, `Replicator`, CRDT 型群 | なし | 未実装 |
-| std / adapter | gossip transport, provider, discovery adapter | `TokioGossipTransport`, `MembershipCoordinatorDriver`, `LocalClusterProvider`, `StaticClusterProvider`, `AwsEcsClusterProvider`, `GenericDiscoveryAdapter`, `ProviderLifecycleBridge`, `ClusterWireCodec` | Rust adapter、logical envelope handoff、seed/discovery provider boundary、cluster message serializer contract はある。Pekko/protobuf 完全バイナリ互換は scope 外 |
+| core / membership | `Cluster`, `Member`, `MemberStatus`, `CurrentClusterState`, `ClusterEvent`, `Gossip`, `Reachability` | `ClusterExtension`, `ClusterApi`, `NodeRecord`, `NodeStatus`, `CurrentClusterState`, `MembershipCoordinator`, `GossipDisseminationCoordinator`, `ReachabilityMatrix`, `GossipStateModel`, `HeartbeatProtocolState`, `CrossDcHeartbeat` | UniqueAddress、data center、WeaklyUp、reachability matrix、gossip envelope、full gossip merge / tombstone / seen digest、dedicated heartbeat evidence、SeedNodeProcess の core contract はある。Member ordering 公開契約、shutdown 系イベント型、CoordinatedShutdown 連携が不足 |
+| core / downing | `DowningProvider`, `NoDowning`, `SplitBrainResolverProvider` | `DowningProvider`, `DowningDecisionContext`, `DowningStrategyDecision`, `DowningDecisionTrace`, `NoopDowningProvider`, `SplitBrainResolver`, `LeaseMajorityPort`, `SplitBrainResolverProviderHook` | decision model / settings / provider binding は完了。SBR runtime actor（reachability 変化監視 → 責任ノード選択 → 自動 down 発行ループ）と concrete lease backend が未実装 |
+| core / typed | typed `Cluster`, command, subscription, singleton, sharding typed API | `Cluster` / `ClusterCommand` / `ClusterStateSubscription` / `ClusterEventSubscription` / `SelfUp` / `SelfRemoved` / `ClusterSetup` | typed Cluster facade（subscribe / unsubscribe / current_state 含む）はほぼ完備。`PrepareForFullClusterShutdown` command と singleton / sharding typed API が未実装 |
+| core / virtual actor | `ClusterSharding`, `EntityRef`, `EntityTypeKey`, `ShardRegion`, coordinator | `GrainRef`, `GrainKey`, `VirtualActorRegistry`, `PlacementCoordinatorCore`, `PartitionIdentityLookup`, `RendezvousHasher`, `PidCache` | protoactor-go style の同等機能は強いが、Pekko public API 形態（typed Entity/EntityRef/Extractor）、rebalance / remembered entities / query protocol / health check が不足 |
+| core / distributed state | `DistributedData`, `Replicator`, CRDT 型群 | なし | 全面未実装 |
+| std / adapter | gossip transport, provider, discovery adapter | `TokioGossipTransport`, `TokioGossiper`, `LocalClusterProvider`, `StaticClusterProvider`, `AwsEcsClusterProvider`, `GenericDiscoveryAdapter`, `ProviderLifecycleBridge`, `ClusterWireCodec`, `ConfiguredPhiAccrualDetectorFactory` | Rust adapter、logical envelope handoff、seed/discovery provider boundary、cluster message serializer contract、failure detector factory はある。sharding/singleton 系 setup と sharding join compat key が不足 |
 
 ## カテゴリ別ギャップ
 
-### 1. Cluster membership / lifecycle　✅ 実装済み 16/17 (94%)
+各カテゴリのヘッダーに **実装済み数 / 対象概念数 (カバレッジ%)** を明記する。ギャップ（未対応・部分実装）のみテーブルに列挙し、実装済みは件数カウントに含めてテーブル行には追加しない。
+
+### 1. Cluster membership / lifecycle　✅ 実装済み 18/22 (82%)
 
 | Pekko API / 契約 | Pekko 参照 | fraktor-rs 対応 | 実装先層 | 難易度 | 備考 |
 |------------------|------------|-----------------|----------|--------|------|
-| `UniqueAddress` semantics | `Member.scala:315`, `Member.scala:331` | core contract 実装済み | core/membership | medium | `NodeRecord::unique_address` と `MembershipTable::try_join_with_identity` が address + UID を member identity として保持する。同一 address + 別 UID は別 incarnation、UID 未確定は `UnconfirmedIdentity`。tests: `node_record_with_identity_*`, `join_with_identity_*` |
-| data center membership | `Cluster.scala:102`, `ClusterEvent.scala:396` | core contract 実装済み | core/membership | medium | `DataCenter` と `NodeRecord::data_center`、`MembershipSnapshot::members_in_data_center`、`CurrentClusterState::{members,unreachable}_in_data_center`。Cross-DC heartbeat evidence は別行で実装済み。routing / discovery / downing policy は downstream scope |
-| `WeaklyUp` / full member status compatibility | `Member.scala:241`, `ClusterEvent.scala:279` | core contract 実装済み | core/membership | easy | `NodeStatus::WeaklyUp`、`Joining -> WeaklyUp -> Up`、WeaklyUp から leave/remove/down への transition、`is_provisional` helper。tests: `join_then_heartbeats_promote_through_weakly_up_to_up`, `weakly_up_*` |
-| `prepareForFullClusterShutdown` | `Cluster.scala:336`, `cluster-typed/Cluster.scala:175` | 部分実装 | core + std | medium | `PreparingForShutdown` / `ReadyForShutdown` は型だけあり、full shutdown command path がない |
-| `remotePathOf` | `Cluster.scala:442` | 実装済み | core/extension | easy | `ClusterApi::remote_path_of` が local ref を advertised authority 付き canonical remote path にし、既存 remote authority と UID を保持する。`remote_path_of_*` tests で確認 |
+| `prepareForFullClusterShutdown` | `Cluster.scala:336` | 部分実装 | core + std | medium | `NodeStatus::PreparingForShutdown` / `ReadyForShutdown` と状態遷移・進行イベントは実装済みだが、`ClusterApi` / `ClusterCommand` から起動する full shutdown command path がない |
+| `CoordinatedShutdownLeave` | `CoordinatedShutdownLeave.scala:30` | 未対応 | core/extension + std | medium | coordinated shutdown phase から cluster leave を駆動する hook がない（actor-core 側に CoordinatedShutdown はある） |
+| `ClusterScope` deploy scope | `ClusterActorRefProvider.scala:148` | 未対応 | core/extension | medium | cluster-aware deployment scope 概念がない。router config はあるが deploy scope としての統合はない |
+| `ClusterSettings.CrossDcFailureDetectorSettings` / `MultiDataCenter` | `ClusterSettings.scala:65`, `ClusterSettings.scala:76` | 未対応 | core/config | easy | `CrossDcHeartbeat` evidence と `FailureDetectorConfig` はあるが、Multi-DC 専用の failure detector 設定 namespace がない |
 
-実装済みとして扱うもの: cluster extension、join/leave/down、event stream subscription、current state snapshot、member/up/removed callback、roles/app_version 設定、leader/role leader 算出、startup/shutdown event。
+実装済みとして扱うもの: cluster extension、join/leave/down（`ClusterApi` フルセット）、event stream subscription、current state snapshot、member/up/removed callback、roles/app_version 設定、leader/role leader 算出、startup/shutdown event、`UniqueAddress` semantics（`NodeRecord::unique_address` / `try_join_with_identity`）、data center membership、`WeaklyUp`、`remotePathOf`、`MemberStatus` 全 variant（`Down` ≈ `Dead` 別名実装済み）、`PreparingForShutdown` / `ReadyForShutdown` status、`ClusterSettings` 契約（`ClusterExtensionConfig` + `FailureDetectorConfig` + `ConfigValidation`）、`JoinConfigCompatChecker` + `ConfigValidation`、Member ordering 公開契約（`member_age_order` / `age_ordered` / `oldest_member`、2026-06-11 cluster-membership-event-surface）、`ClusterLogMarker` 相当の構造化 tracing field 契約（`cluster_lifecycle_trace_field` + std `ClusterLifecycleLogSubscriber`、同上）。
 
-### 2. Gossip / reachability / failure detection　✅ 実装済み 15/15 (100%)
+### 2. Gossip / reachability / failure detection　✅ 実装済み 18/18 (100%)
 
-| Pekko API / 契約 | Pekko 参照 | fraktor-rs 対応 | 実装先層 | 難易度 | 備考 |
-|------------------|------------|-----------------|----------|--------|------|
-| `Reachability` matrix | `Reachability.scala:36`, `Reachability.scala:38` | core contract 実装済み | core/membership | medium | `ReachabilityMatrix` が observer / subject / status / version を保持し、reachable prune、terminated precedence、aggregate status、snapshot propagation を提供する。MembershipCoordinator は local observer の suspect/reachable を matrix に反映する。downing decision は所有しない |
-| full `Gossip` merge / tombstone / seen digest | `Gossip.scala:127`, `Gossip.scala:178`, `Gossip.scala:230` | core contract 実装済み | core/membership | hard | `GossipStateModel` / `GossipStateSnapshot` が full state merge、deterministic precedence、removed/dead tombstone、seen digest convergence、tombstone retention prune を扱う。tests: `full_state_merge_*`, `tombstone_*`, `seen_digest_tracks_peer_observed_versions_and_convergence` |
-| `GossipEnvelope` | `Gossip.scala:307` | core + logical handoff 実装済み | core/membership + std/handoff | medium | `GossipEnvelope` が from/to `UniqueAddress`、payload kind、membership version、deadline を保持する。`GossipTransportHandoff` / `TokioGossipTransport` は identity と payload kind を失わない logical handoff を扱う。serializer bytes は downstream scope |
-| dedicated `ClusterHeartbeatSender` / receiver protocol | `ClusterHeartbeat.scala:82`, `ClusterHeartbeat.scala:90` | core protocol 実装済み | core/membership | medium | `HeartbeatProtocolState` が peer ごとの sequence、request/response 照合、first / regular timeout evidence を扱う。evidence は reachability input であり downing decision は実行しない。tests: `heartbeat_*` |
-| `CrossDcClusterHeartbeat` | `CrossDcClusterHeartbeat.scala:230` | core evidence 実装済み | core/membership | hard | `CrossDcHeartbeat` が data center pair、cross-DC request/response、target add/remove/retain、timeout evidence を扱う。routing、discovery、downing strategy は決定しない。tests: `cross_dc_*` |
-| `SeedNodeProcess` | `SeedNodeProcess.scala:22` | core + std provider boundary 実装済み | core/cluster_provider + std/provider | medium | `SeedNodeInput` と `SeedNodeProcess` が empty seed、self filtering、duplicate seed、invalid authority、client start、shutdown 後停止を扱う。`ProviderLifecycleBridge` が seed input を topology update に接続する。tests: `seed_node_process_*`, `provider_lifecycle_bridge_seed_input_publishes_topology_update`, `provider_lifecycle_bridge_shutdown_stops_seed_and_discovery_lifecycle` |
-| config compatibility full key set | `JoinConfigCompatChecker.scala:25`, `JoinConfigCompatCheckCluster.scala:27` | baseline 実装済み | core/config | easy | `ClusterCompatibilityKeyCatalog` が required/excluded key を公開し、`JoinCompatibilityComposition` と `ClusterExtensionConfig::check_join_compatibility` が pubsub、downing provider、SBR settings の mismatch reason を合成する。`cluster_compatibility_key` / `join_compatibility` tests で確認 |
-| Failure Detector Configuration (故障検出器設定) | `Cluster.scala:124`, `Cluster.scala:131` | contract 実装済み | core/failure_detector + config + std/membership | easy | `FailureDetectorConfig` が Phi Accrual 前提の Availability Evidence (可用性観測証拠) 観測パラメータを Cluster Configuration (クラスタ設定) として保持する。Cluster Configuration Validation (クラスタ設定検証) は install / start 境界で不成立値を Join Compatibility (参加互換性) より前に拒否する。Join Compatibility (参加互換性) は single key `cluster.failure-detector` で Compatibility Mismatch Reason (互換性不一致理由) を作り、detail に差分 field を含める。`cluster.failure-detector.choice` は required key ではなく excluded key のまま維持する。std bridge は `ConfiguredPhiAccrualDetectorFactory` で config を concrete detector 生成へ接続する |
+このカテゴリの未対応ギャップは解消済み（2026-06-11 cluster-membership-event-surface で `MemberPreparingForShutdown` / `MemberReadyForShutdown` イベント variant + coordinator 併発、`UnreachableDataCenter` / `ReachableDataCenter` イベント + `DataCenterReachabilityTable` ラッチを実装）。
 
-実装済みとして扱うもの: `MembershipTable`、`MembershipDelta`、`MembershipVersion`、`VectorClock`、`DefaultFailureDetectorRegistry`、`MembershipCoordinator::poll` による suspect/dead 遷移、`GossipEnvelope`、`GossipStateModel`、`HeartbeatProtocolState`、`CrossDcHeartbeat`、logical envelope handoff、`TokioGossipTransport`。
+実装済みとして扱うもの: `Reachability` matrix（`ReachabilityMatrix` / `ReachabilityRecord` / `ReachabilitySnapshot`）、full `Gossip` merge / tombstone / seen digest（`GossipStateModel` / `GossipStateSnapshot`）、`GossipEnvelope` + logical handoff、dedicated heartbeat protocol（`HeartbeatProtocolState`）、`CrossDcClusterHeartbeat` evidence（`CrossDcHeartbeat`）、`SeedNodeProcess`、config compatibility full key set（`ClusterCompatibilityKeyCatalog` / `JoinCompatibilityComposition`）、Failure Detector Configuration（`FailureDetectorConfig` + `ConfiguredPhiAccrualDetectorFactory`）、`SubscriptionInitialStateMode`（`ClusterSubscriptionInitialStateMode`）、`MembershipTable` / `MembershipDelta` / `MembershipVersion` / `VectorClock`、`DefaultFailureDetectorRegistry`、`MembershipCoordinator::poll` による suspect/dead 遷移、indirect connection evidence、`TokioGossipTransport`。
 
-### 3. Downing / Split Brain Resolver　✅ decision model 実装済み / runtime actor remaining
+### 3. Downing / Split Brain Resolver　✅ 実装済み 3/5 (60%)
 
 | Pekko API / 契約 | Pekko 参照 | fraktor-rs 対応 | 実装先層 | 難易度 | 備考 |
 |------------------|------------|-----------------|----------|--------|------|
-| `SplitBrainResolver` | `SplitBrainResolver.scala:50`, `SplitBrainResolver.scala:160` | core evaluator 実装済み | core/downing_provider + std/provider | hard | `SplitBrainResolver` が `DowningDecisionContext` を評価し、KeepMajority / fixed-size StaticQuorum / KeepOldest / DownAll / LeaseMajority の trace 付き decision を返す。stable-after は pending trace、down-all timeout は all-down trace として観測できる。SBR runtime actor、責任ノード選択、reachability 変化監視、provider からの実 down loop は未実装 |
-| `DowningStrategy` / decision model | `DowningStrategy.scala:34`, `DowningStrategy.scala:70` | core decision model 実装済み | core/downing_provider | hard | `DowningStrategyDecision` と `DowningDecisionTrace` が keep/down/defer/all-down、retained partition、downing targets、tie-break、stable-after、down-all timeout、lease outcome を保持する。tests: `downing_strategy_decision`, `split_brain_resolver` |
-| `SplitBrainResolverProvider` | `SplitBrainResolverProvider.scala` | provider-facing binding 実装済み | core/downing_provider + std/provider | easy | `SplitBrainResolverProviderHook` が provider key、SBR settings、strategy identity を compatibility metadata として公開し、trace decision を `DowningDecision` / `ClusterProviderError` に変換する。`StdSplitBrainResolverProvider` は lifecycle start 時に hook と lease backend adapter を構成し、stop/drop で backend state を close する。tests: `split_brain_resolver_provider_hook`, `split_brain_resolver_provider` |
-| lease-based majority | `DowningStrategy.scala:602` | port contract + std binding 実装済み | core/downing_provider + std/provider | hard | `LeaseMajorityPort` / `LeaseAcquisitionOutcome` が acquired、denied、unavailable、unknown、backend missing を区別し、`SplitBrainResolver::decide_with_lease` が lease acquired の場合だけ retained partition を keep する。tie partition でも lease port を consult する。std 側は `StdLeaseMajorityBackend` を provider lifecycle 内で所有する。concrete coordination backend / retry / network I/O は未実装 |
-| indirect connection handling | `DowningStrategy.scala:245` | evidence contract + decision input 実装済み | core/membership + core/downing_provider | medium | `ReachabilityMatrix::indirect_evidence_for` と `IndirectConnectionEvidence` が direct / indirect observation、observer aggregate status、direct-only fallback を表現する。`DowningDecisionContext` は `DowningInput::IndirectConnectionEvidence` を SBR evaluation input に変換できる |
+| SBR runtime down execution loop | `SplitBrainResolver.scala:160`（@InternalApi actor だが機能として公開契約） | 部分実装 | core + std | hard | `SplitBrainResolver` の decision model / trace / provider hook は実装済み。reachability 変化の購読、stable-after タイマー駆動、責任ノード選択、`ClusterCore::down` への自動発行ループが未実装。現状 down は明示呼び出しのみ |
+| concrete lease coordination backend | `DowningStrategy.scala:602` | 部分実装 | std | hard | `LeaseMajorityPort` / `LeaseAcquisitionOutcome` / `StdLeaseMajorityBackend` trait は実装済み。実際の分散 lease backend（coordination service 連携、retry、network I/O）が未実装 |
 
-実装済みとして扱うもの: `DowningProvider` trait、`DowningInput` / `DowningDecision` / `DowningDecisionContext` / `DowningStrategyDecision` / `DowningDecisionTrace`、`FailureObservation` / `IndirectConnectionEvidence`、`NoopDowningProvider`、`SplitBrainResolverSettings` / `SplitBrainResolverStrategy` / `SplitBrainResolver`、`LeaseMajorityPort` / `LeaseAcquisitionOutcome`、`SplitBrainResolverProviderHook`、`StdSplitBrainResolverProvider`、明示 `ClusterApi::down` hook、downing provider / SBR settings の join compatibility。
+実装済みとして扱うもの: `DowningProvider` SPI、`NoDowning`（`NoopDowningProvider`）、SBR settings 契約（`SplitBrainResolverSettings` / `SplitBrainResolverStrategy`: KeepMajority / StaticQuorum / KeepOldest / DownAll / LeaseMajority の 5 戦略）。`DowningDecisionContext` / `DowningStrategyDecision` / `DowningDecisionTrace` / `FailureObservation` / `IndirectConnectionEvidence` / `SplitBrainResolverProviderHook` / `StdSplitBrainResolverProvider` / downing provider・SBR settings の join compatibility は上記概念の evidence。
 
-### 4. Cluster router pool / group　✅ 実装済み 6/6 (100%)
+### 4. Cluster router pool / group　✅ 実装済み 5/6 (83%)
 
 | Pekko API / 契約 | Pekko 参照 | fraktor-rs 対応 | 実装先層 | 難易度 | 備考 |
 |------------------|------------|-----------------|----------|--------|------|
-| role-filtered routee selection | `ClusterRouterConfig.scala:80`, `ClusterRouterConfig.scala:190` | 実装済み | core/router | easy | `ClusterRouterPoolConfig` / `ClusterRouterGroupConfig` に `use_roles` + `satisfies_roles`（Pekko `useRoles.subsetOf`）|
-| max instances per node | `ClusterRouterConfig.scala:190` | 実装済み | core/router | easy | pool config に `max_instances_per_node`。`ClusterRouterPool::from_candidates` が per-node / total cap を尊重した least-loaded 配置を行う |
-| membership-driven routee add/remove | `ClusterRouterConfig.scala:586`, `ClusterRouterConfig.scala:591` | 実装済み (core policy) | core/router | medium | `ClusterRouterPool::update_from_members`（status==Up / role / allow-local フィルタ → 再配置）と group `local_routee_paths`。ClusterEvent 購読 loop の std 配線は別途のアダプタ作業 |
+| membership-driven routee add/remove | `ClusterRouterConfig.scala:586` | 部分実装 | std | easy | core policy（`ClusterRouterPool::update_from_members` / group `local_routee_paths`）は実装済み。ClusterEvent 購読 → routee 更新の std 配線が未実装（判定変更: 旧「実装済み」） |
 
-実装済みとして扱うもの: `ClusterRouterPool`、`ClusterRouterGroup`、pool/group settings の分離、`use_roles` / `satisfies_roles`、`max_instances_per_node`、`ClusterRouterPool::from_candidates` / `update_from_members`、group `local_routee_paths`。
+実装済みとして扱うもの: `ClusterRouterPool`、`ClusterRouterGroup`、pool/group settings の分離、`use_roles` / `satisfies_roles`、`max_instances_per_node`、`ClusterRouterPool::from_candidates` の least-loaded 配置。
 
-### 5. Cluster Typed API　✅ 実装済み 6/7 (86%)
+### 5. Cluster Typed API　✅ 実装済み 13/14 (93%)
 
 | Pekko API / 契約 | Pekko 参照 | fraktor-rs 対応 | 実装先層 | 難易度 | 備考 |
 |------------------|------------|-----------------|----------|--------|------|
-| `PrepareForFullClusterShutdown` command | `cluster-typed/Cluster.scala:175` | 未対応 | core/typed + std | medium | core lifecycle command と coordinated shutdown 接続が必要 |
+| `PrepareForFullClusterShutdown` command | `cluster-typed/Cluster.scala:175` | 未対応 | core/typed + std | medium | typed `ClusterCommand` に variant がなく、kernel 側 command path（カテゴリ1）も未実装。coordinated shutdown 接続が必要 |
 
-実装済みとして扱うもの: typed `Cluster` facade、`ClusterCommand` の Join / JoinSeedNodes / Leave / Down、`ClusterStateSubscription`、typed event delivery、`SelfUp`、`SelfRemoved`、`ClusterSetup`。
+実装済みとして扱うもの: typed `Cluster` facade、`ClusterStateSubscription` 契約、Subscribe（`Cluster::subscribe` / `subscribe_self_up` / `subscribe_self_removed`）、Unsubscribe（`Cluster::unsubscribe`）、GetCurrentState（`Cluster::current_state`）、`ClusterCommand` sealed 契約と Join / JoinSeedNodes / Leave / Down、`SelfUp`、`SelfRemoved`、typed Cluster extension（`Cluster::get`）、`ClusterSetup`。
 
-### 6. Cluster singleton / client / receptionist　✅ 実装済み 0/12 (0%)
-
-| Pekko API / 契約 | Pekko 参照 | fraktor-rs 対応 | 実装先層 | 難易度 | 備考 |
-|------------------|------------|-----------------|----------|--------|------|
-| typed `ClusterSingleton` extension | `cluster-typed/ClusterSingleton.scala:135`, `cluster-typed/ClusterSingleton.scala:210` | 未対応 | core/typed + std | hard | cluster 全体で一つの actor を保証する coordinator がない |
-| `SingletonActor[M]` | `cluster-typed/ClusterSingleton.scala:153`, `cluster-typed/ClusterSingleton.scala:171` | 未対応 | core/typed | medium | singleton entity 設定 wrapper がない |
-| `ClusterSingletonSettings` | `cluster-typed/ClusterSingleton.scala:32`, `cluster-typed/ClusterSingleton.scala:57` | 未対応 | core/config | easy | role / removal margin / lease 等の設定がない |
-| classic `ClusterSingletonManager` | `ClusterSingletonManager.scala:173`, `ClusterSingletonManager.scala:492` | 未対応 | std + core | hard | leader election、handover、termination message が必要 |
-| `ClusterSingletonProxy` | `ClusterSingletonProxy.scala:135`, `ClusterSingletonProxy.scala:171` | 未対応 | std + core | medium | singleton location 追跡と proxy 送信がない |
-| `ClusterClient` | `ClusterClient.scala:292`, `ClusterClient.scala:381` | 未対応 | std | hard | 外部 client、contact point、heartbeat、buffering がない |
-| `ClusterClientReceptionist` | `ClusterClient.scala:565`, `ClusterClient.scala:583` | 未対応 | std + pub_sub | hard | service/subscriber registration と receptionist actor がない |
-| `ClusterReceptionistSettings` | `ClusterClient.scala:661`, `ClusterClient.scala:713` | 未対応 | core/config | easy | receptionist 設定型がない |
-
-### 7. Distributed PubSub　✅ 実装済み 10/10 (100%)
+### 6. Cluster singleton　✅ 実装済み 0/10 (0%)
 
 | Pekko API / 契約 | Pekko 参照 | fraktor-rs 対応 | 実装先層 | 難易度 | 備考 |
 |------------------|------------|-----------------|----------|--------|------|
-| `DistributedPubSubMediator` protocol | `DistributedPubSubMediator.scala:151`, `DistributedPubSubMediator.scala:553` | 実装済み | core/pub_sub + std | medium | `MediatorCommand` / `MediatorAcknowledgement` / `MediatorQueryResult` / `DistributedPubSubMediatorState` が subscribe / publish / unsubscribe / query を registry と delivery intent へ接続。std は `PubSubDeliveryIntentExecutor` で intent を実行 |
-| `DistributedPubSubSettings` | `DistributedPubSubMediator.scala:44`, `DistributedPubSubMediator.scala:103` | 実装済み | core/pub_sub | easy | `DistributedPubSubSettings` が role / routing mode / gossip interval / removed TTL / max delta elements / no-subscriber behavior を保持 |
-| topic registry gossip / delta collection | `DistributedPubSubMediator.scala:699`, `DistributedPubSubMediator.scala:861` | 実装済み | core/pub_sub + membership | hard | `TopicRegistryStatus` / `TopicRegistryDelta` / `TopicRegistryDeltaCollector` / `TopicRegistryGossipPayload` / `PubSubGossipHandoff` が owner version status、bounded delta、logical pubsub gossip kind を提供 |
-| `Send` / `SendToAll` path semantics | `DistributedPubSubMediator.scala:206`, `DistributedPubSubMediator.scala:216` | 実装済み | core/pub_sub + actor-core | medium | `MediatorPathKey` と `PubSubPathSemantics` が address-less canonical path、one-of、local affinity、all-of、all-but-self、no-subscriber intent を提供 |
+| classic `ClusterSingletonManager` | `ClusterSingletonManager.scala:492` | 未対応 | std + core | hard | oldest-node election、handover protocol、termination message が必要 |
+| `ClusterSingletonManagerSettings` (classic) | `ClusterSingletonManager.scala:55` | 未対応 | core/config | easy | role / removal margin / handover retry 設定型がない |
+| `ClusterSingletonProxy` | `ClusterSingletonProxy.scala:171` | 未対応 | std + core | medium | singleton location 追跡と proxy 送信 / buffering がない |
+| `ClusterSingletonProxySettings` | `ClusterSingletonProxy.scala:37` | 未対応 | core/config | easy | proxy 設定型がない |
+| typed `ClusterSingleton` extension | `cluster-typed/ClusterSingleton.scala:135` | 未対応 | core/typed + std | hard | cluster 全体で一つの actor を保証する typed extension がない |
+| typed `ClusterSingletonSettings` | `cluster-typed/ClusterSingleton.scala:32` | 未対応 | core/config | easy | typed 設定型がない |
+| `SingletonActor[M]` | `cluster-typed/ClusterSingleton.scala:153` | 未対応 | core/typed | medium | singleton entity 設定 wrapper がない |
+| typed `ClusterSingletonManagerSettings` | `cluster-typed/ClusterSingleton.scala:223` | 未対応 | core/config | easy | typed manager 設定型がない |
+| `ClusterSingletonSetup` | `cluster-typed/ClusterSingleton.scala:326` | 未対応 | core/typed + std | easy | ActorSystem setup 統合がない |
+| `ClusterSingletonManagerIsStuck` 検知契約 | `ClusterSingletonManager.scala`（exception/failure 契約） | 未対応 | core | easy | handover stuck 検知と通知の契約がない |
 
-実装済みとして扱うもの: `ClusterPubSub` trait、`ClusterPubSubImpl`、`PubSubBroker`、topic / subscriber / publish ack、delivery policy、partition behavior、std `PubSubDeliveryActor`、mediator command protocol、distributed pub-sub settings、path semantics、topic registry status / delta / gossip handoff。
+n/a へ移動: `ClusterClient` / `ClusterClientReceptionist` / `ClusterClientSettings` / `ClusterReceptionistSettings`（Pekko 本体で全面 `@deprecated`、gRPC 移行推奨）。typed `ClusterReceptionist` は `@InternalApi`（receptionist の公開契約は actor-typed 側スコープ）。
 
-### 8. Sharding / Grain / Placement / Identity　✅ 実装済み 11/19 (58%)
+### 7. Distributed PubSub　✅ 実装済み 10/11 (91%)
 
 | Pekko API / 契約 | Pekko 参照 | fraktor-rs 対応 | 実装先層 | 難易度 | 備考 |
 |------------------|------------|-----------------|----------|--------|------|
-| classic `ClusterSharding.start/startProxy` API | `ClusterSharding.scala:224`, `ClusterSharding.scala:516` | 部分実装 | core/grain + std | medium | `setup_member_kinds` / `GrainRef` はあるが Pekko 風 start/startProxy API はない |
-| typed `ClusterSharding` extension | `typed/scaladsl/ClusterSharding.scala:40`, `typed/scaladsl/ClusterSharding.scala:178` | 部分実装 | core/typed | medium | grain API はあるが typed `EntityRef` API ではない |
+| mediator 全体 `Count` query | `DistributedPubSubMediator.scala:253` | 部分実装 | core/pub_sub | trivial | `MediatorQuery::SubscriberCount`（topic 単位）はあるが、トピック横断の subscriber 総数 query がない |
+
+実装済みとして扱うもの: `DistributedPubSubMediator` protocol（`MediatorCommand` / `MediatorAcknowledgement` / `DistributedPubSubMediatorState`）、`DistributedPubSubSettings`、topic registry gossip / delta collection（`TopicRegistryStatus` / `TopicRegistryDelta` / `TopicRegistryDeltaCollector` / `PubSubGossipHandoff`）、`Send` / `SendToAll` path semantics（`MediatorPathKey` / `PubSubPathSemantics`）、`DistributedPubSub` extension 相当（`ClusterPubSub` trait / `ClusterPubSubImpl` / `ClusterPubSubShared`）、Subscribe / Unsubscribe / Publish メッセージ、`GetTopics` / `CurrentTopics`（`MediatorQuery::CurrentTopics`）、`CountSubscribers`（`MediatorQuery::SubscriberCount`）、`DistributedPubSubMessage` marker 相当（`ClusterMessagePayloadKind` / `PubSubEnvelope`）、broker / delivery（`PubSubBroker` + std `PubSubDeliveryActor` / `PubSubDeliveryIntentExecutor`）。
+
+### 8. Sharding / Grain / Placement / Identity　✅ 実装済み 11/27 (41%)
+
+| Pekko API / 契約 | Pekko 参照 | fraktor-rs 対応 | 実装先層 | 難易度 | 備考 |
+|------------------|------------|-----------------|----------|--------|------|
+| classic `ClusterSharding.start/startProxy` API | `ClusterSharding.scala:224`, `ClusterSharding.scala:516` | 部分実装 | core/grain + std | medium | `setup_member_kinds` / `GrainRef` はあるが Pekko 風 start/startProxy API（proxy-only mode 含む）はない |
+| typed `ClusterSharding` extension | `typed/scaladsl/ClusterSharding.scala:40` | 部分実装 | core/typed | medium | grain API はあるが typed extension 形態の `init(Entity)` API ではない |
 | `Entity[M, E]` / `EntityContext` | `typed/scaladsl/ClusterSharding.scala:238`, `typed/scaladsl/ClusterSharding.scala:363` | 部分実装 | core/typed + grain | medium | `ActivatedKind` / `GrainContext` は対応するが typed behavior factory ではない |
-| `EntityTypeKey[M]` / typed `EntityRef[M]` | `typed/scaladsl/ClusterSharding.scala:407`, `typed/scaladsl/ClusterSharding.scala:439` | 部分実装 | core/typed + grain | easy | `GrainKey` / `GrainRef` はあるが typed key/ref wrapper がない |
-| `ShardingEnvelope` / `ShardingMessageExtractor` | `ShardingMessageExtractor.scala:52`, `ShardingMessageExtractor.scala:124` | 部分実装 | core/grain | medium | `SerializedMessage` / `GrainCodec` はあるが envelope extractor 契約がない |
-| shard allocation / rebalance strategy | `ClusterSharding.scala:669`, `ShardCoordinator.scala:662` | 部分実装 | core/placement | hard | rendezvous hashing はあるが least-shard rebalance と coordinator protocol はない |
-| remembered entities | `Shard.scala:66`, `RememberEntitiesStore.scala:57` | 未対応 | core/placement + persistence integration | hard | activation registry はあるが remembered entity store がない |
-| external shard allocation | `ExternalShardAllocation.scala:32`, `ExternalShardAllocationStrategy.scala:44` | 未対応 | core/placement + std | medium | external allocation API がない |
-| `ShardedDaemonProcess` | `ShardedDaemonProcess.scala:30`, `ShardedDaemonProcess.scala:49` | 未対応 | core/typed + placement | hard | N 個の daemon を shard 配置する API がない |
-| replicated sharding / direct replication | `ReplicatedEntityProvider.scala:32`, `ShardingDirectReplication.scala` | 未対応 | core/typed + placement | hard | data center / replica id model がない |
-| sharding delivery controllers | `ShardingProducerController.scala:104`, `ShardingConsumerController.scala:50` | 未対応 | core/typed + actor-core/delivery | hard | reliable delivery と sharding の接続がない |
+| `EntityTypeKey[M]` / typed `EntityRef[M]`（ask / askWithStatus 含む） | `typed/scaladsl/ClusterSharding.scala:407`, `typed/scaladsl/ClusterSharding.scala:429` | 部分実装 | core/typed + grain | easy | `GrainKey` / `GrainRef`（`request` / `request_future` が ask 相当）はあるが、message 型でパラメータ化された typed key/ref wrapper がない |
+| `ShardingEnvelope` / `ShardingMessageExtractor` SPI | `ShardingMessageExtractor.scala:21`, `typed/ClusterSharding.scala:124` | 部分実装 | core/grain | medium | `SerializedMessage` / `GrainCodec` はあるが envelope / extractor の SPI 契約がない |
+| shard allocation / rebalance strategy | `ShardCoordinator.scala:110`, `ShardCoordinator.scala:295` | 部分実装 | core/placement | hard | rendezvous hashing による placement はあるが、`ShardAllocationStrategy` SPI、`LeastShardAllocationStrategy` 相当の rebalance、coordinator handoff protocol がない |
+| `ClusterShardingSettings`（classic + typed） | `ClusterShardingSettings.scala:32`, `typed/ClusterShardingSettings.scala:33` | 部分実装 | core/config | medium | `GrainCallOptions` / `PartitionIdentityLookupConfig` 等の個別設定はあるが、包括的な sharding settings 契約がない |
+| sharding query protocol（`GetShardRegionState` / `GetShardRegionStats` / `GetClusterShardingStats` / `GetCurrentRegions` + 応答型、classic + typed） | `ShardRegion.scala:237-386`, `ClusterShardingQuery.scala:39` | 未対応 | core/grain + core/typed | medium | shard / region / entity 数の observability query がない（`GrainMetrics` は別系統の metrics） |
+| `ClusterShardingHealthCheck` | `ClusterShardingHealthCheck.scala:46` | 未対応 | std | easy | region 登録状態に基づく readiness check がない |
+| passivation strategy settings（idle / LRU / MRU / LFU / admission） | `ClusterShardingSettings.scala:243` | 未対応 | core/config + grain | medium | passivation 自体はあるが、strategy 設定階層（active entity limit、segmented LRU、admission window / filter）がない |
+| `ShardingMessageExtractor` 実装群（`HashCodeMessageExtractor` / `HashCodeNoEnvelopeMessageExtractor` / `Murmur2MessageExtractor`） | `ShardingMessageExtractor.scala:52-101`, `Murmur2MessageExtractor.scala:19` | 未対応 | core/grain | easy | extractor SPI（上記行）成立後の標準実装群。Kafka 互換 Murmur2 partitioning 含む |
+| remembered entities（`RememberEntitiesStore` / `StateStoreMode` / `RememberEntitiesStoreMode`） | `RememberEntitiesStore.scala:57`, `ClusterShardingSettings.scala:125` | 未対応 | core/placement + persistence integration | hard | activation registry はあるが、再起動 / rebalance 後にエンティティを再活性化する store 契約がない |
+| external shard allocation（extension / strategy / client / `ShardLocations`） | `ExternalShardAllocation.scala:32`, `ExternalShardAllocationStrategy.scala:44` | 未対応 | core/placement + std | medium | 外部から shard 配置を指定する API がない |
+| `ShardedDaemonProcess` / `ShardedDaemonProcessSettings` | `ShardedDaemonProcess.scala:30`, `ShardedDaemonProcessSettings.scala:27` | 未対応 | core/typed + placement | hard | N 個の daemon を shard 配置し keep-alive する API がない |
+| replicated sharding（`ReplicatedShardingExtension` / `ReplicatedSharding` / `ReplicatedEntityProvider` / `ReplicatedEntity`） | `ReplicatedShardingExtension.scala:31`, `ReplicatedEntityProvider.scala:32` | 未対応 | core/typed + placement | hard | data center / replica id model がない |
+| sharding delivery controllers（`ShardingProducerController` / `ShardingConsumerController`） | `ShardingProducerController.scala:104`, `ShardingConsumerController.scala:50` | 未対応 | core/typed + actor-core/delivery | hard | reliable delivery と sharding の接続がない |
 
-実装済みとして扱うもの: `GrainRef`、`GrainKey`、`GrainCodec`、`VirtualActorRegistry`、`PlacementCoordinatorCore`、`PartitionIdentityLookup`、`RendezvousHasher`、`PidCache`、remote/local placement decision、passivation、RPC router。
+実装済みとして扱うもの: `GrainRef`、`GrainKey`、`GrainCodec`、`VirtualActorRegistry`、`PlacementCoordinatorCore`、`PartitionIdentityLookup`、`RendezvousHasher`、`PidCache`、remote/local placement decision、passivation（基本機構）、RPC router（`GrainRpcRouter`）。
 
-### 9. Distributed Data / CRDT　✅ 実装済み 0/18 (0%)
+### 9. Distributed Data / CRDT　✅ 実装済み 0/27 (0%)
 
 | Pekko API / 契約 | Pekko 参照 | fraktor-rs 対応 | 実装先層 | 難易度 | 備考 |
 |------------------|------------|-----------------|----------|--------|------|
-| `DistributedData` extension | `DistributedData.scala:27`, `DistributedData.scala:42` | 未対応 | core + std | hard | replicator extension がない |
-| `Replicator` / `ReplicatorSettings` | `Replicator.scala:73`, `Replicator.scala:284`, `Replicator.scala:1183` | 未対応 | core + std | hard | gossip-based CRDT replication 基盤がない |
-| `ReplicatedData` trait family | `ReplicatedData.scala:44`, `ReplicatedData.scala:69`, `ReplicatedData.scala:112` | 未対応 | core/ddata | medium | CRDT merge/delta/pruning trait がない |
-| `Key[T]` / typed keys | `Key.scala:16`, `Key.scala:37` | 未対応 | core/ddata | easy | CRDT key hierarchy がない |
-| `VersionVector` | `VersionVector.scala:28`, `VersionVector.scala:337` | 未対応 | core/ddata | medium | membership 用 `VectorClock` はあるが CRDT pruning/vector version ではない |
-| `GCounter` / `PNCounter` | `GCounter.scala:22`, `PNCounter.scala:23` | 未対応 | core/ddata | easy | 基本 counter CRDT がない |
-| `Flag` | `Flag.scala:16`, `Flag.scala:50` | 未対応 | core/ddata | trivial | enable-only CRDT |
-| `LWWRegister` / `LWWMap` | `LWWRegister.scala:21`, `LWWMap.scala:21` | 未対応 | core/ddata | medium | timestamp / node ordering が必要 |
+| `DistributedData` extension (classic) | `DistributedData.scala:27` | 未対応 | core + std | hard | replicator extension がない |
+| typed `DistributedData` extension | `cluster-typed/ddata/typed/scaladsl/DistributedData.scala:33` | 未対応 | core/typed | medium | typed extension wrapper がない |
+| `ReplicatorMessageAdapter[A, B]` | `cluster-typed/ddata/typed/scaladsl/ReplicatorMessageAdapter.scala:27` | 未対応 | core/typed | medium | typed Behavior と replicator protocol の連携 adapter がない |
+| `Replicator` / `ReplicatorSettings` | `Replicator.scala:73`, `Replicator.scala:162` | 未対応 | core + std | hard | gossip-based CRDT replication 基盤（write/read repair、delta propagation、pruning 実行体）がない |
+| Get protocol（`Get` / `GetSuccess` / `NotFound` / `GetFailure` / `GetDataDeleted`） | `Replicator.scala:428-488` | 未対応 | core/ddata | medium | 読み取りプロトコル型がない |
+| Update protocol（`Update` / `UpdateSuccess` / `UpdateTimeout` / `ModifyFailure` / `StoreFailure` 等） | `Replicator.scala:591-679` | 未対応 | core/ddata | medium | 更新プロトコル型がない |
+| Subscribe protocol（`Subscribe` / `Unsubscribe` / `Changed` / `Deleted`） | `Replicator.scala:504-547` | 未対応 | core/ddata | medium | 変更購読プロトコル型がない |
+| Delete protocol（`Delete` / `DeleteSuccess` / `ReplicationDeleteFailure` / `DataDeleted`） | `Replicator.scala:695-715` | 未対応 | core/ddata | medium | 削除プロトコル型がない |
+| read/write consistency levels（`ReadLocal` 〜 `ReadAll` / `WriteLocal` 〜 `WriteAll`、Majority/MajorityPlus 含む） | `Replicator.scala:298-379` | 未対応 | core/ddata | easy | 一貫性レベル契約がない |
+| `GetReplicaCount` / `ReplicaCount` / `FlushChanges` | `Replicator.scala:726-742` | 未対応 | core/ddata | trivial | 補助 query / command 型 |
+| `DurableStore` SPI（`Store` / `LoadAll` / `LoadData` protocol） | `DurableStore.scala:64-86` | 未対応 | core/ddata | medium | durable storage の port 契約がない |
+| durable store std adapter（`LmdbDurableStore` 相当） | `DurableStore.scala:112` | 未対応 | std | medium | LMDB 完全互換ではなく、embedded KV による std 実装が対象 |
+| `ReplicatedData` / `DeltaReplicatedData` / `ReplicatedDelta` / `RequiresCausalDeliveryOfDeltas` / `RemovedNodePruning` SPI | `ReplicatedData.scala:44-223` | 未対応 | core/ddata | medium | CRDT merge / delta / pruning の基底 trait 契約がない |
+| `Key[T]` | `Key.scala:16` | 未対応 | core/ddata | easy | CRDT key hierarchy がない |
+| `GCounter` / `PNCounter` / `PNCounterMap` | `GCounter.scala:22`, `PNCounter.scala:23`, `PNCounterMap.scala:24` | 未対応 | core/ddata | easy | 基本 counter CRDT がない |
+| `Flag` | `Flag.scala:16` | 未対応 | core/ddata | trivial | enable-only CRDT |
+| `LWWRegister` / `LWWMap` | `LWWRegister.scala:21`, `LWWMap.scala:21` | 未対応 | core/ddata | medium | timestamp / node ordering と clock 抽象が必要 |
 | `ORSet` / `ORMap` / `ORMultiMap` | `ORSet.scala:43`, `ORMap.scala:24`, `ORMultiMap.scala:21` | 未対応 | core/ddata | medium | dot / tombstone / delta semantics が必要 |
-| `PNCounterMap` | `PNCounterMap.scala:24` | 未対応 | core/ddata | easy | PNCounter + map 合成 |
-| read/write consistency levels | `Replicator.scala:284` | 未対応 | core/ddata | easy | ReadLocal/ReadMajority/WriteMajority 等 |
-| typed DistributedData API | `cluster-typed/ddata/typed/scaladsl/DistributedData.scala:33` | 未対応 | core/typed | medium | typed actor ref adapter が必要 |
+| `VersionVector` | `VersionVector.scala:28` | 未対応 | core/ddata | medium | membership 用 `VectorClock` はあるが CRDT pruning / dot 管理用ではない |
+| `SelfUniqueAddress` | `distributed-data/DistributedData.scala:80` | 未対応 | core/ddata | easy | CRDT 更新時の自ノード識別 newtype がない |
 
-### 10. std adapter / discovery / wire integration　✅ 実装済み 8/9 (89%)
+### 10. std adapter / discovery / wire integration　✅ 実装済み 9/11 (82%)
 
 | Pekko API / 契約 | Pekko 参照 | fraktor-rs 対応 | 実装先層 | 難易度 | 備考 |
 |------------------|------------|-----------------|----------|--------|------|
-| cluster message serializer contract | `ClusterMessageSerializer.scala:83`, `ClusterShardingMessageSerializer.scala`, `DistributedPubSubMessageSerializer.scala` | contract 実装済み | std/wire + actor-core serialization | hard | core `message_serialization` は `ClusterMessagePayloadKind`、`ClusterMessageManifest`、`ClusterSerializedMessage`、`ActorSerializationBridge` を公開する。std `message_wire` は `ClusterWireFrameV1`、`ClusterWireCodec`、`ClusterWireDecodeFailure` を公開する。tests: actor-core metadata preservation、unknown payload/version/malformed payload failure、gossip/pubsub wire smoke。gossip semantics、pubsub mediator semantics、transport lifecycle、Pekko/protobuf 完全バイナリ互換は scope 外 |
-| seed node discovery process | `SeedNodeProcess.scala:22` | boundary contract 実装済み | core/cluster_provider + std/provider | medium | `SeedNodeProcess` が seed authority を provider-neutral join input に変換し、`DiscoveryTopologyMapper` が topology update へ写像する。`ProviderLifecycleBridge` が lifecycle 内で seed/discovery input を同じ contract に接続する。tests: `seed_node_process_*`, `discovery_topology_mapper_*`, `provider_lifecycle_bridge_*` |
-| generic discovery adapter | `Cluster.scala:354`, `ClusterClient.scala:65` | boundary contract 実装済み | core/cluster_provider + std/provider | medium | `DiscoveryBackend` / `DiscoveryBackendError` / `GenericDiscoveryAdapter` が backend success、empty success、failure、AWS ECS style authority を `DiscoveryResult` / `DiscoveredAuthority` に正規化する。tests: `generic_discovery_adapter_*`, `discovery_result_*`, `aws_ecs` feature tests |
-| std `ClusterApi` wrapper parity | `Cluster.scala:328`, `Cluster.scala:384`, `Cluster.scala:395` | 部分実装 | std/api | trivial | std wrapper は `get/request/down` のみで `join/leave/subscribe` を再公開していない |
-| transport lifecycle to membership bridge retention | `local_cluster_provider_ext.rs` | 実装済み | std/provider | easy | `subscribe_remoting_events` が `EventStreamSubscription` を返し、guard 保持中だけ connected/quarantined events を topology input にする。weak provider retention により subscription は provider を延命しない。`local_cluster_provider_ext` tests で確認 |
+| `JoinConfigCompatCheckSharding` | `cluster-sharding/JoinConfigCompatCheckSharding.scala` | 未対応 | core/config | easy | `JoinCompatibilityComposition` は pubsub / downing / SBR / failure-detector key を合成するが、sharding 設定の join compat key がない（sharding settings 契約成立が前提） |
+| module setup integration（`ClusterShardingSetup` / `ClusterSingletonSetup` 相当） | `cluster-sharding-typed/scaladsl/ClusterSharding.scala:541`, `cluster-typed/ClusterSingleton.scala:326` | 未対応 | core/typed + std | easy | sharding / singleton extension 自体が未実装のため従属的に未対応 |
 
-実装済みとして扱うもの: `TokioGossipTransport`、`MembershipCoordinatorDriver`、`LocalClusterProvider`、`StaticClusterProvider`、`AwsEcsClusterProvider`、`SeedNodeProcess`、`DiscoveryTopologyMapper`、`GenericDiscoveryAdapter`、`ProviderLifecycleBridge`、`ClusterMessagePayloadKind`、`ClusterMessageManifest`、`ClusterSerializedMessage`、`ActorSerializationBridge`、`ClusterWireFrameV1`、`ClusterWireCodec`、`ClusterWireDecodeFailure`。logical gossip envelope handoff は `GossipEnvelope` evidence の一部として扱い、この section の独立 completed concept には数えない。
+実装済みとして扱うもの: cluster message serializer contract（`ClusterMessagePayloadKind` / `ClusterMessageManifest` / `ClusterSerializedMessage` / `ActorSerializationBridge` + std `ClusterWireFrameV1` / `ClusterWireCodec` / `ClusterWireDecodeFailure`）、seed node discovery process（`SeedNodeProcess` + `ProviderLifecycleBridge`）、generic discovery adapter（`DiscoveryBackend` / `GenericDiscoveryAdapter` / AWS ECS feature）、`ClusterApi` 公開面 parity（join / leave / subscribe / unsubscribe / current_state / down / get / request / remote_path_of のフルセット — 判定変更）、transport lifecycle bridge retention（`subscribe_remoting_events`）、gossip transport adapter（`TokioGossipTransport` / `TokioGossiper`）、provider lifecycle（`LocalClusterProvider` / `StaticClusterProvider` / `AwsEcsClusterProvider`）、versioned wire frame、discovery topology mapper。
 
 ## 対象外 (n/a)
 
 | Pekko API / 領域 | 判定理由 |
 |------------------|----------|
 | `cluster-metrics` | デフォルト固定スコープ外。ユーザーが metrics 調査を明示した場合だけ対象 |
+| `ClusterClient` / `ClusterClientReceptionist` / `ClusterClientSettings` / `ClusterReceptionistSettings` | Pekko 本体で全面 `@deprecated`（gRPC 移行推奨） |
+| typed `ClusterReceptionist` 実装 | `@InternalApi`。receptionist 公開契約は actor-typed スコープ |
+| SBR `DowningStrategy` 実装クラス / `SplitBrainResolverSettings`（Pekko 側） | 全て `@InternalApi private[sbr]`。公開契約（provider SPI / 設定契約 / 5 戦略）はカテゴリ3 で対象 |
 | `ClusterJmx` / MBean | JVM management / JMX 固有 |
 | HOCON loader / dynamic access | JVM 設定ロード方式に依存 |
 | Java DSL wrapper / javadsl package | Rust API として再現不要 |
-| multi-node-testkit / tests / typed tests | runtime API ではない |
+| multi-node-testkit / tests / typed tests / `TestEntityRef` | runtime API ではない |
 | Kubernetes discovery backend 完全互換 | backend 固有実装。generic provider adapter だけ cluster scope |
 | JFR flight recorder event classes | JVM Flight Recorder 固有 |
-| Akka 互換 migration adapter | Pekko の移行用実装であり runtime parity 対象外 |
+| Akka 互換 migration adapter / `RemoveInternalClusterShardingData` | 移行用実装であり runtime parity 対象外 |
 | protobuf serializer の完全バイナリ互換 | Rust runtime contract では serializer 接続点だけ対象 |
 
 ## スタブ / placeholder
 
-`todo!()` / `unimplemented!()` / `panic!("not implemented")` は実装本体から検出されなかった。`ClusterProviderShared` の rustdoc 例に `todo!()` があり、`cluster_extension_test.rs` などの test helper 名に `stub` が出るが、いずれも実行スタブではない。
-
-## Pekko comparison gap の優先度メモ
-
-この section は、Pekko 側の概念を将来採用する場合の難易度メモであり、現在の cluster roadmap ではない。直近の作業順は [cluster Grain runtime roadmap](../plan/2026-05-25_cluster-grain-runtime-roadmap.md) と個別の OpenSpec change を正とする。
-
-以下では、現在の Grain runtime roadmap に隣接する比較材料と、OpenSpec change が立つまで優先度を落とす `Deferred Pekko concepts` を分ける。deferred 側は fixed-scope gap の evidence として保持するが、active comparison follow-up と同じ backlog には入れない。
-
-### Active comparison follow-up: trivial / easy
-
-| 項目 | 実装先層 | 状態 | 根拠 / evidence |
-|------|----------|------|-----------------|
-| config compatibility full key set | core/config | baseline 実装済み | `ClusterCompatibilityKeyCatalog`、`JoinCompatibilityComposition`、`ClusterExtensionConfig::check_join_compatibility`。tests: `cluster_compatibility_key`, `join_compatibility` |
-| `remotePathOf` | core/extension | 実装済み | `ClusterApi::remote_path_of`。tests: `remote_path_of_*` |
-| transport lifecycle bridge retention | std/provider | 実装済み | `subscribe_remoting_events`、`EventStreamSubscription`、weak provider retention。tests: `local_cluster_provider_ext` |
-
-上記は cluster-active-compatibility-baseline の完了 evidence であり、次の項目を完了扱いにしない: seed process / discovery provider、pubsub mediator semantics / registry gossip、Deferred Pekko concepts。`SplitBrainResolverProvider` は下の `cluster-downing-sbr-decision-model` evidence に移動し、cluster message serializer contract は専用 completed table に分離した。
-
-### Completed active follow-up: membership / reachability model
-
-| 項目 | 実装先層 | 状態 | 根拠 / evidence |
-|------|----------|------|-----------------|
-| `UniqueAddress` semantics | core/membership | core contract 実装済み | `NodeRecord::unique_address`、`MembershipTable::try_join_with_identity`、same address + different UID の別 incarnation、UID 未確定 rejection。tests: `node_record_with_identity_keeps_unique_address_and_data_center`, `join_with_identity_*` |
-| data center membership | core/membership | core contract 実装済み | `DataCenter`、`NodeRecord::data_center`、membership/current state data center filtering。tests: `data_center::*`, `members_in_data_center_preserves_identity_status_and_roles`, `current_cluster_state_filters_members_by_data_center_without_losing_status` |
-| `WeaklyUp` compatibility | core/membership | core contract 実装済み | `NodeStatus::WeaklyUp`、`mark_weakly_up`、`Joining -> WeaklyUp -> Up`、leave/remove/down transition、`is_provisional`。tests: `join_then_heartbeats_promote_through_weakly_up_to_up`, `joining_member_transitions_through_weakly_up_before_up`, `weakly_up_*` |
-| `Reachability` matrix | core/membership | core contract 実装済み | `ReachabilityMatrix` / `ReachabilityRecord` / `ReachabilitySnapshot` が observer / subject / status / version、reachable prune、terminated precedence、aggregate status、snapshot propagation を保持。tests: `reachability_matrix::*`, `reachability_snapshot_tracks_failure_detector_and_heartbeat_receipt` |
-| indirect connection handling | core/membership + core/downing_provider | evidence contract 実装済み | `IndirectConnectionEvidence` と `DowningInput::IndirectConnectionEvidence` が partial connectivity evidence を渡す。downing decision、lease majority、SBR strategy は実行しない。tests: `indirect_connection_evidence::*` |
-
-この completed table は `cluster-membership-reachability-model` の core contract evidence だけを表す。SeedNodeProcess / generic discovery adapter は discovery provider interop の completed table に分離し、downing / SBR decision model と PubSub mediator / topic registry gossip はそれぞれ専用の completed table に分離する。次の責務は未完了のまま downstream / future scope に残す: SBR runtime actor、provider からの実 down execution loop、concrete lease coordination backend、Deferred Pekko concepts。
-
-### Completed active follow-up: gossip / heartbeat protocol
-
-| 項目 | 実装先層 | 状態 | 根拠 / evidence |
-|------|----------|------|-----------------|
-| `GossipEnvelope` | core/membership + std/handoff | core + logical handoff 実装済み | `GossipEnvelope` と `GossipPayloadKind` が from/to identity、payload kind、membership version、deadline を保持する。`GossipTransportHandoff` と `TokioGossipTransport` が identity / endpoint mapping / payload kind を logical handoff として保持する。tests: `gossip_envelope_*`, `handoff_*`, `envelope_roundtrip_distinguishes_gossip_state_and_heartbeat_payloads` |
-| full `Gossip` merge / tombstone / seen digest | core/membership | core contract 実装済み | `GossipStateModel`、`GossipStateSnapshot`、`GossipTombstone`、`GossipSeenDigest` が deterministic full-state merge、tombstone suppression / retention prune、seen digest convergence を扱う。tests: `full_state_merge_*`, `tombstone_*`, `seen_digest_*` |
-| dedicated cluster heartbeat protocol | core/membership | core protocol 実装済み | `HeartbeatProtocolState`、`HeartbeatRequest`、`HeartbeatResponse`、`HeartbeatEvidence` が sequence number、request/response 照合、first / regular timeout evidence を扱う。tests: `heartbeat_tick_generates_sequence_per_peer`, `heartbeat_request_roundtrip_produces_reachable_evidence`, `first_and_regular_heartbeat_timeouts_are_observable` |
-| `CrossDcClusterHeartbeat` | core/membership | core evidence 実装済み | `CrossDcHeartbeat`、`CrossDcHeartbeatRequest`、`CrossDcHeartbeatResponse`、`CrossDcHeartbeatEvidence` が data center pair 付き cross-DC liveness evidence と target change を扱う。tests: `cross_dc_*` |
-
-この completed table は `cluster-gossip-heartbeat-protocol` の evidence だけを表す。SeedNodeProcess / generic discovery adapter は discovery provider interop の completed table に分離し、downing / SBR decision model と PubSub mediator / topic registry gossip はそれぞれ専用の completed table に分離する。次の責務は未完了のまま downstream / future scope に残す: SBR runtime actor、provider からの実 down execution loop、concrete lease coordination backend、versioned transport handoff / serde-postcard envelope bytes、Deferred Pekko concepts。
-
-### Completed active follow-up: downing / SBR decision model
-
-| 項目 | 実装先層 | 状態 | 根拠 / evidence |
-|------|----------|------|-----------------|
-| Downing evaluation input | core/downing_provider | core contract 実装済み | `DowningDecisionContext` が membership snapshot、reachability evidence、evaluation time、explicit down input を保持し、evidence 不足時の defer reason を生成する。tests: `downing_decision_context::*` |
-| `DowningStrategy` / decision model | core/downing_provider | core decision model 実装済み | `DowningStrategyDecision` と `DowningDecisionTrace` が keep/down/defer/all-down、retained partition、downing targets、tie-break、stable-after、down-all timeout、lease outcome を保持する。tests: `downing_strategy_decision::*` |
-| `SplitBrainResolver` | core/downing_provider | core evaluator 実装済み | `SplitBrainResolver` が KeepMajority、StaticQuorum、KeepOldest、DownAll、LeaseMajority を `DowningDecisionContext` から評価し、member state を変更せず trace 付き decision を返す。tests: `split_brain_resolver::*` |
-| lease-based majority | core/downing_provider + std/provider | port contract + std binding 実装済み | `LeaseMajorityPort` / `LeaseAcquisitionOutcome` と `StdLeaseMajorityBackend` が lease outcome を core vocabulary へ変換し、`StdSplitBrainResolverProvider` が lifecycle 内で backend を所有する。tests: `lease_majority_port`, `lease_acquisition_outcome`, `split_brain_resolver_provider` |
-| provider-facing SBR integration | core/downing_provider + std/provider | provider binding 実装済み | `SplitBrainResolverProviderHook` が compatibility metadata と decision/error mapping を提供し、`StdSplitBrainResolverProvider` が start/stop/drop lifecycle で hook と backend adapter を管理する。tests: `split_brain_resolver_provider_hook`, `split_brain_resolver_provider` |
-
-この completed table は `cluster-downing-sbr-decision-model` の evidence だけを表す。SeedNodeProcess / generic discovery adapter と PubSub mediator / topic registry gossip はそれぞれ専用の completed table に分離する。次の責務は未完了のまま downstream / future scope に残す: SBR runtime actor、責任ノード選択、reachability 変化監視、provider からの実 down execution loop、concrete lease coordination backend、Deferred Pekko concepts。
-
-### Completed active follow-up: discovery provider interop
-
-| 項目 | 実装先層 | 状態 | 根拠 / evidence |
-|------|----------|------|-----------------|
-| `SeedNodeProcess` | core/cluster_provider + std/provider | boundary contract 実装済み | `SeedNodeInput` / `SeedNodeProcess` が seed authority を provider-neutral join input に変換し、empty seed、self filtering、duplicate seed、invalid authority、client start、shutdown 後停止を扱う。`ProviderLifecycleBridge` が seed input を topology update に接続する。tests: `seed_node_process_*`, `provider_lifecycle_bridge_*` |
-| generic discovery adapter | core/cluster_provider + std/provider | boundary contract 実装済み | `DiscoveredAuthority` / `DiscoveryResult` / `DiscoveryTopologyMapper` と `DiscoveryBackend` / `DiscoveryBackendError` / `GenericDiscoveryAdapter` が backend result を provider-neutral topology input に正規化する。tests: `discovery_result_*`, `discovery_topology_mapper_*`, `generic_discovery_adapter_*`, `static_cluster_provider`, `aws_ecs` feature tests |
-
-この completed table は `cluster-discovery-provider-interop` の SeedNodeProcess と generic discovery adapter evidence だけを表す。gossip heartbeat / full Gossip、reachability / WeaklyUp、downing / SBR decision model、PubSub mediator / topic registry gossip はそれぞれ専用 completed table の evidence に留め、この feature の完了根拠には含めない。次の責務は未完了のまま downstream / future scope に残す: SBR runtime actor、provider からの実 down execution loop、concrete lease coordination backend、Deferred Pekko concepts。
-
-### Completed active follow-up: cluster message serialization contract
-
-| 項目 | 実装先層 | 状態 | 根拠 / evidence |
-|------|----------|------|-----------------|
-| cluster message serializer contract | core/message_serialization + std/message_wire | contract evidence 実装済み | core contract は `ClusterMessagePayloadKind`、`ClusterMessageManifest`、`ClusterSerializedMessage`、`ActorSerializationBridge` で actor-core `SerializationExtension` と std/wire を橋渡しする。std adaptor は `ClusterWireFrameV1`、`ClusterWireCodec`、`ClusterWireDecodeFailure` で versioned frame と decode failure を扱う。tests: actor-core metadata preservation、unknown payload/version/malformed payload failure、gossip wire smoke、pubsub wire smoke |
-
-この completed table は `cluster-message-serialization-contract` の serializer bridge evidence だけを表す。gossip merge / heartbeat / reachability semantics、pubsub mediator state / delivery / registry semantics、remote transport lifecycle、Pekko/protobuf 完全バイナリ互換は scope 外のまま残す。
-
-### Completed active follow-up: Failure Detector Configuration (故障検出器設定)
-
-| 項目 | 実装先層 | 状態 | 根拠 / evidence |
-|------|----------|------|-----------------|
-| Failure Detector Configuration (故障検出器設定) | core/failure_detector + config + std/membership | contract evidence 実装済み | `FailureDetectorConfig` が Phi Accrual 前提の観測パラメータを Cluster Configuration (クラスタ設定) として保持し、Cluster Configuration Validation (クラスタ設定検証) が install / start 境界で不成立値を拒否する。Join Compatibility (参加互換性) は `cluster.failure-detector` single key を使い、Compatibility Mismatch Reason (互換性不一致理由) の detail に差分 field を含める。`cluster.failure-detector.choice` は required key ではなく excluded key のまま維持する。std bridge は `ConfiguredPhiAccrualDetectorFactory` で `FailureDetectorConfig` を concrete Phi Accrual detector 生成へ接続する |
-
-この completed table は `configure-cluster-failure-detector` の Failure Detector Configuration (故障検出器設定) contract evidence だけを表す。Split Brain Resolver execution actor、provider down execution loop、concrete lease coordination backend、Cluster Singleton、Cluster Client、Receptionist、Distributed Data / CRDT、Pekko public API parity、Failure Detector Algorithm Selection (故障検出器アルゴリズム選択) はこの feature の成果として扱わず、延期 scope のまま残す。
-
-### Completed active follow-up: distributed pubsub / topic registry
-
-| 項目 | 実装先層 | 状態 | 根拠 / evidence |
-|------|----------|------|-----------------|
-| `DistributedPubSubMediator` protocol | core/pub_sub + std | protocol evidence 実装済み | `MediatorCommand`、`MediatorAcknowledgement`、`MediatorQueryResult`、`DistributedPubSubMediatorState` が subscribe / publish / unsubscribe / query を registry と delivery intent へ接続し、std `PubSubDeliveryIntentExecutor` が intent を実行する |
-| `DistributedPubSubSettings` | core/pub_sub | settings contract 実装済み | `DistributedPubSubSettings` が role、routing mode、gossip interval、removed TTL、max delta elements、no-subscriber behavior を保持する |
-| topic registry gossip / delta collection | core/pub_sub + membership | gossip payload evidence 実装済み | `TopicRegistryStatus`、`TopicRegistryDelta`、`TopicRegistryDeltaCollector`、`TopicRegistryGossipPayload`、`PubSubGossipHandoff` が owner version status、bounded delta、logical pubsub gossip kind を提供する |
-| `Send` / `SendToAll` path semantics | core/pub_sub + actor-core | path semantics 実装済み | `MediatorPathKey` と `PubSubPathSemantics` が address-less canonical path、one-of、local affinity、all-of、all-but-self、no-subscriber intent を提供する |
-
-この completed table は core pubsub mediator と topic registry gossip evidence だけを表す。Pekko `ClusterClient` / receptionist との統合、Distributed Data Replicator への寄せ込み、Pekko/protobuf 完全バイナリ互換は Deferred Pekko concepts または別 scope のまま残す。
-
-### Active comparison follow-up: medium
-
-| 項目 | 実装先層 | 根拠 |
-|------|----------|------|
-| `PrepareForFullClusterShutdown` command path | core/typed + std | カテゴリ1 / カテゴリ5 |
-
-### Deferred Pekko concepts: trivial / easy
-
-| 項目 | 実装先層 | 根拠 |
-|------|----------|------|
-| `Flag` CRDT | core/ddata | カテゴリ9 |
-| `Key[T]` / consistency levels | core/ddata | カテゴリ9 |
-| `GCounter` / `PNCounter` / `PNCounterMap` | core/ddata | カテゴリ9 |
-| std `ClusterApi` wrapper parity | std/api | カテゴリ10 |
-
-### Deferred Pekko concepts: medium
-
-| 項目 | 実装先層 | 根拠 |
-|------|----------|------|
-| `SingletonActor[M]` | core/typed | カテゴリ6 |
-| `ClusterSingletonSettings` | core/config | カテゴリ6 |
-| `ClusterSingletonProxy` | std + core | カテゴリ6 |
-| `ClusterReceptionistSettings` | core/config | カテゴリ6 |
-| classic `ClusterSharding.start/startProxy` API | core/grain + std | カテゴリ8 |
-| typed `ClusterSharding` extension | core/typed | カテゴリ8 |
-| `Entity[M, E]` / `EntityContext` | core/typed + grain | カテゴリ8 |
-| `EntityTypeKey[M]` / typed `EntityRef[M]` | core/typed + grain | カテゴリ8 |
-| `ShardingEnvelope` / `ShardingMessageExtractor` | core/grain | カテゴリ8 |
-| external shard allocation | core/placement + std | カテゴリ8 |
-| `ReplicatedData` trait family | core/ddata | カテゴリ9 |
-| `VersionVector` | core/ddata | カテゴリ9 |
-| `LWWRegister` / `LWWMap` | core/ddata | カテゴリ9 |
-| `ORSet` / `ORMap` / `ORMultiMap` | core/ddata | カテゴリ9 |
-| typed DistributedData API | core/typed | カテゴリ9 |
-
-### Deferred Pekko concepts: hard
-
-| 項目 | 実装先層 | 根拠 |
-|------|----------|------|
-| typed `ClusterSingleton` extension | core/typed + std | カテゴリ6 |
-| classic `ClusterSingletonManager` | std + core | カテゴリ6 |
-| `ClusterClient` | std | カテゴリ6 |
-| `ClusterClientReceptionist` | std + pub_sub | カテゴリ6 |
-| shard allocation / rebalance strategy | core/placement | カテゴリ8 |
-| remembered entities | core/placement + persistence integration | カテゴリ8 |
-| `ShardedDaemonProcess` | core/typed + placement | カテゴリ8 |
-| replicated sharding / direct replication | core/typed + placement | カテゴリ8 |
-| sharding delivery controllers | core/typed + actor-core/delivery | カテゴリ8 |
-| `DistributedData` extension | core + std | カテゴリ9 |
-| `Replicator` / `ReplicatorSettings` | core + std | カテゴリ9 |
+`todo!()` / `unimplemented!()` / `panic!("not implemented")` は実装本体から検出されなかった（`#![deny(clippy::todo)]` / `#![deny(clippy::unimplemented)]` が全クレートで有効）。`ClusterProviderShared` の rustdoc 例に `todo!()` があり、`cluster_pub_sub_impl.rs:534` に初期化デフォルト値を説明するコメント上の "placeholder" があるが、いずれも実行スタブではない。
 
 ## 内部モジュール構造ギャップ
 
-今回は API / 実動作ギャップが支配的であり、内部モジュール構造ギャップの詳細分析は省略する。Pekko comparison の固定スコープ概念カバレッジは約 60% で、hard / medium gap も多い。責務分割の細部比較より先に、Grain runtime の公開契約と end-to-end runtime を閉じる段階である。
+今回は API / 実動作ギャップが支配的なため、内部モジュール構造ギャップの詳細分析は省略する。固定スコープ概念カバレッジは 58% で、判定基準（カバレッジ 80% 以上、または hard/medium 未実装 5 件以下）を満たさない。
 
-次版で構造分析へ進む場合の観点は以下になる。
+次版で構造分析へ進む場合の観点:
 
 | 構造観点 | 現状 | 次に見るべき点 |
 |----------|------|----------------|
-| membership と provider の境界 | pure coordinator と provider/event-stream adapter が分かれている | SeedNodeProcess / discovery / downing がどちらに入るべきか |
-| gossip と wire の境界 | core gossip / heartbeat contract + std logical handoff + existing postcard delta UDP + actor-core serialization bridge | Pekko/protobuf 完全バイナリ互換を将来採用するか |
-| grain と typed sharding の境界 | protoactor-go style の Grain API が中心 | Pekko typed sharding wrapper を薄く載せられるか |
+| membership と provider の境界 | pure coordinator と provider/event-stream adapter が分かれている | SBR runtime loop / CoordinatedShutdownLeave がどちらに入るべきか |
+| gossip と wire の境界 | core gossip / heartbeat contract + std logical handoff + postcard delta UDP + actor-core serialization bridge | Pekko/protobuf 完全バイナリ互換を将来採用するか |
+| grain と typed sharding の境界 | protoactor-go style の Grain API が中心 | Pekko typed sharding wrapper（Entity / EntityRef / Extractor）を薄く載せられるか |
 | pubsub と distributed-data の境界 | PubSub は独自 broker、CRDT は未実装 | PubSub registry gossip を ddata Replicator 相当に寄せるか |
-| singleton / client の配置 | 対応モジュールなし | cluster-tools 相当を core contract と std actor runtime にどう分けるか |
+| singleton の配置 | 対応モジュールなし | cluster-tools 相当を core contract と std actor runtime にどう分けるか |
+
+## 実装優先度
+
+この節は「今の要求で実装すべきか」ではなく、「Pekko parity ギャップをどの順で埋めるか」を示す。YAGNI は適用せず、カテゴリ別ギャップに列挙済みの全項目を Phase 1〜3 に再配置する。着手時期の判断は roadmap / OpenSpec 側が行う。
+
+### Phase 1: trivial / easy（既存設計の範囲で API surface を埋められるもの）
+
+2026-06-11: cluster-membership-event-surface スペックで `Member.ordering` 公開契約、`ClusterLogMarker`（構造化 tracing field 契約）、`MemberPreparingForShutdown` / `MemberReadyForShutdown` event variant、`DataCenterReachabilityEvent` の 4 項目が実装完了し、本リストから除去した。
+
+| 項目 | 実装先層 | 根拠カテゴリ |
+|------|----------|--------------|
+| `CrossDcFailureDetectorSettings` / Multi-DC 設定 namespace | core/config | カテゴリ1 |
+| membership-driven routee add/remove の std 配線 | std | カテゴリ4 |
+| `ClusterSingletonManagerSettings`（classic） | core/config | カテゴリ6 |
+| `ClusterSingletonProxySettings` | core/config | カテゴリ6 |
+| typed `ClusterSingletonSettings` | core/config | カテゴリ6 |
+| typed `ClusterSingletonManagerSettings` | core/config | カテゴリ6 |
+| `ClusterSingletonSetup` | core/typed + std | カテゴリ6 |
+| `ClusterSingletonManagerIsStuck` 検知契約 | core | カテゴリ6 |
+| mediator 全体 `Count` query | core/pub_sub | カテゴリ7 |
+| `EntityTypeKey[M]` / typed `EntityRef[M]` wrapper | core/typed + grain | カテゴリ8 |
+| `ClusterShardingHealthCheck` | std | カテゴリ8 |
+| `ShardingMessageExtractor` 実装群（HashCode / Murmur2） | core/grain | カテゴリ8 |
+| read/write consistency levels | core/ddata | カテゴリ9 |
+| `Key[T]` | core/ddata | カテゴリ9 |
+| `GCounter` / `PNCounter` / `PNCounterMap` | core/ddata | カテゴリ9 |
+| `Flag` | core/ddata | カテゴリ9 |
+| `GetReplicaCount` / `ReplicaCount` / `FlushChanges` | core/ddata | カテゴリ9 |
+| `SelfUniqueAddress` | core/ddata | カテゴリ9 |
+| `JoinConfigCompatCheckSharding` | core/config | カテゴリ10 |
+| module setup integration（sharding / singleton setup 相当） | core/typed + std | カテゴリ10 |
+
+注: singleton 設定群・setup・sharding extractor 実装群・ddata 型群は、それぞれ Phase 3 の基盤（singleton manager、extractor SPI、Replicator）が成立して初めて end-to-end で機能する。Phase 1 への分類は難易度基準によるものであり、着手順は依存先の Phase 3 項目と束ねて計画すること。
+
+### Phase 2: medium（既存の core / std 境界の中で閉じるもの）
+
+| 項目 | 実装先層 | 根拠カテゴリ |
+|------|----------|--------------|
+| `prepareForFullClusterShutdown` command path（kernel） | core + std | カテゴリ1 |
+| `CoordinatedShutdownLeave` | core/extension + std | カテゴリ1 |
+| `ClusterScope` deploy scope | core/extension | カテゴリ1 |
+| `PrepareForFullClusterShutdown` command（typed） | core/typed + std | カテゴリ5 |
+| `ClusterSingletonProxy` | std + core | カテゴリ6 |
+| `SingletonActor[M]` | core/typed | カテゴリ6 |
+| classic `ClusterSharding.start/startProxy` API | core/grain + std | カテゴリ8 |
+| typed `ClusterSharding` extension | core/typed | カテゴリ8 |
+| `Entity[M, E]` / `EntityContext` | core/typed + grain | カテゴリ8 |
+| `ShardingEnvelope` / `ShardingMessageExtractor` SPI | core/grain | カテゴリ8 |
+| `ClusterShardingSettings` 契約（classic + typed） | core/config | カテゴリ8 |
+| sharding query protocol（classic + typed） | core/grain + core/typed | カテゴリ8 |
+| passivation strategy settings（LRU / MRU / LFU / admission） | core/config + grain | カテゴリ8 |
+| external shard allocation | core/placement + std | カテゴリ8 |
+| typed `DistributedData` extension | core/typed | カテゴリ9 |
+| `ReplicatorMessageAdapter[A, B]` | core/typed | カテゴリ9 |
+| Get protocol | core/ddata | カテゴリ9 |
+| Update protocol | core/ddata | カテゴリ9 |
+| Subscribe protocol | core/ddata | カテゴリ9 |
+| Delete protocol | core/ddata | カテゴリ9 |
+| `DurableStore` SPI | core/ddata | カテゴリ9 |
+| durable store std adapter | std | カテゴリ9 |
+| `ReplicatedData` / delta / pruning 基底 SPI | core/ddata | カテゴリ9 |
+| `LWWRegister` / `LWWMap` | core/ddata | カテゴリ9 |
+| `ORSet` / `ORMap` / `ORMultiMap` | core/ddata | カテゴリ9 |
+| `VersionVector` | core/ddata | カテゴリ9 |
+
+### Phase 3: hard（新しい基盤・アーキテクチャ変更を要するもの）
+
+| 項目 | 実装先層 | 根拠カテゴリ |
+|------|----------|--------------|
+| SBR runtime down execution loop（reachability 監視 → 責任ノード選択 → 自動 down 発行） | core + std | カテゴリ3 |
+| concrete lease coordination backend | std | カテゴリ3 |
+| classic `ClusterSingletonManager`（oldest election / handover） | std + core | カテゴリ6 |
+| typed `ClusterSingleton` extension | core/typed + std | カテゴリ6 |
+| shard allocation / rebalance strategy（SPI + least-shard + coordinator protocol） | core/placement | カテゴリ8 |
+| remembered entities（store 契約 + StateStoreMode） | core/placement + persistence integration | カテゴリ8 |
+| `ShardedDaemonProcess` / `ShardedDaemonProcessSettings` | core/typed + placement | カテゴリ8 |
+| replicated sharding | core/typed + placement | カテゴリ8 |
+| sharding delivery controllers | core/typed + actor-core/delivery | カテゴリ8 |
+| `DistributedData` extension（classic） | core + std | カテゴリ9 |
+| `Replicator` / `ReplicatorSettings`（CRDT replication 基盤） | core + std | カテゴリ9 |
+
+### 対象外（n/a）
+
+ClusterClient 系（deprecated）、`@InternalApi` 型、JMX / HOCON / JFR / Java DSL、testkit、protobuf バイナリ互換、`RemoveInternalClusterShardingData`。詳細は「対象外 (n/a)」表を正とする。
 
 ## まとめ
 
-cluster は membership、gossip / heartbeat contract、downing/SBR decision model、typed Cluster facade、Grain/Placement/Identity、PubSub、std UDP gossip transport、cluster message serializer contract という fraktor-rs 独自の基礎は強い。一方で、Pekko comparison の固定スコープ全体としては SBR runtime actor / down execution loop、singleton/client/receptionist、Distributed Data/CRDT、Pekko sharding public API が大きく未実装で、現時点の比較カバレッジは中程度である。
+cluster は membership / gossip / heartbeat / reachability / downing decision model / typed Cluster facade / Grain runtime / PubSub / discovery provider / message serializer contract という基礎契約は強く、カテゴリ 1, 2, 4, 5, 7, 10 は 73〜93% のカバレッジに達している。全体カバレッジは 87/151 (58%) で、未実装の大半は Cluster Singleton（0%）、Distributed Data / CRDT（0%）、Pekko sharding public API 形態（41%）の 3 領域に集中している。
 
-Pekko 概念を将来採用するなら、低コストで comparison gap を縮めやすいのは、`PrepareForFullClusterShutdown` command、基本 CRDT、std `ClusterApi` wrapper の再公開である。join config compatibility の checker composition、membership/reachability model、gossip/heartbeat protocol の core contract、cluster message serializer contract は契約化済み。router role/max-per-node 設定は、Pekko public API parity ではなく現行 router contract の拡張として実装済み。ただし、残りの実装には個別の OpenSpec change が必要であり、現在の Grain runtime roadmap の直近優先度とは分けて扱う。
+低コストで parity を前進できるのは、Phase 1 の `Member.ordering` 公開契約、shutdown / DC reachability イベント型、routee 更新の std 配線、mediator 全体 `Count`、基本 CRDT 型群（`Flag` / `GCounter` / `PNCounter` / consistency levels）、および Phase 2 の `prepareForFullClusterShutdown` command path（kernel + typed を 1 change で閉じられる）である。
 
-主要な comparison gap は、Split Brain Resolver runtime、cluster singleton/client、sharding rebalance/remembered entities、Distributed Data Replicator、Pekko/protobuf serializer 完全バイナリ互換である。内部構造比較は、将来これらの scope を採用する OpenSpec change が立った後に進めるのが妥当である。
+parity 上の主要ギャップは Phase 3 に集約される: SBR runtime down execution loop（decision model は完成済みで、実行ループだけが欠けている）、Cluster Singleton（manager / proxy / typed extension）、sharding の rebalance / remembered entities / delivery controllers、そして Distributed Data の Replicator 基盤である。特に SBR runtime loop は、既存の `SplitBrainResolver` / `ReachabilityMatrix` / `MembershipCoordinator` が揃っているため、Phase 3 の中では最も着手可能性が高い。
+
+API ギャップが支配的であり、内部モジュール構造の比較は、singleton / ddata / sharding public API の scope を採用する OpenSpec change が立った後に進めるのが妥当である。

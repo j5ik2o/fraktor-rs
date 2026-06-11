@@ -1,5 +1,9 @@
 //! Cluster event categories used by subscription filters.
 
+#[cfg(test)]
+#[path = "cluster_event_type_test.rs"]
+mod tests;
+
 use crate::ClusterEvent;
 
 /// Supported cluster event categories for `ClusterApi::subscribe`.
@@ -29,6 +33,14 @@ pub enum ClusterEventType {
   MemberQuarantined,
   /// Matches [`ClusterEvent::TopologyApplyFailed`].
   TopologyApplyFailed,
+  /// Matches [`ClusterEvent::MemberPreparingForShutdown`].
+  MemberPreparingForShutdown,
+  /// Matches [`ClusterEvent::MemberReadyForShutdown`].
+  MemberReadyForShutdown,
+  /// Matches [`ClusterEvent::UnreachableDataCenter`].
+  UnreachableDataCenter,
+  /// Matches [`ClusterEvent::ReachableDataCenter`].
+  ReachableDataCenter,
 }
 
 impl ClusterEventType {
@@ -47,7 +59,11 @@ impl ClusterEventType {
       | (Self::UnreachableMember, ClusterEvent::UnreachableMember { .. })
       | (Self::ReachableMember, ClusterEvent::ReachableMember { .. })
       | (Self::MemberQuarantined, ClusterEvent::MemberQuarantined { .. })
-      | (Self::TopologyApplyFailed, ClusterEvent::TopologyApplyFailed { .. }) => true,
+      | (Self::TopologyApplyFailed, ClusterEvent::TopologyApplyFailed { .. })
+      | (Self::MemberPreparingForShutdown, ClusterEvent::MemberPreparingForShutdown { .. })
+      | (Self::MemberReadyForShutdown, ClusterEvent::MemberReadyForShutdown { .. })
+      | (Self::UnreachableDataCenter, ClusterEvent::UnreachableDataCenter { .. })
+      | (Self::ReachableDataCenter, ClusterEvent::ReachableDataCenter { .. }) => true,
       // NOTE: ワイルドカードは意図的。ClusterEvent/ClusterEventType にバリアントを追加する場合は
       // 対応する行もここに追加すること。
       | _ => false,

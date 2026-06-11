@@ -6,7 +6,7 @@ use fraktor_utils_core_rs::time::TimerInstant;
 
 use crate::{
   StartupMode, TopologyUpdate,
-  membership::{CurrentClusterState, MembershipVersion, NodeStatus},
+  membership::{CurrentClusterState, DataCenter, MembershipVersion, NodeStatus},
 };
 
 /// Event payload published via `EventStreamEvent::Extension { name: "cluster", .. }`.
@@ -109,6 +109,38 @@ pub enum ClusterEvent {
   TopologyApplyFailed {
     /// Failure reason.
     reason:      String,
+    /// Observation timestamp.
+    observed_at: TimerInstant,
+  },
+  /// Member started preparing for shutdown.
+  MemberPreparingForShutdown {
+    /// Node identifier.
+    node_id:     String,
+    /// Authority address.
+    authority:   String,
+    /// Observation timestamp.
+    observed_at: TimerInstant,
+  },
+  /// Member is ready for shutdown.
+  MemberReadyForShutdown {
+    /// Node identifier.
+    node_id:     String,
+    /// Authority address.
+    authority:   String,
+    /// Observation timestamp.
+    observed_at: TimerInstant,
+  },
+  /// Data center became unreachable.
+  UnreachableDataCenter {
+    /// Data center identifier.
+    data_center: DataCenter,
+    /// Observation timestamp.
+    observed_at: TimerInstant,
+  },
+  /// Data center became reachable again.
+  ReachableDataCenter {
+    /// Data center identifier.
+    data_center: DataCenter,
     /// Observation timestamp.
     observed_at: TimerInstant,
   },

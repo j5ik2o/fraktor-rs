@@ -10,7 +10,7 @@ use alloc::{
   vec,
   vec::Vec,
 };
-use core::time::Duration;
+use core::{cmp::Ordering, time::Duration};
 
 use fraktor_remote_core_rs::address::{Address, UniqueAddress};
 use fraktor_utils_core_rs::time::TimerInstant;
@@ -19,7 +19,7 @@ use super::{
   CurrentClusterState, GossipDisseminationCoordinator, GossipEvent, MembershipCoordinatorConfig,
   MembershipCoordinatorError, MembershipCoordinatorOutcome, MembershipCoordinatorState, MembershipDelta,
   MembershipError, MembershipSnapshot, MembershipTable, MembershipVersion, NodeRecord, NodeStatus, QuarantineEntry,
-  QuarantineTable, ReachabilityMatrix,
+  QuarantineTable, ReachabilityMatrix, member_age_order, oldest_member,
 };
 use crate::{
   ClusterEvent, ClusterExtensionConfig, ClusterTopology, ConfigValidation, JoinConfigCompatChecker, TopologyUpdate,
@@ -566,6 +566,24 @@ impl MembershipCoordinator {
       } else if from == NodeStatus::Suspect && status == NodeStatus::Up {
         Self::emit_reachable_event(record, now, outcome);
       }
+      // shutdown 系専用イベントの併発（順序固定: MemberStatusChanged の後）
+      match status {
+        | NodeStatus::PreparingForShutdown => {
+          outcome.member_events.push(ClusterEvent::MemberPreparingForShutdown {
+            node_id:     record.node_id.clone(),
+            authority:   record.authority.clone(),
+            observed_at: now,
+          });
+        },
+        | NodeStatus::ReadyForShutdown => {
+          outcome.member_events.push(ClusterEvent::MemberReadyForShutdown {
+            node_id:     record.node_id.clone(),
+            authority:   record.authority.clone(),
+            observed_at: now,
+          });
+        },
+        | _ => {},
+      }
     }
   }
 
@@ -606,6 +624,24 @@ impl MembershipCoordinator {
         to,
         observed_at: now,
       });
+      // shutdown 系専用イベントの併発（順序固定: MemberStatusChanged の後）
+      match to {
+        | NodeStatus::PreparingForShutdown => {
+          outcome.member_events.push(ClusterEvent::MemberPreparingForShutdown {
+            node_id:     record.node_id.clone(),
+            authority:   record.authority.clone(),
+            observed_at: now,
+          });
+        },
+        | NodeStatus::ReadyForShutdown => {
+          outcome.member_events.push(ClusterEvent::MemberReadyForShutdown {
+            node_id:     record.node_id.clone(),
+            authority:   record.authority.clone(),
+            observed_at: now,
+          });
+        },
+        | _ => {},
+      }
     }
   }
 
@@ -650,7 +686,7 @@ impl MembershipCoordinator {
     let unreachable = members.iter().filter(|record| record.status == NodeStatus::Suspect).cloned().collect::<Vec<_>>();
     let leader_members =
       members.iter().filter(|record| is_leader_eligible_status(record.status)).cloned().collect::<Vec<_>>();
-    let leader = oldest_authority(&leader_members);
+    let leader = oldest_member(&leader_members).map(|r| r.authority.clone());
     let role_leader = role_leaders(&members);
     let seen_by = self.gossip.seen_by();
     CurrentClusterState::new_with_reachability(
@@ -749,17 +785,6 @@ impl TopologyAccumulator {
   }
 }
 
-fn oldest_authority(records: &[NodeRecord]) -> Option<String> {
-  let mut oldest: Option<&NodeRecord> = None;
-  for record in records {
-    oldest = match oldest {
-      | Some(current) if !record.is_older_than(current) => Some(current),
-      | _ => Some(record),
-    };
-  }
-  oldest.map(|record| record.authority.clone())
-}
-
 fn role_leaders(records: &[NodeRecord]) -> BTreeMap<String, Option<String>> {
   let mut role_records: BTreeMap<String, Option<NodeRecord>> = BTreeMap::new();
   for record in records {
@@ -769,7 +794,7 @@ fn role_leaders(records: &[NodeRecord]) -> BTreeMap<String, Option<String>> {
         continue;
       }
       let replace = match entry {
-        | Some(current) => record.is_older_than(current),
+        | Some(current) => member_age_order(record, current) == Ordering::Less,
         | None => true,
       };
       if replace {

@@ -13,7 +13,7 @@ use super::{
   DowningDecisionContext, DowningDecisionTrace, DowningStrategyDecision, LeaseAcquisitionOutcome, LeaseMajorityPort,
   SplitBrainResolverSettings, SplitBrainResolverStrategy,
 };
-use crate::membership::{NodeRecord, ReachabilityStatus};
+use crate::membership::{NodeRecord, ReachabilityStatus, oldest_member};
 
 const MEMBERSHIP_REQUIRED: &str = "membership snapshot is required for split-brain evaluation";
 const NO_ACTIVE_MEMBERS: &str = "no active members are available for split-brain evaluation";
@@ -152,7 +152,8 @@ impl SplitBrainResolver {
     let Some(snapshot) = context.membership_snapshot() else {
       return defer(strategy, MEMBERSHIP_REQUIRED);
     };
-    let Some(oldest) = oldest_active_member(snapshot.entries.as_slice()) else {
+    let active: Vec<NodeRecord> = snapshot.entries.iter().filter(|r| r.status.is_active()).cloned().collect();
+    let Some(oldest) = oldest_member(active.as_slice()) else {
       return defer(strategy, NO_ACTIVE_MEMBERS);
     };
     let Some(partition) = PartitionEvaluation::from_context(context) else {
@@ -295,17 +296,6 @@ fn keep_partition(
     retained_partition,
     downing_targets,
   )
-}
-
-fn oldest_active_member(records: &[NodeRecord]) -> Option<&NodeRecord> {
-  let mut oldest = None;
-  for record in records.iter().filter(|record| record.status.is_active()) {
-    oldest = match oldest {
-      | Some(current) if !record.is_older_than(current) => Some(current),
-      | _ => Some(record),
-    };
-  }
-  oldest
 }
 
 fn active_member_addresses(records: &[NodeRecord]) -> Vec<UniqueAddress> {

@@ -1007,7 +1007,7 @@ fn start_member_rejects_invalid_failure_detector_config_before_starting_dependen
   let events = subscriber_impl.events();
   assert!(events.iter().any(|event| matches!(event,
     ClusterEvent::StartupFailed { address, mode, reason }
-      if address == "" && *mode == StartupMode::Member && reason.contains("phi threshold")
+      if address.is_empty() && *mode == StartupMode::Member && reason.contains("phi threshold")
   )));
 }
 
@@ -1051,7 +1051,7 @@ fn start_client_rejects_invalid_failure_detector_config_before_starting_dependen
   let events = subscriber_impl.events();
   assert!(events.iter().any(|event| matches!(event,
     ClusterEvent::StartupFailed { address, mode, reason }
-      if address == "" && *mode == StartupMode::Client && reason.contains("phi threshold")
+      if address.is_empty() && *mode == StartupMode::Client && reason.contains("phi threshold")
   )));
 }
 

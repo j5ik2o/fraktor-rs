@@ -1274,9 +1274,8 @@ PY
 run_clippy() {
   # --all-targets は dev-dep 解決時に ahash/proptest のトランジティブ依存が
   # 壊れるため --lib --bins に限定する（テストコードは run_tests で検証される）。
-  # postcard 1.1.3 が nightly と非互換のため fraktor-cluster-core-kernel-rs / fraktor-cluster-adaptor-std-rs を一時的に除外する。
-  log_step "$(render_cargo_command clippy --workspace --exclude fraktor-cluster-core-kernel-rs --exclude fraktor-cluster-adaptor-std-rs --lib --bins -- -D warnings)"
-  run_cargo clippy --workspace --exclude fraktor-cluster-core-kernel-rs --exclude fraktor-cluster-adaptor-std-rs --lib --bins -- -D warnings || return 1
+  log_step "$(render_cargo_command clippy --workspace --lib --bins -- -D warnings)"
+  run_cargo clippy --workspace --lib --bins -- -D warnings || return 1
 }
 
 run_no_std() {
