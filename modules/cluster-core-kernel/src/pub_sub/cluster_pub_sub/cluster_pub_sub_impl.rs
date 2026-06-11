@@ -102,9 +102,9 @@ impl ClusterPubSubImpl {
 
   /// Creates a new PubSubImpl with custom distributed mediator configuration.
   #[must_use]
-  pub fn with_mediator_config(mut self, settings: DistributedPubSubConfig) -> Self {
+  pub fn with_mediator_config(mut self, config: DistributedPubSubConfig) -> Self {
     let local_owner = self.mediator_state.local_owner().clone();
-    self.mediator_state = DistributedPubSubMediatorState::new(settings, local_owner);
+    self.mediator_state = DistributedPubSubMediatorState::new(config, local_owner);
     self
   }
 
