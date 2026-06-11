@@ -58,13 +58,13 @@ fraktor-rs 側はスキル指定の `pub` 系抽出で、型 297 件 (core-kerne
 | 指標 | 値 |
 |------|-----|
 | Pekko 固定スコープ対象概念 | 151 |
-| fraktor-rs 固定スコープ対応概念（実装済み） | 83 |
-| 固定スコープ概念カバレッジ | 83/151 (55%) |
-| 部分実装 | 13 |
-| 未対応 | 55 |
+| fraktor-rs 固定スコープ対応概念（実装済み） | 87 |
+| 固定スコープ概念カバレッジ | 87/151 (58%) |
+| 部分実装 | 12 |
+| 未対応 | 52 |
 | raw public type declarations | 297 (core-kernel: 265, core-typed: 9, std: 23) |
 | raw public method declarations | 843 (core-kernel: 730, core-typed: 32, std: 81) |
-| hard / medium / easy / trivial gap | 11 / 26 / 21 / 3 |
+| hard / medium / easy / trivial gap | 11 / 26 / 17 / 3 |
 | panic 系スタブ | 0 件 |
 | 機能 placeholder / TODO | 0 件 |
 
@@ -97,25 +97,20 @@ fraktor-rs 側はスキル指定の `pub` 系抽出で、型 297 件 (core-kerne
 
 各カテゴリのヘッダーに **実装済み数 / 対象概念数 (カバレッジ%)** を明記する。ギャップ（未対応・部分実装）のみテーブルに列挙し、実装済みは件数カウントに含めてテーブル行には追加しない。
 
-### 1. Cluster membership / lifecycle　✅ 実装済み 16/22 (73%)
+### 1. Cluster membership / lifecycle　✅ 実装済み 18/22 (82%)
 
 | Pekko API / 契約 | Pekko 参照 | fraktor-rs 対応 | 実装先層 | 難易度 | 備考 |
 |------------------|------------|-----------------|----------|--------|------|
-| `prepareForFullClusterShutdown` | `Cluster.scala:336` | 部分実装 | core + std | medium | `NodeStatus::PreparingForShutdown` / `ReadyForShutdown` と状態遷移は実装済みだが、`ClusterApi` / `ClusterCommand` から起動する full shutdown command path がない |
-| `Member.ordering` / `Member.ageOrdering` | `Member.scala:111` | 未対応 | core/membership | easy | `oldest_authority` が `MembershipCoordinator` のプライベート関数として存在するのみ。member ordering / age ordering の公開契約がない |
+| `prepareForFullClusterShutdown` | `Cluster.scala:336` | 部分実装 | core + std | medium | `NodeStatus::PreparingForShutdown` / `ReadyForShutdown` と状態遷移・進行イベントは実装済みだが、`ClusterApi` / `ClusterCommand` から起動する full shutdown command path がない |
 | `CoordinatedShutdownLeave` | `CoordinatedShutdownLeave.scala:30` | 未対応 | core/extension + std | medium | coordinated shutdown phase から cluster leave を駆動する hook がない（actor-core 側に CoordinatedShutdown はある） |
-| `ClusterLogMarker` | `ClusterLogMarker.scala:29` | 未対応 | core/topology | easy | cluster lifecycle 専用の構造化 tracing field / marker 契約がない。`@ApiMayChange` だが JVM 固有ではない |
 | `ClusterScope` deploy scope | `ClusterActorRefProvider.scala:148` | 未対応 | core/extension | medium | cluster-aware deployment scope 概念がない。router config はあるが deploy scope としての統合はない |
 | `ClusterSettings.CrossDcFailureDetectorSettings` / `MultiDataCenter` | `ClusterSettings.scala:65`, `ClusterSettings.scala:76` | 未対応 | core/config | easy | `CrossDcHeartbeat` evidence と `FailureDetectorConfig` はあるが、Multi-DC 専用の failure detector 設定 namespace がない |
 
-実装済みとして扱うもの: cluster extension、join/leave/down（`ClusterApi` フルセット）、event stream subscription、current state snapshot、member/up/removed callback、roles/app_version 設定、leader/role leader 算出、startup/shutdown event、`UniqueAddress` semantics（`NodeRecord::unique_address` / `try_join_with_identity`）、data center membership、`WeaklyUp`、`remotePathOf`、`MemberStatus` 全 variant（`Down` ≈ `Dead` 別名実装済み）、`PreparingForShutdown` / `ReadyForShutdown` status、`ClusterSettings` 契約（`ClusterExtensionConfig` + `FailureDetectorConfig` + `ConfigValidation`）、`JoinConfigCompatChecker` + `ConfigValidation`。
+実装済みとして扱うもの: cluster extension、join/leave/down（`ClusterApi` フルセット）、event stream subscription、current state snapshot、member/up/removed callback、roles/app_version 設定、leader/role leader 算出、startup/shutdown event、`UniqueAddress` semantics（`NodeRecord::unique_address` / `try_join_with_identity`）、data center membership、`WeaklyUp`、`remotePathOf`、`MemberStatus` 全 variant（`Down` ≈ `Dead` 別名実装済み）、`PreparingForShutdown` / `ReadyForShutdown` status、`ClusterSettings` 契約（`ClusterExtensionConfig` + `FailureDetectorConfig` + `ConfigValidation`）、`JoinConfigCompatChecker` + `ConfigValidation`、Member ordering 公開契約（`member_age_order` / `age_ordered` / `oldest_member`、2026-06-11 cluster-membership-event-surface）、`ClusterLogMarker` 相当の構造化 tracing field 契約（`cluster_lifecycle_trace_field` + std `ClusterLifecycleLogSubscriber`、同上）。
 
-### 2. Gossip / reachability / failure detection　✅ 実装済み 16/18 (89%)
+### 2. Gossip / reachability / failure detection　✅ 実装済み 18/18 (100%)
 
-| Pekko API / 契約 | Pekko 参照 | fraktor-rs 対応 | 実装先層 | 難易度 | 備考 |
-|------------------|------------|-----------------|----------|--------|------|
-| `MemberPreparingForShutdown` / `MemberReadyForShutdown` event | `ClusterEvent.scala:297`, `ClusterEvent.scala:302` | 部分実装 | core/membership | easy | `NodeStatus` に状態はあるが、`MembershipEvent`（現状 `Joined` / `Left` / `MarkedSuspect` / `AuthorityConflict`）に shutdown 進行イベント variant がない |
-| `DataCenterReachabilityEvent`（`UnreachableDataCenter` / `ReachableDataCenter`） | `ClusterEvent.scala:396`, `ClusterEvent.scala:401` | 未対応 | core/membership | easy | `CrossDcHeartbeatEvidence` はあるが、DC 単位の reachability イベント型と発行経路がない |
+このカテゴリの未対応ギャップは解消済み（2026-06-11 cluster-membership-event-surface で `MemberPreparingForShutdown` / `MemberReadyForShutdown` イベント variant + coordinator 併発、`UnreachableDataCenter` / `ReachableDataCenter` イベント + `DataCenterReachabilityTable` ラッチを実装）。
 
 実装済みとして扱うもの: `Reachability` matrix（`ReachabilityMatrix` / `ReachabilityRecord` / `ReachabilitySnapshot`）、full `Gossip` merge / tombstone / seen digest（`GossipStateModel` / `GossipStateSnapshot`）、`GossipEnvelope` + logical handoff、dedicated heartbeat protocol（`HeartbeatProtocolState`）、`CrossDcClusterHeartbeat` evidence（`CrossDcHeartbeat`）、`SeedNodeProcess`、config compatibility full key set（`ClusterCompatibilityKeyCatalog` / `JoinCompatibilityComposition`）、Failure Detector Configuration（`FailureDetectorConfig` + `ConfiguredPhiAccrualDetectorFactory`）、`SubscriptionInitialStateMode`（`ClusterSubscriptionInitialStateMode`）、`MembershipTable` / `MembershipDelta` / `MembershipVersion` / `VectorClock`、`DefaultFailureDetectorRegistry`、`MembershipCoordinator::poll` による suspect/dead 遷移、indirect connection evidence、`TokioGossipTransport`。
 
@@ -267,13 +262,11 @@ n/a へ移動: `ClusterClient` / `ClusterClientReceptionist` / `ClusterClientSet
 
 ### Phase 1: trivial / easy（既存設計の範囲で API surface を埋められるもの）
 
+2026-06-11: cluster-membership-event-surface スペックで `Member.ordering` 公開契約、`ClusterLogMarker`（構造化 tracing field 契約）、`MemberPreparingForShutdown` / `MemberReadyForShutdown` event variant、`DataCenterReachabilityEvent` の 4 項目が実装完了し、本リストから除去した。
+
 | 項目 | 実装先層 | 根拠カテゴリ |
 |------|----------|--------------|
-| `Member.ordering` / `ageOrdering` 公開契約 | core/membership | カテゴリ1 |
-| `ClusterLogMarker`（構造化 tracing field 契約） | core/topology | カテゴリ1 |
 | `CrossDcFailureDetectorSettings` / Multi-DC 設定 namespace | core/config | カテゴリ1 |
-| `MemberPreparingForShutdown` / `MemberReadyForShutdown` event variant | core/membership | カテゴリ2 |
-| `DataCenterReachabilityEvent` | core/membership | カテゴリ2 |
 | membership-driven routee add/remove の std 配線 | std | カテゴリ4 |
 | `ClusterSingletonManagerSettings`（classic） | core/config | カテゴリ6 |
 | `ClusterSingletonProxySettings` | core/config | カテゴリ6 |

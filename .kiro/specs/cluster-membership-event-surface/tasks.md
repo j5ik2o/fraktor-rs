@@ -94,5 +94,5 @@
 - 1.1: ClusterEventType の matches は const fn の網羅 match。variant 追加時は cluster_event.rs / cluster_event_type.rs / 同 matches の 3 点セットで更新する
 - 1.2: trace field 契約に FIELD_TRANSITION（"cluster.lifecycle.transition"）が設計外で追加されている（レビュー承認済み）。3.3 の std 準拠化ではこの定数を遷移種別の出力 key として使うこと
 - 2.3: shutdown 系遷移の実発行点は emit_status_change ではなく register_membership_change（gossip delta パス）だった。design.md は訂正済み。3.1 で coordinator を触る際は両方の発行点に注意
-- 3.3: std 層の既存 tracing 出力（5 件）は全て I/O 系エラーで cluster lifecycle 遷移の記録は現存しない。要件 4.4 は条件付き要件として真空的に成立（コード変更なしで完了、レビュー承認済み）。将来 std 層に lifecycle 出力を追加する際は cluster_lifecycle_trace_field の契約定数を必ず参照すること
+- 3.3: std 層の既存 tracing 出力（5 件）は全て I/O 系エラーで cluster lifecycle 遷移の記録は現存しない。要件 4.4 は条件付き要件として真空的に成立（コード変更なしで完了、レビュー承認済み）。→ 後続のフォローアップで cluster-adaptor-std に `ClusterLifecycleLogSubscriber` を実装し、契約定数の実消費者が存在する状態になった（要件 4.4 が実質的に行使される形で成立）。以降 std 層に lifecycle 出力を追加する際も cluster_lifecycle_trace_field の契約定数を必ず参照すること
 - 4.2: `cluster_core_test.rs:1010,1054` の pre-existing clippy エラー（comparison to empty slice）2 件は検証完了後にボーイスカウト修正済み（`.is_empty()` 化）。`./scripts/ci-check.sh clippy` の cluster クレート除外（2026-03-15 導入、当時の nightly-2025-12-01 と postcard 1.1.3 の非互換が理由）は現行 nightly-2026-06-05 で解消を確認し撤去済み。cluster クレートも CI の clippy 対象に復帰
