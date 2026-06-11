@@ -98,8 +98,8 @@ fn install_rejects_invalid_failure_detector_config_before_building_components() 
   assert_eq!(*identity_lookup_calls.lock(), 0);
 }
 
-// RED フェーズ: validate_singleton() が install で呼ばれていない現時点では、
-// 不正な singleton 設定でも install が成立してしまい、このテストは失敗することを確認する。
+// install は validate_singleton() を実行するため、不正な singleton 設定が
+// Configuration エラーとして拒否されることを確認する。
 #[test]
 fn install_rejects_invalid_singleton_config_with_configuration_error() {
   // 空の singleton 名 → EmptySingletonName（要件 4.4）

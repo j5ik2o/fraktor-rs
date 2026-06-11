@@ -131,6 +131,7 @@ fn join_compatibility_key_manifest_separates_required_and_conditional_non_sensit
     "fraktor.cluster.pubsub.suspended-ttl",
     "fraktor.cluster.downing-provider.provider-key",
     "cluster.failure-detector",
+    "cluster.singleton",
   ]);
   assert_eq!(conditional_keys, &[
     "fraktor.cluster.downing-provider.split-brain-resolver.stable-after",
@@ -139,6 +140,7 @@ fn join_compatibility_key_manifest_separates_required_and_conditional_non_sensit
   ]);
   assert!(ClusterExtensionConfig::is_required_join_compatibility_key("fraktor.cluster.downing-provider.provider-key"));
   assert!(ClusterExtensionConfig::is_required_join_compatibility_key("cluster.failure-detector"));
+  assert!(ClusterExtensionConfig::is_required_join_compatibility_key("cluster.singleton"));
   assert!(!ClusterExtensionConfig::is_required_join_compatibility_key("cluster.failure-detector.choice"));
   assert!(!ClusterExtensionConfig::is_required_join_compatibility_key("cluster.failure-detector.phi-threshold"));
   assert!(!ClusterExtensionConfig::is_required_join_compatibility_key(
@@ -214,10 +216,10 @@ fn join_compatibility_reports_sbr_settings_mismatch_when_both_sides_configure_sb
   let joining_sbr =
     SplitBrainResolverConfig::new(Duration::from_secs(20), SplitBrainResolverStrategy::KeepOldest, Duration::ZERO);
   let local = ClusterExtensionConfig::new().with_downing_provider_compatibility(
-    DowningProviderCompatibility::new("split-brain-resolver").with_split_brain_resolver_settings(local_sbr),
+    DowningProviderCompatibility::new("split-brain-resolver").with_split_brain_resolver_config(local_sbr),
   );
   let joining = ClusterExtensionConfig::new().with_downing_provider_compatibility(
-    DowningProviderCompatibility::new("split-brain-resolver").with_split_brain_resolver_settings(joining_sbr),
+    DowningProviderCompatibility::new("split-brain-resolver").with_split_brain_resolver_config(joining_sbr),
   );
 
   let validation = local.check_join_compatibility(&joining);
@@ -235,7 +237,7 @@ fn join_compatibility_reports_sbr_settings_mismatch_against_missing_sbr_settings
     Duration::from_secs(15),
   );
   let local = ClusterExtensionConfig::new().with_downing_provider_compatibility(
-    DowningProviderCompatibility::new("split-brain-resolver").with_split_brain_resolver_settings(sbr),
+    DowningProviderCompatibility::new("split-brain-resolver").with_split_brain_resolver_config(sbr),
   );
   let joining = ClusterExtensionConfig::new()
     .with_downing_provider_compatibility(DowningProviderCompatibility::new("split-brain-resolver"));
@@ -255,12 +257,12 @@ fn sbr_settings_checker_ignores_non_sbr_provider_pairs() {
     Duration::from_secs(15),
   );
   let local = ClusterExtensionConfig::new().with_downing_provider_compatibility(
-    DowningProviderCompatibility::new("split-brain-resolver").with_split_brain_resolver_settings(sbr),
+    DowningProviderCompatibility::new("split-brain-resolver").with_split_brain_resolver_config(sbr),
   );
   let joining =
     ClusterExtensionConfig::new().with_downing_provider_compatibility(DowningProviderCompatibility::new("noop"));
 
-  assert!(split_brain_resolver_settings_are_compatible(&local, &joining));
+  assert!(split_brain_resolver_config_are_compatible(&local, &joining));
 }
 
 #[test]
@@ -276,10 +278,10 @@ fn join_compatibility_reports_sbr_timing_mismatch_when_strategy_matches() {
     Duration::from_secs(15),
   );
   let local = ClusterExtensionConfig::new().with_downing_provider_compatibility(
-    DowningProviderCompatibility::new("split-brain-resolver").with_split_brain_resolver_settings(local_sbr),
+    DowningProviderCompatibility::new("split-brain-resolver").with_split_brain_resolver_config(local_sbr),
   );
   let joining = ClusterExtensionConfig::new().with_downing_provider_compatibility(
-    DowningProviderCompatibility::new("split-brain-resolver").with_split_brain_resolver_settings(joining_sbr),
+    DowningProviderCompatibility::new("split-brain-resolver").with_split_brain_resolver_config(joining_sbr),
   );
 
   let validation = local.check_join_compatibility(&joining);
@@ -297,10 +299,10 @@ fn join_compatibility_accepts_same_sbr_settings() {
     Duration::from_secs(15),
   );
   let local = ClusterExtensionConfig::new().with_downing_provider_compatibility(
-    DowningProviderCompatibility::new("split-brain-resolver").with_split_brain_resolver_settings(sbr),
+    DowningProviderCompatibility::new("split-brain-resolver").with_split_brain_resolver_config(sbr),
   );
   let joining = ClusterExtensionConfig::new().with_downing_provider_compatibility(
-    DowningProviderCompatibility::new("split-brain-resolver").with_split_brain_resolver_settings(sbr),
+    DowningProviderCompatibility::new("split-brain-resolver").with_split_brain_resolver_config(sbr),
   );
 
   let validation = local.check_join_compatibility(&joining);
@@ -317,10 +319,10 @@ fn join_compatibility_ignores_static_quorum_size_for_non_static_quorum_strategy(
   );
   let joining_sbr = local_sbr.with_static_quorum_size(3);
   let local = ClusterExtensionConfig::new().with_downing_provider_compatibility(
-    DowningProviderCompatibility::new("split-brain-resolver").with_split_brain_resolver_settings(local_sbr),
+    DowningProviderCompatibility::new("split-brain-resolver").with_split_brain_resolver_config(local_sbr),
   );
   let joining = ClusterExtensionConfig::new().with_downing_provider_compatibility(
-    DowningProviderCompatibility::new("split-brain-resolver").with_split_brain_resolver_settings(joining_sbr),
+    DowningProviderCompatibility::new("split-brain-resolver").with_split_brain_resolver_config(joining_sbr),
   );
 
   let validation = local.check_join_compatibility(&joining);

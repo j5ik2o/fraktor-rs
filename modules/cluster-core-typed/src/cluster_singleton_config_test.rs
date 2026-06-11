@@ -1,7 +1,8 @@
 use core::time::Duration;
 
-use fraktor_cluster_core_kernel_rs::singleton::{
-  ClusterSingletonManagerConfig, ClusterSingletonProxyConfig, LeaseUsageConfig,
+use fraktor_cluster_core_kernel_rs::{
+  membership::DataCenter,
+  singleton::{ClusterSingletonManagerConfig, ClusterSingletonProxyConfig, LeaseUsageConfig},
 };
 
 use crate::ClusterSingletonConfig;
@@ -61,8 +62,6 @@ fn manager_derivation_is_lossless() {
 #[test]
 fn proxy_derivation_is_lossless() {
   // 非既定値で構築した統合設定から proxy を導出したとき、各項目の値が変化しない（要件 3.3）
-  use fraktor_cluster_core_kernel_rs::membership::DataCenter;
-
   let dc = DataCenter::new("dc-west");
   let unified = ClusterSingletonConfig::new()
     .with_role("frontend")
@@ -84,8 +83,6 @@ fn proxy_derivation_is_lossless() {
 #[test]
 fn proxy_only_fields_do_not_affect_manager_derivation() {
   // data_center / identification_interval / buffer_size は manager に存在しない（要件 3.2）
-  use fraktor_cluster_core_kernel_rs::membership::DataCenter;
-
   let dc = DataCenter::new("dc-east");
   let unified = ClusterSingletonConfig::new()
     .with_data_center(dc)

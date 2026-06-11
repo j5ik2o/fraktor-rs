@@ -136,6 +136,37 @@ fn max_hand_over_retries_uses_min_when_margin_is_small() {
   assert_eq!(s.max_hand_over_retries(), 15);
 }
 
+#[test]
+fn max_hand_over_retries_counts_ticks_for_sub_millisecond_interval() {
+  // margin 50ms / 間隔 500µs → margin_ticks = 100, max(15, 100 + 3) = 103
+  // （ナノ秒単位で除算するため、サブミリ秒間隔でも 0 に切り捨てられない）
+  let s = ClusterSingletonManagerConfig::new()
+    .with_removal_margin(Duration::from_millis(50))
+    .with_hand_over_retry_interval(Duration::from_micros(500));
+
+  assert_eq!(s.max_hand_over_retries(), 103);
+}
+
+#[test]
+fn max_hand_over_retries_counts_ticks_for_one_millisecond_interval() {
+  // margin 100ms / 間隔 1ms → margin_ticks = 100, max(15, 100 + 3) = 103
+  let s = ClusterSingletonManagerConfig::new()
+    .with_removal_margin(Duration::from_millis(100))
+    .with_hand_over_retry_interval(Duration::from_millis(1));
+
+  assert_eq!(s.max_hand_over_retries(), 103);
+}
+
+#[test]
+fn max_hand_over_retries_saturates_extreme_margin_to_tick_cap() {
+  // 極端な margin / 間隔比は MAX_MARGIN_TICKS = 86_400 で飽和 → 86_400 + 3 = 86_403
+  let s = ClusterSingletonManagerConfig::new()
+    .with_removal_margin(Duration::from_secs(864_000))
+    .with_hand_over_retry_interval(Duration::from_nanos(1));
+
+  assert_eq!(s.max_hand_over_retries(), 86_403);
+}
+
 // --- difference_field_names テスト（要件 5.2） ---
 
 #[test]

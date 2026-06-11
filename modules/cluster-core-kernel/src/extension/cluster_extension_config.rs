@@ -24,12 +24,13 @@ const PUBSUB_SUBSCRIBER_TIMEOUT_KEY: &str = "fraktor.cluster.pubsub.subscriber-t
 const PUBSUB_SUSPENDED_TTL_KEY: &str = "fraktor.cluster.pubsub.suspended-ttl";
 const DOWNING_PROVIDER_KEY: &str = "fraktor.cluster.downing-provider.provider-key";
 const FAILURE_DETECTOR_KEY: &str = ClusterCompatibilityKeyCatalog::FAILURE_DETECTOR.name();
+const SINGLETON_KEY: &str = ClusterCompatibilityKeyCatalog::SINGLETON.name();
 const SBR_STABLE_AFTER_KEY: &str = "fraktor.cluster.downing-provider.split-brain-resolver.stable-after";
 const SBR_ACTIVE_STRATEGY_KEY: &str = "fraktor.cluster.downing-provider.split-brain-resolver.active-strategy";
 const SBR_DOWN_ALL_WHEN_UNSTABLE_KEY: &str =
   "fraktor.cluster.downing-provider.split-brain-resolver.down-all-when-unstable";
 const REQUIRED_JOIN_COMPATIBILITY_KEYS: &[&str] =
-  &[PUBSUB_SUBSCRIBER_TIMEOUT_KEY, PUBSUB_SUSPENDED_TTL_KEY, DOWNING_PROVIDER_KEY, FAILURE_DETECTOR_KEY];
+  &[PUBSUB_SUBSCRIBER_TIMEOUT_KEY, PUBSUB_SUSPENDED_TTL_KEY, DOWNING_PROVIDER_KEY, FAILURE_DETECTOR_KEY, SINGLETON_KEY];
 const CONDITIONAL_JOIN_COMPATIBILITY_KEYS: &[&str] =
   &[SBR_STABLE_AFTER_KEY, SBR_ACTIVE_STRATEGY_KEY, SBR_DOWN_ALL_WHEN_UNSTABLE_KEY];
 const SENSITIVE_JOIN_COMPATIBILITY_KEYS: &[&str] = &[];
@@ -53,7 +54,7 @@ const JOIN_COMPATIBILITY_CHECKS: &[JoinCompatibilityCheck] = &[
   JoinCompatibilityCheck::new(ClusterCompatibilityKeyCatalog::DOWNING_PROVIDER, downing_provider_key_mismatch_detail),
   JoinCompatibilityCheck::new(
     ClusterCompatibilityKeyCatalog::SPLIT_BRAIN_RESOLVER_CONFIG,
-    split_brain_resolver_settings_mismatch_detail,
+    split_brain_resolver_config_mismatch_detail,
   ),
   JoinCompatibilityCheck::new(
     ClusterCompatibilityKeyCatalog::FAILURE_DETECTOR,
@@ -345,20 +346,20 @@ fn downing_provider_key_mismatch_detail(
   }
 }
 
-fn split_brain_resolver_settings_are_compatible(
+fn split_brain_resolver_config_are_compatible(
   local: &ClusterExtensionConfig,
   joining: &ClusterExtensionConfig,
 ) -> bool {
   local.downing_provider.provider_key() != SPLIT_BRAIN_RESOLVER_PROVIDER_KEY
     || joining.downing_provider.provider_key() != SPLIT_BRAIN_RESOLVER_PROVIDER_KEY
-    || local.downing_provider.sbr_settings_identity() == joining.downing_provider.sbr_settings_identity()
+    || local.downing_provider.sbr_config_identity() == joining.downing_provider.sbr_config_identity()
 }
 
-fn split_brain_resolver_settings_mismatch_detail(
+fn split_brain_resolver_config_mismatch_detail(
   local: &ClusterExtensionConfig,
   joining: &ClusterExtensionConfig,
 ) -> Option<String> {
-  if split_brain_resolver_settings_are_compatible(local, joining) {
+  if split_brain_resolver_config_are_compatible(local, joining) {
     None
   } else {
     Some(String::from(SBR_CONFIG_MISMATCH_REASON))

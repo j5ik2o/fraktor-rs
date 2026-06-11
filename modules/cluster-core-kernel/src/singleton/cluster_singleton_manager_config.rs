@@ -9,6 +9,11 @@ use super::{ClusterSingletonConfigError, LeaseUsageConfig};
 #[path = "cluster_singleton_manager_config_test.rs"]
 mod tests;
 
+/// Upper bound for the margin-derived tick count so that extreme
+/// `removal_margin` / `hand_over_retry_interval` ratios cannot produce an
+/// unrealistically large maximum retry count.
+const MAX_MARGIN_TICKS: u32 = 86_400;
+
 /// Configuration for the Cluster Singleton manager.
 ///
 /// Holds the operating parameters for the singleton manager with
@@ -152,19 +157,23 @@ impl ClusterSingletonManagerConfig {
   /// ```text
   /// max_hand_over_retries = max(min_hand_over_retries, margin_ticks + 3)
   /// margin_ticks = removal_margin (None treated as 0) / hand_over_retry_interval
-  ///                (integer division in milliseconds, truncating)
+  ///                (integer division in nanoseconds, truncating,
+  ///                 capped at MAX_MARGIN_TICKS = 86_400)
   /// ```
   ///
   /// When `hand_over_retry_interval` is zero, `margin_ticks` is treated as 0 to
   /// avoid division by zero (this function is total and never panics).
   #[must_use]
   pub fn max_hand_over_retries(&self) -> u32 {
-    let margin_millis = self.removal_margin.unwrap_or(Duration::ZERO).as_millis();
-    let interval_millis = self.hand_over_retry_interval.as_millis();
+    let margin_nanos = self.removal_margin.unwrap_or(Duration::ZERO).as_nanos();
+    let interval_nanos = self.hand_over_retry_interval.as_nanos();
 
-    // checked_div はゼロ除算時に None を返す。None は margin_ticks = 0 として扱う
-    // u128 → u32 への変換は現実的なパラメータ範囲内で安全
-    let margin_ticks: u32 = margin_millis.checked_div(interval_millis).unwrap_or(0).try_into().unwrap_or(u32::MAX);
+    // checked_div はゼロ除算時に None を返す。None は margin_ticks = 0 として扱う。
+    // サブミリ秒間隔でも切り捨てで 0 にならないようナノ秒単位で除算し、
+    // 極端な removal_margin / interval 比は MAX_MARGIN_TICKS で飽和させる
+    let margin_ticks = u32::try_from(margin_nanos.checked_div(interval_nanos).unwrap_or(0))
+      .unwrap_or(MAX_MARGIN_TICKS)
+      .min(MAX_MARGIN_TICKS);
 
     let candidate = margin_ticks.saturating_add(3);
     self.min_hand_over_retries.max(candidate)
