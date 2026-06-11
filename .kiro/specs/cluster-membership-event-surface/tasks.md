@@ -95,4 +95,4 @@
 - 1.2: trace field 契約に FIELD_TRANSITION（"cluster.lifecycle.transition"）が設計外で追加されている（レビュー承認済み）。3.3 の std 準拠化ではこの定数を遷移種別の出力 key として使うこと
 - 2.3: shutdown 系遷移の実発行点は emit_status_change ではなく register_membership_change（gossip delta パス）だった。design.md は訂正済み。3.1 で coordinator を触る際は両方の発行点に注意
 - 3.3: std 層の既存 tracing 出力（5 件）は全て I/O 系エラーで cluster lifecycle 遷移の記録は現存しない。要件 4.4 は条件付き要件として真空的に成立（コード変更なしで完了、レビュー承認済み）。将来 std 層に lifecycle 出力を追加する際は cluster_lifecycle_trace_field の契約定数を必ず参照すること
-- 4.2: `cluster_core_test.rs:1010,1054` に pre-existing の clippy エラー（comparison to empty slice）が 2 件ある（feature 開始前から存在、本 feature 無関係）。`./scripts/ci-check.sh clippy` は postcard 非互換のため fraktor-cluster-core-kernel-rs を除外しており公式 CI はパスする。`cargo clippy -p fraktor-cluster-core-kernel-rs --all-targets` を直接叩くと失敗するので注意
+- 4.2: `cluster_core_test.rs:1010,1054` の pre-existing clippy エラー（comparison to empty slice）2 件は検証完了後にボーイスカウト修正済み（`.is_empty()` 化）。`cargo clippy -p fraktor-cluster-core-kernel-rs --all-targets -- -D warnings` は現在パスする。`./scripts/ci-check.sh clippy` の cluster クレート除外は postcard 1.1.3 と nightly の非互換が理由（本件とは独立、除外は継続）
