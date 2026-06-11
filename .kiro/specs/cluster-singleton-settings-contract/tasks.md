@@ -1,6 +1,6 @@
 # 実装計画
 
-- [ ] 1. singleton モジュールを新設し、設定検証エラーの語彙を定義する
+- [x] 1. singleton モジュールを新設し、設定検証エラーの語彙を定義する
   - cluster-core-kernel に singleton 専用モジュールの wiring を追加し、ワークスペースの公開モジュールとして到達可能にする
   - 検証失敗の原因項目（空 singleton 名 / buffer size 範囲外 / ゼロ以下の handover リトライ間隔 / ゼロ以下の identification 間隔 / 空 lease 実装名 / ゼロ以下の lease リトライ間隔）を特定できるエラー enum と英語 Display を定義する
   - 完了条件: ワークスペースがコンパイルでき、各 variant の Display が原因項目を含むことをテストで検証できる
