@@ -8,7 +8,7 @@
   - _Boundary:_ singleton モジュール wiring, ClusterSingletonConfigError
   - _Depends:_ none
 
-- [ ] 2. コア: 設定契約
+- [x] 2. コア: 設定契約
 - [x] 2.1 lease 設定スロットを実装する
   - lease 実装の識別名と lease リトライ間隔の 2 項目のみを保持する設定型を定義する（SBR の lease 語彙とは結合しない）
   - 空の実装名とゼロ以下のリトライ間隔を検証で拒否する
@@ -50,7 +50,7 @@
   - _Boundary:_ ClusterSingletonConfig
   - _Depends:_ 2.2, 2.3
 
-- [ ] 3. 観測契約
+- [x] 3. 観測契約
 - [x] 3.1 (P) stuck 局面の語彙を定義する
   - 停滞の局面（oldest への昇格待ち / handover 実行中）を表す 2 値 enum を singleton モジュールに追加する
   - 完了条件: 2 variant の等価比較テストが通り、singleton モジュールから公開される
@@ -68,7 +68,7 @@
   - _Boundary:_ ClusterEvent / ClusterEventType 拡張
   - _Depends:_ 3.1
 
-- [ ] 4. 統合: 検証境界と参加互換性
+- [x] 4. 統合: 検証境界と参加互換性
 - [x] 4.1 (P) 互換キーカタログに singleton キーを追加する
   - cluster.singleton を required キーとしてカタログに追加し、required キー一覧に組み込む
   - カタログには sibling テストファイルが未存在のため、新規作成してテスト紐づけを追加する
