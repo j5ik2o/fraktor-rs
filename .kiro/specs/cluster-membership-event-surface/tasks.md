@@ -29,7 +29,7 @@
   - _Boundary:_ member_ordering
   - _Depends:_ none
 
-- [ ] 2.2 (P) DC 到達性ラッチを実装する
+- [x] 2.2 (P) DC 到達性ラッチを実装する
   - cross-DC heartbeat の観測対象変更と evidence を入力に、DC 単位の unreachable ラッチと復帰判定を行う値型の状態機械と遷移出力 enum を membership に追加する
   - 自 DC の evidence は入力段階で無視し、観測対象が空になった DC はエントリ削除（遷移出力なし）とする
   - down 操作・membership 変更は行わず、出力は遷移 enum のみとする
