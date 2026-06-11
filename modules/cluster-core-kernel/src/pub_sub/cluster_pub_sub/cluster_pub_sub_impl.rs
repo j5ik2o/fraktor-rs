@@ -23,8 +23,8 @@ use crate::{
   ClusterEvent, StartupMode, TopologyUpdate,
   grain::{KindRegistry, TOPIC_ACTOR_KIND},
   pub_sub::{
-    DeliverBatchRequest, DeliveryEndpointShared, DeliveryReport, DistributedPubSubMediatorState,
-    DistributedPubSubSettings, MediatorCommand, MediatorCommandOutcome, PubSubBatch, PubSubBroker, PubSubConfig,
+    DeliverBatchRequest, DeliveryEndpointShared, DeliveryReport, DistributedPubSubConfig,
+    DistributedPubSubMediatorState, MediatorCommand, MediatorCommandOutcome, PubSubBatch, PubSubBroker, PubSubConfig,
     PubSubEnvelope, PubSubError, PubSubEvent, PubSubSubscriber, PubSubTopic, PubSubTopicOptions, PublishAck,
     PublishOptions, PublishRejectReason, PublishRequest, SubscriberDeliveryReport, TopicRegistryApplyOutcome,
     TopicRegistryDelta, TopicRegistryDeltaCollector, TopicRegistryEntryKind, TopicRegistryStatus,
@@ -72,7 +72,7 @@ impl ClusterPubSubImpl {
     registry_snapshot: &KindRegistry,
   ) -> Self {
     let has_topic_actor_kind = registry_snapshot.contains(TOPIC_ACTOR_KIND);
-    let mediator_settings = DistributedPubSubSettings::default();
+    let mediator_config = DistributedPubSubConfig::default();
     let mediator_owner = mediator_owner_from_address("pubsub");
     Self {
       event_stream,
@@ -86,7 +86,7 @@ impl ClusterPubSubImpl {
       last_observed_at: None,
       mediator_clock_anchor: None,
       last_mediator_now: None,
-      mediator_state: DistributedPubSubMediatorState::new(mediator_settings, mediator_owner),
+      mediator_state: DistributedPubSubMediatorState::new(mediator_config, mediator_owner),
       peer_statuses: BTreeMap::new(),
       active_mediator_owners: Vec::new(),
     }
@@ -100,11 +100,11 @@ impl ClusterPubSubImpl {
     self
   }
 
-  /// Creates a new PubSubImpl with custom distributed mediator settings.
+  /// Creates a new PubSubImpl with custom distributed mediator configuration.
   #[must_use]
-  pub fn with_mediator_settings(mut self, settings: DistributedPubSubSettings) -> Self {
+  pub fn with_mediator_config(mut self, config: DistributedPubSubConfig) -> Self {
     let local_owner = self.mediator_state.local_owner().clone();
-    self.mediator_state = DistributedPubSubMediatorState::new(settings, local_owner);
+    self.mediator_state = DistributedPubSubMediatorState::new(config, local_owner);
     self
   }
 
@@ -432,8 +432,8 @@ impl ClusterPubSub for ClusterPubSubImpl {
     Ok(PublishAck::accepted())
   }
 
-  fn mediator_settings(&self) -> DistributedPubSubSettings {
-    self.mediator_state.settings().clone()
+  fn mediator_config(&self) -> DistributedPubSubConfig {
+    self.mediator_state.config().clone()
   }
 
   fn mediator_status(&self) -> TopicRegistryStatus {
@@ -450,7 +450,7 @@ impl ClusterPubSub for ClusterPubSubImpl {
     TopicRegistryDeltaCollector::collect_delta(
       peer_status,
       from_ref(self.mediator_state.local_bucket()),
-      self.mediator_state.settings(),
+      self.mediator_state.config(),
     )
   }
 

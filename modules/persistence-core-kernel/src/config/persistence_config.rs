@@ -1,26 +1,26 @@
-//! Public persistence runtime settings.
+//! Public persistence runtime configuration.
 
 #[cfg(test)]
-#[path = "persistence_settings_test.rs"]
+#[path = "persistence_config_test.rs"]
 mod tests;
 
 use crate::{journal::JournalActorConfig, snapshot::SnapshotActorConfig};
 
-/// Public settings for the persistence runtime actors.
+/// Public configuration for the persistence runtime actors.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct PersistenceSettings {
+pub struct PersistenceConfig {
   journal_actor_config:  JournalActorConfig,
   snapshot_actor_config: SnapshotActorConfig,
 }
 
-impl PersistenceSettings {
-  /// Creates settings from the default store actor configs.
+impl PersistenceConfig {
+  /// Creates a configuration from the default store actor configs.
   #[must_use]
-  pub const fn default_settings() -> Self {
+  pub const fn default_config() -> Self {
     Self::new(JournalActorConfig::default_config(), SnapshotActorConfig::default_config())
   }
 
-  /// Creates settings with explicit store actor configs.
+  /// Creates a configuration with explicit store actor configs.
   #[must_use]
   pub const fn new(journal_actor_config: JournalActorConfig, snapshot_actor_config: SnapshotActorConfig) -> Self {
     Self { journal_actor_config, snapshot_actor_config }
@@ -53,8 +53,8 @@ impl PersistenceSettings {
   }
 }
 
-impl Default for PersistenceSettings {
+impl Default for PersistenceConfig {
   fn default() -> Self {
-    Self::default_settings()
+    Self::default_config()
   }
 }

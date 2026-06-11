@@ -74,6 +74,8 @@ pub mod message_serialization;
 pub mod outbound;
 /// Cluster-wide publish/subscribe messaging coordination.
 pub mod pub_sub;
+/// Cluster Singleton settings, validation, and error vocabulary.
+pub mod singleton;
 /// Observed cluster topology and topology-change contracts.
 pub mod topology;
 

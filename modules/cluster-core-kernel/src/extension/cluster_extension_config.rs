@@ -12,23 +12,25 @@ use crate::{
   downing_provider::DowningProviderCompatibility,
   failure_detector::{FailureDetectorConfig, FailureDetectorConfigError},
   pub_sub::PubSubConfig,
+  singleton::{ClusterSingletonConfigError, ClusterSingletonManagerConfig, ClusterSingletonProxyConfig},
   topology::{ClusterCompatibilityKey, ClusterCompatibilityKeyCatalog},
 };
 
 const PUBSUB_CONFIGURATION_MISMATCH_REASON: &str = "pubsub configuration mismatch";
 const DOWNING_PROVIDER_KEY_MISMATCH_REASON: &str = "downing provider compatibility key mismatch";
-const SBR_SETTINGS_MISMATCH_REASON: &str = "split brain resolver settings mismatch";
+const SBR_CONFIG_MISMATCH_REASON: &str = "split brain resolver config mismatch";
 const SPLIT_BRAIN_RESOLVER_PROVIDER_KEY: &str = "split-brain-resolver";
 const PUBSUB_SUBSCRIBER_TIMEOUT_KEY: &str = "fraktor.cluster.pubsub.subscriber-timeout";
 const PUBSUB_SUSPENDED_TTL_KEY: &str = "fraktor.cluster.pubsub.suspended-ttl";
 const DOWNING_PROVIDER_KEY: &str = "fraktor.cluster.downing-provider.provider-key";
 const FAILURE_DETECTOR_KEY: &str = ClusterCompatibilityKeyCatalog::FAILURE_DETECTOR.name();
+const SINGLETON_KEY: &str = ClusterCompatibilityKeyCatalog::SINGLETON.name();
 const SBR_STABLE_AFTER_KEY: &str = "fraktor.cluster.downing-provider.split-brain-resolver.stable-after";
 const SBR_ACTIVE_STRATEGY_KEY: &str = "fraktor.cluster.downing-provider.split-brain-resolver.active-strategy";
 const SBR_DOWN_ALL_WHEN_UNSTABLE_KEY: &str =
   "fraktor.cluster.downing-provider.split-brain-resolver.down-all-when-unstable";
 const REQUIRED_JOIN_COMPATIBILITY_KEYS: &[&str] =
-  &[PUBSUB_SUBSCRIBER_TIMEOUT_KEY, PUBSUB_SUSPENDED_TTL_KEY, DOWNING_PROVIDER_KEY, FAILURE_DETECTOR_KEY];
+  &[PUBSUB_SUBSCRIBER_TIMEOUT_KEY, PUBSUB_SUSPENDED_TTL_KEY, DOWNING_PROVIDER_KEY, FAILURE_DETECTOR_KEY, SINGLETON_KEY];
 const CONDITIONAL_JOIN_COMPATIBILITY_KEYS: &[&str] =
   &[SBR_STABLE_AFTER_KEY, SBR_ACTIVE_STRATEGY_KEY, SBR_DOWN_ALL_WHEN_UNSTABLE_KEY];
 const SENSITIVE_JOIN_COMPATIBILITY_KEYS: &[&str] = &[];
@@ -51,26 +53,29 @@ const JOIN_COMPATIBILITY_CHECKS: &[JoinCompatibilityCheck] = &[
   JoinCompatibilityCheck::new(ClusterCompatibilityKeyCatalog::PUBSUB, pubsub_config_mismatch_detail),
   JoinCompatibilityCheck::new(ClusterCompatibilityKeyCatalog::DOWNING_PROVIDER, downing_provider_key_mismatch_detail),
   JoinCompatibilityCheck::new(
-    ClusterCompatibilityKeyCatalog::SPLIT_BRAIN_RESOLVER_SETTINGS,
-    split_brain_resolver_settings_mismatch_detail,
+    ClusterCompatibilityKeyCatalog::SPLIT_BRAIN_RESOLVER_CONFIG,
+    split_brain_resolver_config_mismatch_detail,
   ),
   JoinCompatibilityCheck::new(
     ClusterCompatibilityKeyCatalog::FAILURE_DETECTOR,
     failure_detector_config_mismatch_detail,
   ),
+  JoinCompatibilityCheck::new(ClusterCompatibilityKeyCatalog::SINGLETON, singleton_config_mismatch_detail),
 ];
 
 /// Configuration applied when installing the cluster extension.
 #[derive(Clone, Debug, PartialEq)]
 pub struct ClusterExtensionConfig {
-  advertised_address:      String,
-  metrics_enabled:         bool,
-  static_topology:         Option<ClusterTopology>,
-  pubsub_config:           PubSubConfig,
-  failure_detector_config: FailureDetectorConfig,
-  app_version:             String,
-  roles:                   Vec<String>,
-  downing_provider:        DowningProviderCompatibility,
+  advertised_address:       String,
+  metrics_enabled:          bool,
+  static_topology:          Option<ClusterTopology>,
+  pubsub_config:            PubSubConfig,
+  failure_detector_config:  FailureDetectorConfig,
+  app_version:              String,
+  roles:                    Vec<String>,
+  downing_provider:         DowningProviderCompatibility,
+  singleton_manager_config: ClusterSingletonManagerConfig,
+  singleton_proxy_config:   ClusterSingletonProxyConfig,
 }
 
 impl ClusterExtensionConfig {
@@ -82,14 +87,16 @@ impl ClusterExtensionConfig {
   #[must_use]
   pub fn new() -> Self {
     Self {
-      advertised_address:      String::new(),
-      metrics_enabled:         false,
-      static_topology:         None,
-      pubsub_config:           PubSubConfig::new(Duration::from_secs(3), Duration::from_secs(60)),
-      failure_detector_config: FailureDetectorConfig::new(),
-      app_version:             String::from(env!("CARGO_PKG_VERSION")),
-      roles:                   Vec::new(),
-      downing_provider:        DowningProviderCompatibility::noop(),
+      advertised_address:       String::new(),
+      metrics_enabled:          false,
+      static_topology:          None,
+      pubsub_config:            PubSubConfig::new(Duration::from_secs(3), Duration::from_secs(60)),
+      failure_detector_config:  FailureDetectorConfig::new(),
+      app_version:              String::from(env!("CARGO_PKG_VERSION")),
+      roles:                    Vec::new(),
+      downing_provider:         DowningProviderCompatibility::noop(),
+      singleton_manager_config: ClusterSingletonManagerConfig::new(),
+      singleton_proxy_config:   ClusterSingletonProxyConfig::new(),
     }
   }
 
@@ -235,6 +242,43 @@ impl ClusterExtensionConfig {
     SENSITIVE_JOIN_COMPATIBILITY_KEYS.contains(&key)
   }
 
+  /// Sets the singleton manager configuration.
+  #[must_use]
+  pub fn with_singleton_manager_config(mut self, config: ClusterSingletonManagerConfig) -> Self {
+    self.singleton_manager_config = config;
+    self
+  }
+
+  /// Sets the singleton proxy configuration.
+  #[must_use]
+  pub fn with_singleton_proxy_config(mut self, config: ClusterSingletonProxyConfig) -> Self {
+    self.singleton_proxy_config = config;
+    self
+  }
+
+  /// Returns the singleton manager configuration.
+  #[must_use]
+  pub const fn singleton_manager_config(&self) -> &ClusterSingletonManagerConfig {
+    &self.singleton_manager_config
+  }
+
+  /// Returns the singleton proxy configuration.
+  #[must_use]
+  pub const fn singleton_proxy_config(&self) -> &ClusterSingletonProxyConfig {
+    &self.singleton_proxy_config
+  }
+
+  /// Validates singleton-related configuration values.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`ClusterSingletonConfigError`] when the singleton manager or proxy configuration
+  /// contains invalid values.
+  pub fn validate_singleton(&self) -> Result<(), ClusterSingletonConfigError> {
+    self.singleton_manager_config.validate()?;
+    self.singleton_proxy_config.validate()
+  }
+
   /// Validates cluster extension configuration values.
   ///
   /// # Errors
@@ -302,23 +346,23 @@ fn downing_provider_key_mismatch_detail(
   }
 }
 
-fn split_brain_resolver_settings_are_compatible(
+fn split_brain_resolver_config_are_compatible(
   local: &ClusterExtensionConfig,
   joining: &ClusterExtensionConfig,
 ) -> bool {
   local.downing_provider.provider_key() != SPLIT_BRAIN_RESOLVER_PROVIDER_KEY
     || joining.downing_provider.provider_key() != SPLIT_BRAIN_RESOLVER_PROVIDER_KEY
-    || local.downing_provider.sbr_settings_identity() == joining.downing_provider.sbr_settings_identity()
+    || local.downing_provider.sbr_config_identity() == joining.downing_provider.sbr_config_identity()
 }
 
-fn split_brain_resolver_settings_mismatch_detail(
+fn split_brain_resolver_config_mismatch_detail(
   local: &ClusterExtensionConfig,
   joining: &ClusterExtensionConfig,
 ) -> Option<String> {
-  if split_brain_resolver_settings_are_compatible(local, joining) {
+  if split_brain_resolver_config_are_compatible(local, joining) {
     None
   } else {
-    Some(String::from(SBR_SETTINGS_MISMATCH_REASON))
+    Some(String::from(SBR_CONFIG_MISMATCH_REASON))
   }
 }
 
@@ -328,6 +372,27 @@ fn failure_detector_config_mismatch_detail(
 ) -> Option<String> {
   let field_names = local.failure_detector_config.difference_field_names(&joining.failure_detector_config);
   if field_names.is_empty() { None } else { Some(field_names.join(", ")) }
+}
+
+fn singleton_config_mismatch_detail(
+  local: &ClusterExtensionConfig,
+  joining: &ClusterExtensionConfig,
+) -> Option<String> {
+  let manager_fields: Vec<String> = local
+    .singleton_manager_config
+    .difference_field_names(&joining.singleton_manager_config)
+    .into_iter()
+    .map(|f| alloc::format!("manager.{f}"))
+    .collect();
+  let proxy_fields: Vec<String> = local
+    .singleton_proxy_config
+    .difference_field_names(&joining.singleton_proxy_config)
+    .into_iter()
+    .map(|f| alloc::format!("proxy.{f}"))
+    .collect();
+  let mut all_fields = manager_fields;
+  all_fields.extend(proxy_fields);
+  if all_fields.is_empty() { None } else { Some(all_fields.join(", ")) }
 }
 
 fn normalize_roles(mut roles: Vec<String>) -> Vec<String> {

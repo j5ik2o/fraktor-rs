@@ -17,7 +17,7 @@ use fraktor_actor_core_kernel_rs::{
 use fraktor_utils_core_rs::sync::{ArcShared, SharedAccess};
 
 use crate::{
-  config::PersistenceSettings,
+  config::PersistenceConfig,
   extension::{PersistenceExtensionInstaller, PersistenceExtensionShared},
   journal::{InMemoryJournal, JournalActorConfig},
   persistent::{AtomicWrite, PersistentRepr},
@@ -100,13 +100,13 @@ fn installer_registers_persistence_extension() {
 }
 
 #[test]
-fn installer_registers_extension_with_explicit_settings() {
+fn installer_registers_extension_with_explicit_config() {
   let journal = InMemoryJournal::new();
   let snapshot_store = InMemorySnapshotStore::new();
-  let settings = PersistenceSettings::default()
+  let config = PersistenceConfig::default()
     .with_journal_actor_config(JournalActorConfig::new(2))
     .with_snapshot_actor_config(SnapshotActorConfig::new(3));
-  let installer = PersistenceExtensionInstaller::new_with_settings(journal, snapshot_store, settings);
+  let installer = PersistenceExtensionInstaller::new_with_config(journal, snapshot_store, config);
   let installers = ExtensionInstallers::default().with_extension_installer(installer);
   let system = build_system(installers);
 

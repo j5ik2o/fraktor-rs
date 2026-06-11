@@ -7,7 +7,7 @@ use fraktor_utils_core_rs::time::TimerInstant;
 use crate::{
   downing_provider::{
     DowningDecision, DowningDecisionContext, LeaseAcquisitionOutcome, LeaseMajorityPort, SplitBrainResolver,
-    SplitBrainResolverSettings, SplitBrainResolverStrategy,
+    SplitBrainResolverConfig, SplitBrainResolverStrategy,
   },
   membership::{DataCenter, MembershipSnapshot, MembershipVersion, NodeRecord, NodeStatus, ReachabilityMatrix},
 };
@@ -77,7 +77,7 @@ fn keep_majority_keeps_reachable_majority_partition() {
     vec![node_a.clone(), node_b.clone(), node_c.clone()],
     reachability.snapshot(),
   );
-  let resolver = SplitBrainResolver::new(SplitBrainResolverSettings::new(
+  let resolver = SplitBrainResolver::new(SplitBrainResolverConfig::new(
     Duration::ZERO,
     SplitBrainResolverStrategy::KeepMajority,
     Duration::from_secs(30),
@@ -103,7 +103,7 @@ fn keep_majority_defers_when_multi_observer_partition_lacks_local_observer() {
     vec![node_a, node_b],
     reachability.snapshot(),
   );
-  let resolver = SplitBrainResolver::new(SplitBrainResolverSettings::new(
+  let resolver = SplitBrainResolver::new(SplitBrainResolverConfig::new(
     Duration::ZERO,
     SplitBrainResolverStrategy::KeepMajority,
     Duration::from_secs(30),
@@ -127,7 +127,7 @@ fn keep_majority_uses_local_observer_partition_for_symmetric_split() {
     vec![node_a.clone(), node_b],
     reachability.snapshot(),
   );
-  let resolver = SplitBrainResolver::new(SplitBrainResolverSettings::new(
+  let resolver = SplitBrainResolver::new(SplitBrainResolverConfig::new(
     Duration::ZERO,
     SplitBrainResolverStrategy::KeepMajority,
     Duration::from_secs(30),
@@ -152,7 +152,7 @@ fn static_quorum_uses_configured_fixed_quorum() {
     reachability.snapshot(),
   );
   let resolver = SplitBrainResolver::new(
-    SplitBrainResolverSettings::new(Duration::ZERO, SplitBrainResolverStrategy::StaticQuorum, Duration::from_secs(30))
+    SplitBrainResolverConfig::new(Duration::ZERO, SplitBrainResolverStrategy::StaticQuorum, Duration::from_secs(30))
       .with_static_quorum_size(2),
   );
 
@@ -175,7 +175,7 @@ fn static_quorum_without_configured_size_defers() {
     vec![node_a, node_b],
     reachability.snapshot(),
   );
-  let resolver = SplitBrainResolver::new(SplitBrainResolverSettings::new(
+  let resolver = SplitBrainResolver::new(SplitBrainResolverConfig::new(
     Duration::ZERO,
     SplitBrainResolverStrategy::StaticQuorum,
     Duration::from_secs(30),
@@ -200,7 +200,7 @@ fn static_quorum_with_zero_size_defers() {
     reachability.snapshot(),
   );
   let resolver = SplitBrainResolver::new(
-    SplitBrainResolverSettings::new(Duration::ZERO, SplitBrainResolverStrategy::StaticQuorum, Duration::from_secs(30))
+    SplitBrainResolverConfig::new(Duration::ZERO, SplitBrainResolverStrategy::StaticQuorum, Duration::from_secs(30))
       .with_static_quorum_size(0),
   );
 
@@ -226,7 +226,7 @@ fn static_quorum_defers_when_both_partitions_satisfy_quorum() {
     reachability.snapshot(),
   );
   let resolver = SplitBrainResolver::new(
-    SplitBrainResolverSettings::new(Duration::ZERO, SplitBrainResolverStrategy::StaticQuorum, Duration::from_secs(30))
+    SplitBrainResolverConfig::new(Duration::ZERO, SplitBrainResolverStrategy::StaticQuorum, Duration::from_secs(30))
       .with_static_quorum_size(2),
   );
 
@@ -251,7 +251,7 @@ fn majority_tie_defers_with_tie_break_reason() {
     vec![node_a, node_b],
     reachability.snapshot(),
   );
-  let resolver = SplitBrainResolver::new(SplitBrainResolverSettings::new(
+  let resolver = SplitBrainResolver::new(SplitBrainResolverConfig::new(
     Duration::ZERO,
     SplitBrainResolverStrategy::KeepMajority,
     Duration::from_secs(30),
@@ -274,7 +274,7 @@ fn stable_after_nonzero_defers_before_strategy_evaluation() {
     vec![node_a, node_b],
     reachability.snapshot(),
   );
-  let resolver = SplitBrainResolver::new(SplitBrainResolverSettings::new(
+  let resolver = SplitBrainResolver::new(SplitBrainResolverConfig::new(
     Duration::from_secs(20),
     SplitBrainResolverStrategy::KeepOldest,
     Duration::from_secs(30),
@@ -299,7 +299,7 @@ fn stable_after_elapsed_evaluates_strategy() {
     vec![node_a.clone(), node_b.clone(), node_c.clone()],
     reachability.snapshot(),
   );
-  let resolver = SplitBrainResolver::new(SplitBrainResolverSettings::new(
+  let resolver = SplitBrainResolver::new(SplitBrainResolverConfig::new(
     Duration::from_secs(20),
     SplitBrainResolverStrategy::KeepMajority,
     Duration::from_secs(30),
@@ -325,7 +325,7 @@ fn majority_uses_indirect_evidence_subject_as_non_reachable_partition() {
   let indirect_evidence = evidence_source.indirect_evidence_for(&node_c.unique_address).expect("indirect evidence");
   let snapshot =
     MembershipSnapshot::new(MembershipVersion::new(10), vec![node_a.clone(), node_b.clone(), node_c.clone()]);
-  let resolver = SplitBrainResolver::new(SplitBrainResolverSettings::new(
+  let resolver = SplitBrainResolver::new(SplitBrainResolverConfig::new(
     Duration::ZERO,
     SplitBrainResolverStrategy::KeepMajority,
     Duration::from_secs(30),
@@ -354,7 +354,7 @@ fn keep_oldest_retains_partition_containing_oldest_member() {
     vec![node_a.clone(), node_b.clone()],
     reachability.snapshot(),
   );
-  let resolver = SplitBrainResolver::new(SplitBrainResolverSettings::new(
+  let resolver = SplitBrainResolver::new(SplitBrainResolverConfig::new(
     Duration::ZERO,
     SplitBrainResolverStrategy::KeepOldest,
     Duration::from_secs(30),
@@ -379,7 +379,7 @@ fn down_all_defers_until_timeout_is_elapsed() {
     vec![node_a, node_b],
     reachability.snapshot(),
   );
-  let resolver = SplitBrainResolver::new(SplitBrainResolverSettings::new(
+  let resolver = SplitBrainResolver::new(SplitBrainResolverConfig::new(
     Duration::ZERO,
     SplitBrainResolverStrategy::DownAll,
     Duration::from_secs(30),
@@ -403,7 +403,7 @@ fn down_all_returns_all_down_when_timeout_is_elapsed() {
     vec![node_a.clone(), node_b.clone()],
     reachability.snapshot(),
   );
-  let resolver = SplitBrainResolver::new(SplitBrainResolverSettings::new(
+  let resolver = SplitBrainResolver::new(SplitBrainResolverConfig::new(
     Duration::ZERO,
     SplitBrainResolverStrategy::DownAll,
     Duration::ZERO,
@@ -428,7 +428,7 @@ fn down_all_returns_all_down_after_unstable_timeout_elapsed() {
     vec![node_a.clone(), node_b.clone()],
     reachability.snapshot(),
   );
-  let resolver = SplitBrainResolver::new(SplitBrainResolverSettings::new(
+  let resolver = SplitBrainResolver::new(SplitBrainResolverConfig::new(
     Duration::ZERO,
     SplitBrainResolverStrategy::DownAll,
     Duration::from_secs(30),
@@ -449,7 +449,7 @@ fn down_all_elapsed_does_not_require_reachability_evidence() {
   let node_a = record("node-a", 1, NodeStatus::Up, 1);
   let node_b = record("node-b", 2, NodeStatus::WeaklyUp, 2);
   let snapshot = MembershipSnapshot::new(MembershipVersion::new(10), vec![node_a.clone(), node_b.clone()]);
-  let resolver = SplitBrainResolver::new(SplitBrainResolverSettings::new(
+  let resolver = SplitBrainResolver::new(SplitBrainResolverConfig::new(
     Duration::ZERO,
     SplitBrainResolverStrategy::DownAll,
     Duration::from_secs(30),
@@ -477,7 +477,7 @@ fn lease_majority_keeps_majority_partition_only_when_lease_is_acquired() {
     vec![node_a.clone(), node_b.clone(), node_c.clone()],
     reachability.snapshot(),
   );
-  let resolver = SplitBrainResolver::new(SplitBrainResolverSettings::new(
+  let resolver = SplitBrainResolver::new(SplitBrainResolverConfig::new(
     Duration::ZERO,
     SplitBrainResolverStrategy::LeaseMajority,
     Duration::from_secs(30),
@@ -506,7 +506,7 @@ fn lease_majority_defers_when_lease_is_not_acquired() {
     vec![node_a, node_b, node_c],
     reachability.snapshot(),
   );
-  let resolver = SplitBrainResolver::new(SplitBrainResolverSettings::new(
+  let resolver = SplitBrainResolver::new(SplitBrainResolverConfig::new(
     Duration::ZERO,
     SplitBrainResolverStrategy::LeaseMajority,
     Duration::from_secs(30),
@@ -533,7 +533,7 @@ fn lease_majority_consults_lease_when_partitions_are_tied() {
     vec![node_a.clone(), node_b.clone()],
     reachability.snapshot(),
   );
-  let resolver = SplitBrainResolver::new(SplitBrainResolverSettings::new(
+  let resolver = SplitBrainResolver::new(SplitBrainResolverConfig::new(
     Duration::ZERO,
     SplitBrainResolverStrategy::LeaseMajority,
     Duration::from_secs(30),
@@ -563,7 +563,7 @@ fn lease_majority_downs_local_observer_when_non_reachable_majority_would_be_reta
     vec![node_a.clone(), node_b.clone(), node_c.clone()],
     reachability.snapshot(),
   );
-  let resolver = SplitBrainResolver::new(SplitBrainResolverSettings::new(
+  let resolver = SplitBrainResolver::new(SplitBrainResolverConfig::new(
     Duration::ZERO,
     SplitBrainResolverStrategy::LeaseMajority,
     Duration::from_secs(30),
@@ -592,7 +592,7 @@ fn lease_majority_does_not_acquire_lease_when_local_observer_is_downing_target()
     vec![node_a.clone(), node_b, node_c],
     reachability.snapshot(),
   );
-  let resolver = SplitBrainResolver::new(SplitBrainResolverSettings::new(
+  let resolver = SplitBrainResolver::new(SplitBrainResolverConfig::new(
     Duration::ZERO,
     SplitBrainResolverStrategy::LeaseMajority,
     Duration::from_secs(30),
@@ -619,7 +619,7 @@ fn lease_majority_without_backend_defers_with_backend_missing_outcome() {
     vec![node_a, node_b],
     reachability.snapshot(),
   );
-  let resolver = SplitBrainResolver::new(SplitBrainResolverSettings::new(
+  let resolver = SplitBrainResolver::new(SplitBrainResolverConfig::new(
     Duration::ZERO,
     SplitBrainResolverStrategy::LeaseMajority,
     Duration::from_secs(30),
@@ -633,7 +633,7 @@ fn lease_majority_without_backend_defers_with_backend_missing_outcome() {
 
 #[test]
 fn lease_majority_explicit_down_does_not_require_backend() {
-  let resolver = SplitBrainResolver::new(SplitBrainResolverSettings::new(
+  let resolver = SplitBrainResolver::new(SplitBrainResolverConfig::new(
     Duration::ZERO,
     SplitBrainResolverStrategy::LeaseMajority,
     Duration::from_secs(30),

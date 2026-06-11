@@ -11,7 +11,7 @@ use super::{
 use crate::{
   DynValue, StreamError, downcast_value,
   stage::{CancellationCause, StageActor},
-  stream_ref::{StreamRefCumulativeDemand, StreamRefSettings},
+  stream_ref::{StreamRefConfig, StreamRefCumulativeDemand},
 };
 
 #[cfg(test)]
@@ -59,7 +59,7 @@ impl<T> StreamRefHandoff<T> {
       subscribed:      false,
       closed:          false,
       failure:         None,
-      buffer_capacity: StreamRefSettings::new().buffer_capacity(),
+      buffer_capacity: StreamRefConfig::new().buffer_capacity(),
       pending_demand:  0,
       next_out_seq_nr: 0,
       next_in_seq_nr:  0,

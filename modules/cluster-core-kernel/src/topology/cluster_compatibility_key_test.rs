@@ -4,7 +4,12 @@ use crate::topology::ClusterCompatibilityKeyCatalog;
 fn catalog_exposes_required_stable_key_names() {
   let required_names: Vec<_> = ClusterCompatibilityKeyCatalog::required_keys().iter().map(|key| key.name()).collect();
 
-  assert_eq!(required_names, vec!["cluster.pubsub", "cluster.downing-provider", "cluster.failure-detector"]);
+  assert_eq!(required_names, vec![
+    "cluster.pubsub",
+    "cluster.downing-provider",
+    "cluster.failure-detector",
+    "cluster.singleton"
+  ]);
 }
 
 #[test]
@@ -12,7 +17,7 @@ fn catalog_exposes_conditional_stable_key_names() {
   let conditional_names: Vec<_> =
     ClusterCompatibilityKeyCatalog::conditional_keys().iter().map(|key| key.name()).collect();
 
-  assert_eq!(conditional_names, vec!["cluster.split-brain-resolver.settings"]);
+  assert_eq!(conditional_names, vec!["cluster.split-brain-resolver.config"]);
 }
 
 #[test]

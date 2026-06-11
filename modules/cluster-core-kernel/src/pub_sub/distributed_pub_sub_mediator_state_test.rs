@@ -6,7 +6,7 @@ use fraktor_remote_core_rs::address::{Address, UniqueAddress};
 use crate::{
   activation::ClusterIdentity,
   pub_sub::{
-    DistributedPubSubMediatorState, DistributedPubSubSettings, MediatorCommand, MediatorCommandOutcome,
+    DistributedPubSubConfig, DistributedPubSubMediatorState, MediatorCommand, MediatorCommandOutcome,
     MediatorDeliveryIntent, MediatorDeliveryMode, MediatorPathKey, MediatorQueryResult, PubSubEnvelope,
     PubSubNoSubscriberBehavior, PubSubRoutingMode, PubSubSubscriber, PubSubTopic, TopicRegistryBucket,
     TopicRegistryDelta, TopicRegistryDeltaEntry, TopicRegistryEntry, TopicRegistryEntryKey, TopicRegistryEntryKind,
@@ -33,8 +33,8 @@ fn publish_targets(outcome: MediatorCommandOutcome) -> Vec<PubSubSubscriber> {
   }
 }
 
-fn settings(behavior: PubSubNoSubscriberBehavior) -> DistributedPubSubSettings {
-  DistributedPubSubSettings::try_new(
+fn config(behavior: PubSubNoSubscriberBehavior) -> DistributedPubSubConfig {
+  DistributedPubSubConfig::try_new(
     None,
     PubSubRoutingMode::RoundRobin,
     Duration::from_secs(1),
@@ -42,11 +42,11 @@ fn settings(behavior: PubSubNoSubscriberBehavior) -> DistributedPubSubSettings {
     100,
     behavior,
   )
-  .expect("settings")
+  .expect("config")
 }
 
-fn random_settings(behavior: PubSubNoSubscriberBehavior) -> DistributedPubSubSettings {
-  DistributedPubSubSettings::try_new(
+fn random_config(behavior: PubSubNoSubscriberBehavior) -> DistributedPubSubConfig {
+  DistributedPubSubConfig::try_new(
     None,
     PubSubRoutingMode::Random,
     Duration::from_secs(1),
@@ -54,13 +54,13 @@ fn random_settings(behavior: PubSubNoSubscriberBehavior) -> DistributedPubSubSet
     100,
     behavior,
   )
-  .expect("settings")
+  .expect("config")
 }
 
 #[test]
 fn subscribe_publish_unsubscribe_and_query_use_registry_entries() {
   let local = owner("node-a", 1);
-  let mut state = DistributedPubSubMediatorState::new(settings(PubSubNoSubscriberBehavior::Drop), local.clone());
+  let mut state = DistributedPubSubMediatorState::new(config(PubSubNoSubscriberBehavior::Drop), local.clone());
   let topic = PubSubTopic::new("news");
   let first = subscriber("sub-1");
   let second = subscriber("sub-2");
@@ -112,7 +112,7 @@ fn subscribe_publish_unsubscribe_and_query_use_registry_entries() {
 #[test]
 fn grouped_publish_selects_one_subscriber_per_group() {
   let local = owner("node-a", 1);
-  let mut state = DistributedPubSubMediatorState::new(settings(PubSubNoSubscriberBehavior::Drop), local.clone());
+  let mut state = DistributedPubSubMediatorState::new(config(PubSubNoSubscriberBehavior::Drop), local.clone());
   let topic = PubSubTopic::new("news");
   let active = from_ref(&local);
 
@@ -150,7 +150,7 @@ fn grouped_publish_selects_one_subscriber_per_group() {
 #[test]
 fn grouped_publish_round_robins_within_group() {
   let local = owner("node-a", 1);
-  let mut state = DistributedPubSubMediatorState::new(settings(PubSubNoSubscriberBehavior::Drop), local.clone());
+  let mut state = DistributedPubSubMediatorState::new(config(PubSubNoSubscriberBehavior::Drop), local.clone());
   let topic = PubSubTopic::new("news");
   let first = subscriber("sub-1");
   let second = subscriber("sub-2");
@@ -200,7 +200,7 @@ fn grouped_publish_round_robins_within_group() {
 fn grouped_publish_deduplicates_subscribers_before_group_selection() {
   let local = owner("node-a", 1);
   let remote = owner("node-b", 2);
-  let mut state = DistributedPubSubMediatorState::new(settings(PubSubNoSubscriberBehavior::Drop), local.clone());
+  let mut state = DistributedPubSubMediatorState::new(config(PubSubNoSubscriberBehavior::Drop), local.clone());
   let topic = PubSubTopic::new("news");
   let group = Some(String::from("blue"));
   let first = subscriber("sub-1");
@@ -240,7 +240,7 @@ fn grouped_publish_deduplicates_subscribers_before_group_selection() {
 #[test]
 fn prune_removed_entries_drops_publish_group_cursors_for_removed_topics() {
   let local = owner("node-a", 1);
-  let mut state = DistributedPubSubMediatorState::new(settings(PubSubNoSubscriberBehavior::Drop), local.clone());
+  let mut state = DistributedPubSubMediatorState::new(config(PubSubNoSubscriberBehavior::Drop), local.clone());
   let topic = PubSubTopic::new("news");
   let group = String::from("blue");
   let first = subscriber("sub-1");
@@ -280,7 +280,7 @@ fn prune_removed_entries_drops_publish_group_cursors_for_removed_topics() {
       active,
     )
     .expect("unsubscribed");
-  let expired_at = 14 + state.settings().removed_entry_ttl().as_millis() as u64;
+  let expired_at = 14 + state.config().removed_entry_ttl().as_millis() as u64;
   state.prune_removed_entries(expired_at, &[]);
 
   assert!(!state.publish_group_cursors.contains_key(&(topic, group)));
@@ -292,10 +292,8 @@ fn random_group_publish_uses_topic_in_selection_key() {
   let first = subscriber("sub-1");
   let second = subscriber("sub-2");
   let active = from_ref(&local);
-  let mut a_state =
-    DistributedPubSubMediatorState::new(random_settings(PubSubNoSubscriberBehavior::Drop), local.clone());
-  let mut b_state =
-    DistributedPubSubMediatorState::new(random_settings(PubSubNoSubscriberBehavior::Drop), local.clone());
+  let mut a_state = DistributedPubSubMediatorState::new(random_config(PubSubNoSubscriberBehavior::Drop), local.clone());
+  let mut b_state = DistributedPubSubMediatorState::new(random_config(PubSubNoSubscriberBehavior::Drop), local.clone());
   let a_topic = PubSubTopic::new("a");
   let b_topic = PubSubTopic::new("b");
 
@@ -346,9 +344,9 @@ fn random_group_publish_uses_topic_in_selection_key() {
 fn publish_no_subscriber_uses_configured_topic_intent() {
   let local = owner("node-a", 1);
   let topic = PubSubTopic::new("missing");
-  let mut drop_state = DistributedPubSubMediatorState::new(settings(PubSubNoSubscriberBehavior::Drop), local.clone());
+  let mut drop_state = DistributedPubSubMediatorState::new(config(PubSubNoSubscriberBehavior::Drop), local.clone());
   let mut dead_letter_state =
-    DistributedPubSubMediatorState::new(settings(PubSubNoSubscriberBehavior::DeadLetter), local.clone());
+    DistributedPubSubMediatorState::new(config(PubSubNoSubscriberBehavior::DeadLetter), local.clone());
 
   let dropped = drop_state
     .apply_command(MediatorCommand::try_publish(topic.clone(), payload()).expect("publish"), 10, from_ref(&local))
@@ -365,7 +363,7 @@ fn publish_no_subscriber_uses_configured_topic_intent() {
 fn subscriber_count_deduplicates_same_subscriber_across_buckets() {
   let local = owner("node-a", 1);
   let remote = owner("node-b", 2);
-  let mut state = DistributedPubSubMediatorState::new(settings(PubSubNoSubscriberBehavior::Drop), local.clone());
+  let mut state = DistributedPubSubMediatorState::new(config(PubSubNoSubscriberBehavior::Drop), local.clone());
   let topic = PubSubTopic::new("news");
   let duplicate = subscriber("same-target");
   let active = vec![local.clone(), remote.clone()];
@@ -391,7 +389,7 @@ fn subscriber_count_deduplicates_same_subscriber_across_buckets() {
 #[test]
 fn publish_and_send_use_separate_registry_namespaces() {
   let local = owner("node-a", 1);
-  let mut state = DistributedPubSubMediatorState::new(settings(PubSubNoSubscriberBehavior::Drop), local.clone());
+  let mut state = DistributedPubSubMediatorState::new(config(PubSubNoSubscriberBehavior::Drop), local.clone());
   let target = subscriber("path-target");
   let topic = PubSubTopic::new("news");
   let active = from_ref(&local);
@@ -432,7 +430,7 @@ fn publish_and_send_use_separate_registry_namespaces() {
 fn local_owner_is_not_delivery_candidate_when_active_owners_exclude_it() {
   let local = owner("advertised", 1);
   let membership_owner = owner("member", 2);
-  let mut state = DistributedPubSubMediatorState::new(settings(PubSubNoSubscriberBehavior::Drop), local.clone());
+  let mut state = DistributedPubSubMediatorState::new(config(PubSubNoSubscriberBehavior::Drop), local.clone());
 
   state
     .apply_command(
@@ -458,7 +456,7 @@ fn rebinding_local_owner_preserves_existing_registry_entries() {
   let first_owner = owner("node-a", 1);
   let second_owner = owner("node-b", 2);
   let target = subscriber("path-target");
-  let mut state = DistributedPubSubMediatorState::new(settings(PubSubNoSubscriberBehavior::Drop), first_owner);
+  let mut state = DistributedPubSubMediatorState::new(config(PubSubNoSubscriberBehavior::Drop), first_owner);
 
   state
     .apply_command(
@@ -488,7 +486,7 @@ fn rebinding_local_owner_removes_remote_bucket_with_same_owner() {
   let real_owner = owner("member", 2);
   let local_target = subscriber("local-path-target");
   let remote_target = subscriber("stale-remote-target");
-  let mut state = DistributedPubSubMediatorState::new(settings(PubSubNoSubscriberBehavior::Drop), placeholder_owner);
+  let mut state = DistributedPubSubMediatorState::new(config(PubSubNoSubscriberBehavior::Drop), placeholder_owner);
   let active = from_ref(&real_owner);
 
   state
@@ -524,7 +522,7 @@ fn upsert_remote_bucket_discards_bucket_for_local_owner() {
   let local = owner("node-a", 1);
   let local_target = subscriber("local-path-target");
   let remote_target = subscriber("stale-remote-target");
-  let mut state = DistributedPubSubMediatorState::new(settings(PubSubNoSubscriberBehavior::Drop), local.clone());
+  let mut state = DistributedPubSubMediatorState::new(config(PubSubNoSubscriberBehavior::Drop), local.clone());
   let active = from_ref(&local);
 
   state
@@ -560,7 +558,7 @@ fn remote_bucket_is_ignored_when_owner_is_not_active() {
   let remote = owner("node-b", 2);
   let mut remote_bucket = TopicRegistryBucket::new(remote.clone());
   remote_bucket.put_subscription(PubSubTopic::new("news"), None, subscriber("remote"));
-  let mut state = DistributedPubSubMediatorState::new(settings(PubSubNoSubscriberBehavior::Drop), local.clone());
+  let mut state = DistributedPubSubMediatorState::new(config(PubSubNoSubscriberBehavior::Drop), local.clone());
   state.upsert_remote_bucket(remote_bucket);
 
   let published = state
@@ -581,7 +579,7 @@ fn remote_delta_is_applied_to_delivery_registry() {
   let topic = PubSubTopic::new("news");
   let remote_subscriber = subscriber("remote");
   let active = vec![local.clone(), remote.clone()];
-  let mut state = DistributedPubSubMediatorState::new(settings(PubSubNoSubscriberBehavior::Drop), local);
+  let mut state = DistributedPubSubMediatorState::new(config(PubSubNoSubscriberBehavior::Drop), local);
   let key = TopicRegistryEntryKey::TopicSubscription {
     topic:      topic.clone(),
     group:      None,
@@ -615,7 +613,7 @@ fn retain_remote_buckets_by_owner_removes_inactive_status_buckets() {
   let local = owner("node-a", 1);
   let active_remote = owner("node-b", 2);
   let inactive_remote = owner("node-c", 3);
-  let mut state = DistributedPubSubMediatorState::new(settings(PubSubNoSubscriberBehavior::Drop), local);
+  let mut state = DistributedPubSubMediatorState::new(config(PubSubNoSubscriberBehavior::Drop), local);
   state.upsert_remote_bucket(TopicRegistryBucket::new(active_remote.clone()));
   state.upsert_remote_bucket(TopicRegistryBucket::new(inactive_remote.clone()));
 
@@ -627,10 +625,10 @@ fn retain_remote_buckets_by_owner_removes_inactive_status_buckets() {
 }
 
 #[test]
-fn prune_removed_entries_uses_settings_ttl_and_peer_status_observation() {
+fn prune_removed_entries_uses_config_ttl_and_peer_status_observation() {
   let local = owner("node-a", 1);
   let remote = owner("node-b", 2);
-  let mut state = DistributedPubSubMediatorState::new(settings(PubSubNoSubscriberBehavior::Drop), local.clone());
+  let mut state = DistributedPubSubMediatorState::new(config(PubSubNoSubscriberBehavior::Drop), local.clone());
   let local_topic = PubSubTopic::new("local-news");
   let local_subscriber = subscriber("local-target");
   let remote_topic = PubSubTopic::new("remote-news");
@@ -667,7 +665,7 @@ fn prune_removed_entries_uses_settings_ttl_and_peer_status_observation() {
   remote_bucket.remove_subscription(remote_topic, None, remote_subscriber, 11);
   state.upsert_remote_bucket(remote_bucket);
 
-  let expired_at = 11 + state.settings().removed_entry_ttl().as_millis() as u64;
+  let expired_at = 11 + state.config().removed_entry_ttl().as_millis() as u64;
   let stale_status = TopicRegistryStatus::new(vec![
     (local.clone(), TopicRegistryVersion::new(1)),
     (remote.clone(), TopicRegistryVersion::new(1)),

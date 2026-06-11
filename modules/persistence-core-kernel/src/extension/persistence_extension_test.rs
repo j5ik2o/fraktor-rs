@@ -17,7 +17,7 @@ use fraktor_actor_core_kernel_rs::{
 use fraktor_utils_core_rs::sync::{ArcShared, SharedAccess, SharedLock, SpinSyncMutex};
 
 use crate::{
-  config::PersistenceSettings,
+  config::PersistenceConfig,
   extension::{PersistenceExtension, PersistenceExtensionId},
   journal::{InMemoryJournal, JournalActorConfig, PersistencePluginProxyCommand},
   snapshot::{InMemorySnapshotStore, SnapshotActorConfig},
@@ -53,12 +53,8 @@ fn actor_ref_with_store(pid: Pid) -> (ActorRef, MessageStore) {
 }
 
 impl PersistenceExtension {
-  const fn new_with_actor_refs(
-    journal_actor: ActorRef,
-    snapshot_actor: ActorRef,
-    settings: PersistenceSettings,
-  ) -> Self {
-    Self { journal_actor, snapshot_actor, settings }
+  const fn new_with_actor_refs(journal_actor: ActorRef, snapshot_actor: ActorRef, config: PersistenceConfig) -> Self {
+    Self { journal_actor, snapshot_actor, config }
   }
 }
 
@@ -82,24 +78,24 @@ fn persistence_extension_creates_actor_refs() {
 }
 
 #[test]
-fn persistence_extension_accepts_explicit_runtime_settings() {
+fn persistence_extension_accepts_explicit_runtime_config() {
   let scheduler = SchedulerConfig::default().with_runner_api_enabled(true);
   let config = ActorSystemConfig::new(TestTickDriver::default()).with_scheduler_config(scheduler);
   let props = Props::from_fn(|| NoopActor);
   let system = ActorSystem::create_from_props(&props, config).expect("system");
   let journal = InMemoryJournal::new();
   let snapshot = InMemorySnapshotStore::new();
-  let settings = PersistenceSettings::default()
+  let config = PersistenceConfig::default()
     .with_journal_actor_config(JournalActorConfig::new(2))
     .with_snapshot_actor_config(SnapshotActorConfig::new(3));
 
   let extension =
-    PersistenceExtension::new_with_settings(&system, journal, snapshot, settings).expect("extension should build");
+    PersistenceExtension::new_with_config(&system, journal, snapshot, config).expect("extension should build");
 
   assert_ne!(extension.journal_actor_ref().pid(), Pid::new(0, 0));
   assert_ne!(extension.snapshot_actor_ref().pid(), Pid::new(0, 0));
-  assert_eq!(extension.settings().journal_actor_config(), JournalActorConfig::new(2));
-  assert_eq!(extension.settings().snapshot_actor_config(), SnapshotActorConfig::new(3));
+  assert_eq!(extension.config().journal_actor_config(), JournalActorConfig::new(2));
+  assert_eq!(extension.config().snapshot_actor_config(), SnapshotActorConfig::new(3));
 }
 
 #[test]
@@ -123,7 +119,7 @@ fn persistence_extension_sends_plugin_target_location_commands() {
   let (journal_target, _journal_target_store) = actor_ref_with_store(Pid::new(20_002, 1));
   let (snapshot_target, _snapshot_target_store) = actor_ref_with_store(Pid::new(20_003, 1));
   let mut extension =
-    PersistenceExtension::new_with_actor_refs(journal_proxy, snapshot_proxy, PersistenceSettings::default());
+    PersistenceExtension::new_with_actor_refs(journal_proxy, snapshot_proxy, PersistenceConfig::default());
 
   extension.set_plugin_target_location(journal_target.clone(), snapshot_target.clone()).expect("target location");
 

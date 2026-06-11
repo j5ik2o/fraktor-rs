@@ -29,7 +29,7 @@ use crate::{
   },
   materialization::empty_downstream_cancellation_control_plane,
   snapshot::MaterializerSnapshot,
-  stream_ref::StreamRefSettings,
+  stream_ref::StreamRefConfig,
 };
 
 #[cfg(test)]
@@ -191,7 +191,7 @@ impl ActorMaterializer {
     system: &ActorSystem,
     buffer_config: StreamBufferConfig,
     kill_switch_state: KillSwitchStateHandle,
-    stream_ref_settings: &StreamRefSettings,
+    stream_ref_settings: &StreamRefConfig,
   ) -> Result<(StreamShared, Option<String>), StreamError> {
     let dispatcher = island.dispatcher().map(String::from);
     let stream_plan = island.into_stream_plan();

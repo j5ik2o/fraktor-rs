@@ -20,7 +20,7 @@ use fraktor_actor_core_kernel_rs::{
 use fraktor_utils_core_rs::sync::{DefaultMutex, SharedLock};
 
 use crate::{
-  config::PersistenceSettings,
+  config::PersistenceConfig,
   error::PersistenceError,
   journal::{Journal, JournalActor, JournalActorConfig, PersistencePluginProxyActor, PersistencePluginProxyCommand},
   snapshot::{SnapshotActor, SnapshotActorConfig, SnapshotStore},
@@ -36,7 +36,7 @@ const SET_SNAPSHOT_PLUGIN_TARGET_FAILED: &str = "set snapshot plugin target fail
 pub struct PersistenceExtension {
   journal_actor:  ActorRef,
   snapshot_actor: ActorRef,
-  settings:       PersistenceSettings,
+  config:         PersistenceConfig,
 }
 
 impl PersistenceExtension {
@@ -57,19 +57,19 @@ impl PersistenceExtension {
     for<'a> S::LoadFuture<'a>: Send + 'static,
     for<'a> S::DeleteOneFuture<'a>: Send + 'static,
     for<'a> S::DeleteManyFuture<'a>: Send + 'static, {
-    Self::new_with_settings(system, journal, snapshot_store, PersistenceSettings::default())
+    Self::new_with_config(system, journal, snapshot_store, PersistenceConfig::default())
   }
 
-  /// Creates a new persistence extension with explicit settings.
+  /// Creates a new persistence extension with explicit configuration.
   ///
   /// # Errors
   ///
   /// Returns `PersistenceError::MessagePassing` when actor creation fails.
-  pub fn new_with_settings<J, S>(
+  pub fn new_with_config<J, S>(
     system: &ActorSystem,
     journal: J,
     snapshot_store: S,
-    settings: PersistenceSettings,
+    config: PersistenceConfig,
   ) -> Result<Self, PersistenceError>
   where
     J: Journal + Clone + Send + Sync + 'static,
@@ -82,15 +82,15 @@ impl PersistenceExtension {
     for<'a> S::LoadFuture<'a>: Send + 'static,
     for<'a> S::DeleteOneFuture<'a>: Send + 'static,
     for<'a> S::DeleteManyFuture<'a>: Send + 'static, {
-    let journal_config = settings.journal_actor_config();
-    let snapshot_config = settings.snapshot_actor_config();
+    let journal_config = config.journal_actor_config();
+    let snapshot_config = config.snapshot_actor_config();
     let journal_actor = spawn_system_actor(system, JOURNAL_ACTOR_NAME, move || {
       JournalActorWrapper::<J>::new_with_config(journal.clone(), journal_config)
     })?;
     let snapshot_actor = spawn_system_actor(system, SNAPSHOT_ACTOR_NAME, move || {
       SnapshotActorWrapper::<S>::new_with_config(snapshot_store.clone(), snapshot_config)
     })?;
-    Ok(Self { journal_actor, snapshot_actor, settings })
+    Ok(Self { journal_actor, snapshot_actor, config })
   }
 
   /// Creates a persistence extension backed by proxy actors.
@@ -99,21 +99,18 @@ impl PersistenceExtension {
   ///
   /// Returns `PersistenceError::MessagePassing` when proxy actor creation fails.
   pub fn new_proxy(system: &ActorSystem) -> Result<Self, PersistenceError> {
-    Self::new_proxy_with_settings(system, PersistenceSettings::default())
+    Self::new_proxy_with_config(system, PersistenceConfig::default())
   }
 
-  /// Creates a persistence extension backed by proxy actors and explicit settings.
+  /// Creates a persistence extension backed by proxy actors and explicit configuration.
   ///
   /// # Errors
   ///
   /// Returns `PersistenceError::MessagePassing` when proxy actor creation fails.
-  pub fn new_proxy_with_settings(
-    system: &ActorSystem,
-    settings: PersistenceSettings,
-  ) -> Result<Self, PersistenceError> {
+  pub fn new_proxy_with_config(system: &ActorSystem, config: PersistenceConfig) -> Result<Self, PersistenceError> {
     let journal_actor = spawn_system_actor(system, JOURNAL_ACTOR_NAME, PersistencePluginProxyActor::new)?;
     let snapshot_actor = spawn_system_actor(system, SNAPSHOT_ACTOR_NAME, PersistencePluginProxyActor::new)?;
-    Ok(Self { journal_actor, snapshot_actor, settings })
+    Ok(Self { journal_actor, snapshot_actor, config })
   }
 
   /// Updates proxy target actors for journal and snapshot persistence messages.
@@ -150,10 +147,10 @@ impl PersistenceExtension {
     self.snapshot_actor.clone()
   }
 
-  /// Returns the settings used to create the runtime actors.
+  /// Returns the configuration used to create the runtime actors.
   #[must_use]
-  pub const fn settings(&self) -> PersistenceSettings {
-    self.settings
+  pub const fn config(&self) -> PersistenceConfig {
+    self.config
   }
 }
 

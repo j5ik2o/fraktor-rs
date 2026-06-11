@@ -13,7 +13,7 @@ use alloc::{
 use fraktor_remote_core_rs::address::UniqueAddress;
 
 use super::{
-  DistributedPubSubSettings, MediatorAcknowledgement, MediatorCommand, MediatorCommandOutcome, MediatorDeliveryIntent,
+  DistributedPubSubConfig, MediatorAcknowledgement, MediatorCommand, MediatorCommandOutcome, MediatorDeliveryIntent,
   MediatorDeliveryMode, MediatorQuery, MediatorQueryResult, PubSubEnvelope, PubSubError, PubSubNoSubscriberBehavior,
   PubSubPathSemantics, PubSubRoutingMode, PubSubSubscriber, PubSubTopic, SendPathInput, SendToAllPathInput,
   TopicRegistryApplyOutcome, TopicRegistryBucket, TopicRegistryBucketView, TopicRegistryDelta,
@@ -23,7 +23,7 @@ use super::{
 /// Registry-backed mediator state for pub-sub commands.
 #[derive(Debug, Clone)]
 pub struct DistributedPubSubMediatorState {
-  settings:              DistributedPubSubSettings,
+  config:                DistributedPubSubConfig,
   local_owner:           UniqueAddress,
   local_bucket:          TopicRegistryBucket,
   remote_buckets:        BTreeMap<UniqueAddress, TopicRegistryBucket>,
@@ -35,11 +35,11 @@ pub struct DistributedPubSubMediatorState {
 impl DistributedPubSubMediatorState {
   /// Creates mediator state for one local owner.
   #[must_use]
-  pub fn new(settings: DistributedPubSubSettings, local_owner: UniqueAddress) -> Self {
+  pub fn new(config: DistributedPubSubConfig, local_owner: UniqueAddress) -> Self {
     Self {
       local_bucket: TopicRegistryBucket::new(local_owner.clone()),
-      path_semantics: PubSubPathSemantics::new(settings.clone(), local_owner.clone()),
-      settings,
+      path_semantics: PubSubPathSemantics::new(config.clone(), local_owner.clone()),
+      config,
       local_owner,
       remote_buckets: BTreeMap::new(),
       publish_group_cursors: BTreeMap::new(),
@@ -47,10 +47,10 @@ impl DistributedPubSubMediatorState {
     }
   }
 
-  /// Returns mediator settings.
+  /// Returns mediator configuration.
   #[must_use]
-  pub const fn settings(&self) -> &DistributedPubSubSettings {
-    &self.settings
+  pub const fn config(&self) -> &DistributedPubSubConfig {
+    &self.config
   }
 
   /// Returns the local registry owner.
@@ -73,7 +73,7 @@ impl DistributedPubSubMediatorState {
     self.local_owner = local_owner.clone();
     self.local_bucket = self.local_bucket.rebind_owner(local_owner.clone());
     self.remote_buckets.remove(&local_owner);
-    self.path_semantics = PubSubPathSemantics::new(self.settings.clone(), local_owner);
+    self.path_semantics = PubSubPathSemantics::new(self.config.clone(), local_owner);
   }
 
   /// Adds or replaces a remote owner bucket snapshot.
@@ -113,7 +113,7 @@ impl DistributedPubSubMediatorState {
 
   /// Prunes retained removal tombstones after TTL and peer observation checks pass.
   pub fn prune_removed_entries(&mut self, now_millis: u64, peer_statuses: &[TopicRegistryStatus]) {
-    let ttl = self.settings.removed_entry_ttl();
+    let ttl = self.config.removed_entry_ttl();
     self.local_bucket.prune_removed(now_millis, ttl, peer_statuses);
     for bucket in self.remote_buckets.values_mut() {
       bucket.prune_removed(now_millis, ttl, peer_statuses);
@@ -233,7 +233,7 @@ impl DistributedPubSubMediatorState {
     if subscribers.is_empty() {
       return None;
     }
-    match self.settings.routing_mode() {
+    match self.config.routing_mode() {
       | PubSubRoutingMode::Random => {
         self.publish_random_cursor = next_random_cursor(self.publish_random_cursor);
         subscribers.get(stable_group_index(topic, group, self.publish_random_cursor, subscribers.len())).cloned()
@@ -311,7 +311,7 @@ impl DistributedPubSubMediatorState {
   }
 
   const fn no_subscriber_topic_intent(&self, topic: PubSubTopic, payload: PubSubEnvelope) -> MediatorDeliveryIntent {
-    match self.settings.no_subscriber_behavior() {
+    match self.config.no_subscriber_behavior() {
       | PubSubNoSubscriberBehavior::Drop => MediatorDeliveryIntent::DroppedTopic { topic, payload },
       | PubSubNoSubscriberBehavior::DeadLetter => MediatorDeliveryIntent::DeadLetterTopic { topic, payload },
     }

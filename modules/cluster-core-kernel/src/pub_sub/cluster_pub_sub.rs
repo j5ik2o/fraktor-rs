@@ -5,7 +5,7 @@ use alloc::vec::Vec;
 use fraktor_remote_core_rs::address::UniqueAddress;
 
 use super::{
-  DistributedPubSubSettings, MediatorCommand, MediatorCommandOutcome, PubSubError, PubSubSubscriber, PubSubTopic,
+  DistributedPubSubConfig, MediatorCommand, MediatorCommandOutcome, PubSubError, PubSubSubscriber, PubSubTopic,
   PublishAck, PublishRequest, TopicRegistryApplyOutcome, TopicRegistryDelta, TopicRegistryStatus,
 };
 use crate::TopologyUpdate;
@@ -51,9 +51,9 @@ pub trait ClusterPubSub: Send + Sync {
   /// Returns an error only for system-level failures.
   fn publish(&mut self, request: PublishRequest) -> Result<PublishAck, PubSubError>;
 
-  /// Returns distributed mediator settings used by this pub/sub implementation.
-  fn mediator_settings(&self) -> DistributedPubSubSettings {
-    DistributedPubSubSettings::default()
+  /// Returns distributed mediator configuration used by this pub/sub implementation.
+  fn mediator_config(&self) -> DistributedPubSubConfig {
+    DistributedPubSubConfig::default()
   }
 
   /// Returns this node's mediator registry status for gossip.

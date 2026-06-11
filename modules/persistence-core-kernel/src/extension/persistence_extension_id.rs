@@ -3,7 +3,7 @@
 use fraktor_actor_core_kernel_rs::{actor::extension::ExtensionId, system::ActorSystem};
 
 use crate::{
-  config::PersistenceSettings,
+  config::PersistenceConfig,
   extension::{PersistenceExtension, PersistenceExtensionShared},
   journal::Journal,
   snapshot::SnapshotStore,
@@ -13,20 +13,20 @@ use crate::{
 pub struct PersistenceExtensionId<J, S> {
   journal:        J,
   snapshot_store: S,
-  settings:       PersistenceSettings,
+  config:         PersistenceConfig,
 }
 
 impl<J, S> PersistenceExtensionId<J, S> {
   /// Creates a new identifier with the provided journal and snapshot store.
   #[must_use]
   pub const fn new(journal: J, snapshot_store: S) -> Self {
-    Self::new_with_settings(journal, snapshot_store, PersistenceSettings::default_settings())
+    Self::new_with_config(journal, snapshot_store, PersistenceConfig::default_config())
   }
 
-  /// Creates a new identifier with explicit persistence settings.
+  /// Creates a new identifier with explicit persistence configuration.
   #[must_use]
-  pub const fn new_with_settings(journal: J, snapshot_store: S, settings: PersistenceSettings) -> Self {
-    Self { journal, snapshot_store, settings }
+  pub const fn new_with_config(journal: J, snapshot_store: S, config: PersistenceConfig) -> Self {
+    Self { journal, snapshot_store, config }
   }
 }
 
@@ -46,11 +46,11 @@ where
   type Ext = PersistenceExtensionShared;
 
   fn create_extension(&self, system: &ActorSystem) -> Self::Ext {
-    let extension = match PersistenceExtension::new_with_settings(
+    let extension = match PersistenceExtension::new_with_config(
       system,
       self.journal.clone(),
       self.snapshot_store.clone(),
-      self.settings,
+      self.config,
     ) {
       | Ok(extension) => extension,
       | Err(error) => {

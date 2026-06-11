@@ -3,9 +3,10 @@ use core::time::Duration;
 use super::*;
 use crate::{
   ClusterTopology, ConfigValidation, JoinConfigCompatChecker,
-  downing_provider::{DowningProviderCompatibility, SplitBrainResolverSettings, SplitBrainResolverStrategy},
+  downing_provider::{DowningProviderCompatibility, SplitBrainResolverConfig, SplitBrainResolverStrategy},
   failure_detector::{FailureDetectorConfig, FailureDetectorConfigError},
   pub_sub::PubSubConfig,
+  singleton::{ClusterSingletonConfigError, ClusterSingletonManagerConfig, ClusterSingletonProxyConfig},
 };
 
 #[test]
@@ -130,6 +131,7 @@ fn join_compatibility_key_manifest_separates_required_and_conditional_non_sensit
     "fraktor.cluster.pubsub.suspended-ttl",
     "fraktor.cluster.downing-provider.provider-key",
     "cluster.failure-detector",
+    "cluster.singleton",
   ]);
   assert_eq!(conditional_keys, &[
     "fraktor.cluster.downing-provider.split-brain-resolver.stable-after",
@@ -138,6 +140,7 @@ fn join_compatibility_key_manifest_separates_required_and_conditional_non_sensit
   ]);
   assert!(ClusterExtensionConfig::is_required_join_compatibility_key("fraktor.cluster.downing-provider.provider-key"));
   assert!(ClusterExtensionConfig::is_required_join_compatibility_key("cluster.failure-detector"));
+  assert!(ClusterExtensionConfig::is_required_join_compatibility_key("cluster.singleton"));
   assert!(!ClusterExtensionConfig::is_required_join_compatibility_key("cluster.failure-detector.choice"));
   assert!(!ClusterExtensionConfig::is_required_join_compatibility_key("cluster.failure-detector.phi-threshold"));
   assert!(!ClusterExtensionConfig::is_required_join_compatibility_key(
@@ -205,36 +208,36 @@ fn join_compatibility_reports_downing_provider_mismatch() {
 
 #[test]
 fn join_compatibility_reports_sbr_settings_mismatch_when_both_sides_configure_sbr() {
-  let local_sbr = SplitBrainResolverSettings::new(
+  let local_sbr = SplitBrainResolverConfig::new(
     Duration::from_secs(20),
     SplitBrainResolverStrategy::KeepMajority,
     Duration::from_secs(15),
   );
   let joining_sbr =
-    SplitBrainResolverSettings::new(Duration::from_secs(20), SplitBrainResolverStrategy::KeepOldest, Duration::ZERO);
+    SplitBrainResolverConfig::new(Duration::from_secs(20), SplitBrainResolverStrategy::KeepOldest, Duration::ZERO);
   let local = ClusterExtensionConfig::new().with_downing_provider_compatibility(
-    DowningProviderCompatibility::new("split-brain-resolver").with_split_brain_resolver_settings(local_sbr),
+    DowningProviderCompatibility::new("split-brain-resolver").with_split_brain_resolver_config(local_sbr),
   );
   let joining = ClusterExtensionConfig::new().with_downing_provider_compatibility(
-    DowningProviderCompatibility::new("split-brain-resolver").with_split_brain_resolver_settings(joining_sbr),
+    DowningProviderCompatibility::new("split-brain-resolver").with_split_brain_resolver_config(joining_sbr),
   );
 
   let validation = local.check_join_compatibility(&joining);
 
   assert_eq!(validation, ConfigValidation::Incompatible {
-    reason: "cluster.split-brain-resolver.settings mismatch: split brain resolver settings mismatch".to_string(),
+    reason: "cluster.split-brain-resolver.config mismatch: split brain resolver config mismatch".to_string(),
   });
 }
 
 #[test]
 fn join_compatibility_reports_sbr_settings_mismatch_against_missing_sbr_settings() {
-  let sbr = SplitBrainResolverSettings::new(
+  let sbr = SplitBrainResolverConfig::new(
     Duration::from_secs(20),
     SplitBrainResolverStrategy::KeepOldest,
     Duration::from_secs(15),
   );
   let local = ClusterExtensionConfig::new().with_downing_provider_compatibility(
-    DowningProviderCompatibility::new("split-brain-resolver").with_split_brain_resolver_settings(sbr),
+    DowningProviderCompatibility::new("split-brain-resolver").with_split_brain_resolver_config(sbr),
   );
   let joining = ClusterExtensionConfig::new()
     .with_downing_provider_compatibility(DowningProviderCompatibility::new("split-brain-resolver"));
@@ -242,64 +245,64 @@ fn join_compatibility_reports_sbr_settings_mismatch_against_missing_sbr_settings
   let validation = local.check_join_compatibility(&joining);
 
   assert_eq!(validation, ConfigValidation::Incompatible {
-    reason: "cluster.split-brain-resolver.settings mismatch: split brain resolver settings mismatch".to_string(),
+    reason: "cluster.split-brain-resolver.config mismatch: split brain resolver config mismatch".to_string(),
   });
 }
 
 #[test]
 fn sbr_settings_checker_ignores_non_sbr_provider_pairs() {
-  let sbr = SplitBrainResolverSettings::new(
+  let sbr = SplitBrainResolverConfig::new(
     Duration::from_secs(20),
     SplitBrainResolverStrategy::KeepOldest,
     Duration::from_secs(15),
   );
   let local = ClusterExtensionConfig::new().with_downing_provider_compatibility(
-    DowningProviderCompatibility::new("split-brain-resolver").with_split_brain_resolver_settings(sbr),
+    DowningProviderCompatibility::new("split-brain-resolver").with_split_brain_resolver_config(sbr),
   );
   let joining =
     ClusterExtensionConfig::new().with_downing_provider_compatibility(DowningProviderCompatibility::new("noop"));
 
-  assert!(split_brain_resolver_settings_are_compatible(&local, &joining));
+  assert!(split_brain_resolver_config_are_compatible(&local, &joining));
 }
 
 #[test]
 fn join_compatibility_reports_sbr_timing_mismatch_when_strategy_matches() {
-  let local_sbr = SplitBrainResolverSettings::new(
+  let local_sbr = SplitBrainResolverConfig::new(
     Duration::from_secs(20),
     SplitBrainResolverStrategy::KeepMajority,
     Duration::from_secs(15),
   );
-  let joining_sbr = SplitBrainResolverSettings::new(
+  let joining_sbr = SplitBrainResolverConfig::new(
     Duration::from_secs(21),
     SplitBrainResolverStrategy::KeepMajority,
     Duration::from_secs(15),
   );
   let local = ClusterExtensionConfig::new().with_downing_provider_compatibility(
-    DowningProviderCompatibility::new("split-brain-resolver").with_split_brain_resolver_settings(local_sbr),
+    DowningProviderCompatibility::new("split-brain-resolver").with_split_brain_resolver_config(local_sbr),
   );
   let joining = ClusterExtensionConfig::new().with_downing_provider_compatibility(
-    DowningProviderCompatibility::new("split-brain-resolver").with_split_brain_resolver_settings(joining_sbr),
+    DowningProviderCompatibility::new("split-brain-resolver").with_split_brain_resolver_config(joining_sbr),
   );
 
   let validation = local.check_join_compatibility(&joining);
 
   assert_eq!(validation, ConfigValidation::Incompatible {
-    reason: "cluster.split-brain-resolver.settings mismatch: split brain resolver settings mismatch".to_string(),
+    reason: "cluster.split-brain-resolver.config mismatch: split brain resolver config mismatch".to_string(),
   });
 }
 
 #[test]
 fn join_compatibility_accepts_same_sbr_settings() {
-  let sbr = SplitBrainResolverSettings::new(
+  let sbr = SplitBrainResolverConfig::new(
     Duration::from_secs(20),
     SplitBrainResolverStrategy::KeepMajority,
     Duration::from_secs(15),
   );
   let local = ClusterExtensionConfig::new().with_downing_provider_compatibility(
-    DowningProviderCompatibility::new("split-brain-resolver").with_split_brain_resolver_settings(sbr),
+    DowningProviderCompatibility::new("split-brain-resolver").with_split_brain_resolver_config(sbr),
   );
   let joining = ClusterExtensionConfig::new().with_downing_provider_compatibility(
-    DowningProviderCompatibility::new("split-brain-resolver").with_split_brain_resolver_settings(sbr),
+    DowningProviderCompatibility::new("split-brain-resolver").with_split_brain_resolver_config(sbr),
   );
 
   let validation = local.check_join_compatibility(&joining);
@@ -309,17 +312,17 @@ fn join_compatibility_accepts_same_sbr_settings() {
 
 #[test]
 fn join_compatibility_ignores_static_quorum_size_for_non_static_quorum_strategy() {
-  let local_sbr = SplitBrainResolverSettings::new(
+  let local_sbr = SplitBrainResolverConfig::new(
     Duration::from_secs(20),
     SplitBrainResolverStrategy::KeepMajority,
     Duration::from_secs(15),
   );
   let joining_sbr = local_sbr.with_static_quorum_size(3);
   let local = ClusterExtensionConfig::new().with_downing_provider_compatibility(
-    DowningProviderCompatibility::new("split-brain-resolver").with_split_brain_resolver_settings(local_sbr),
+    DowningProviderCompatibility::new("split-brain-resolver").with_split_brain_resolver_config(local_sbr),
   );
   let joining = ClusterExtensionConfig::new().with_downing_provider_compatibility(
-    DowningProviderCompatibility::new("split-brain-resolver").with_split_brain_resolver_settings(joining_sbr),
+    DowningProviderCompatibility::new("split-brain-resolver").with_split_brain_resolver_config(joining_sbr),
   );
 
   let validation = local.check_join_compatibility(&joining);
@@ -357,4 +360,135 @@ fn join_compatibility_accepts_same_pubsub_config() {
   let validation = local.check_join_compatibility(&joining);
   assert_eq!(validation, ConfigValidation::Compatible);
   assert!(validation.is_compatible());
+}
+
+// --- singleton 設定フィールドの保持と既定値 ---
+
+#[test]
+fn singleton_manager_config_default_is_preserved() {
+  // ClusterExtensionConfig::new() が既定の ClusterSingletonManagerConfig を内包することを確認
+  let config = ClusterExtensionConfig::new();
+  assert_eq!(config.singleton_manager_config(), &ClusterSingletonManagerConfig::default());
+}
+
+#[test]
+fn singleton_proxy_config_default_is_preserved() {
+  // ClusterExtensionConfig::new() が既定の ClusterSingletonProxyConfig を内包することを確認
+  let config = ClusterExtensionConfig::new();
+  assert_eq!(config.singleton_proxy_config(), &ClusterSingletonProxyConfig::default());
+}
+
+#[test]
+fn singleton_manager_config_is_preserved_via_setter() {
+  // with_singleton_manager_config で設定した値が getter で正しく返されることを確認
+  let custom = ClusterSingletonManagerConfig::new().with_singleton_name("my-singleton").with_min_hand_over_retries(20);
+  let config = ClusterExtensionConfig::new().with_singleton_manager_config(custom.clone());
+  assert_eq!(config.singleton_manager_config(), &custom);
+}
+
+#[test]
+fn singleton_proxy_config_is_preserved_via_setter() {
+  // with_singleton_proxy_config で設定した値が getter で正しく返されることを確認
+  let custom = ClusterSingletonProxyConfig::new().with_singleton_name("my-singleton").with_buffer_size(500);
+  let config = ClusterExtensionConfig::new().with_singleton_proxy_config(custom.clone());
+  assert_eq!(config.singleton_proxy_config(), &custom);
+}
+
+// --- validate_singleton の委譲検証 ---
+
+#[test]
+fn validate_singleton_passes_with_default_settings() {
+  // 既定値の singleton 設定は validate_singleton を通過する（要件 6.2）
+  let config = ClusterExtensionConfig::new();
+  assert_eq!(config.validate_singleton(), Ok(()));
+}
+
+#[test]
+fn validate_singleton_delegates_to_manager_and_returns_error_on_empty_singleton_name() {
+  // manager 設定が不正（空名）の場合、validate_singleton がエラーを返すことを確認
+  let bad_manager = ClusterSingletonManagerConfig::new().with_singleton_name("");
+  let config = ClusterExtensionConfig::new().with_singleton_manager_config(bad_manager);
+  assert_eq!(config.validate_singleton(), Err(ClusterSingletonConfigError::EmptySingletonName));
+}
+
+#[test]
+fn validate_singleton_delegates_to_proxy_and_returns_error_on_buffer_size_out_of_range() {
+  // proxy 設定が不正（buffer_size 超過）の場合、validate_singleton がエラーを返すことを確認
+  let bad_proxy = ClusterSingletonProxyConfig::new().with_buffer_size(10001);
+  let config = ClusterExtensionConfig::new().with_singleton_proxy_config(bad_proxy);
+  assert_eq!(config.validate_singleton(), Err(ClusterSingletonConfigError::BufferSizeOutOfRange { value: 10001 }));
+}
+
+#[test]
+fn validate_does_not_change_signature_with_singleton_fields_added() {
+  // 既存 validate() のシグネチャが変わっていないことを確認（要件 8.1 / 8.3）
+  let config = ClusterExtensionConfig::new();
+  let result: Result<(), FailureDetectorConfigError> = config.validate();
+  assert_eq!(result, Ok(()));
+}
+
+// --- singleton 互換チェックの mismatch_detail ---
+
+#[test]
+fn join_compatibility_accepts_same_singleton_settings() {
+  // singleton 設定が一致する場合、互換性チェックが Compatible を返すことを確認（要件 5.3）
+  let settings = ClusterSingletonManagerConfig::new().with_singleton_name("my-singleton");
+  let local = ClusterExtensionConfig::new().with_singleton_manager_config(settings.clone());
+  let joining = ClusterExtensionConfig::new().with_singleton_manager_config(settings);
+
+  let validation = local.check_join_compatibility(&joining);
+
+  assert_eq!(validation, ConfigValidation::Compatible);
+}
+
+#[test]
+fn join_compatibility_reports_singleton_manager_mismatch_with_prefixed_field_names() {
+  // manager 設定に差異がある場合、"manager."
+  // プレフィックス付きフィールド名が理由に含まれることを確認（要件 5.2）
+  let local_manager = ClusterSingletonManagerConfig::new().with_singleton_name("singleton-a");
+  let joining_manager = ClusterSingletonManagerConfig::new().with_singleton_name("singleton-b");
+  let local = ClusterExtensionConfig::new().with_singleton_manager_config(local_manager);
+  let joining = ClusterExtensionConfig::new().with_singleton_manager_config(joining_manager);
+
+  let validation = local.check_join_compatibility(&joining);
+
+  assert_eq!(validation, ConfigValidation::Incompatible {
+    reason: "cluster.singleton mismatch: manager.singleton_name".to_string(),
+  });
+}
+
+#[test]
+fn join_compatibility_reports_singleton_proxy_mismatch_with_prefixed_field_names() {
+  // proxy 設定に差異がある場合、"proxy."
+  // プレフィックス付きフィールド名が理由に含まれることを確認（要件 5.2）
+  let local_proxy = ClusterSingletonProxyConfig::new().with_buffer_size(500);
+  let joining_proxy = ClusterSingletonProxyConfig::new().with_buffer_size(1000);
+  let local = ClusterExtensionConfig::new().with_singleton_proxy_config(local_proxy);
+  let joining = ClusterExtensionConfig::new().with_singleton_proxy_config(joining_proxy);
+
+  let validation = local.check_join_compatibility(&joining);
+
+  assert_eq!(validation, ConfigValidation::Incompatible {
+    reason: "cluster.singleton mismatch: proxy.buffer_size".to_string(),
+  });
+}
+
+#[test]
+fn join_compatibility_reports_both_manager_and_proxy_mismatch_fields() {
+  // manager と proxy の両方に差異がある場合、両方の差異フィールドが結合して理由に含まれることを確認
+  let local_manager = ClusterSingletonManagerConfig::new().with_singleton_name("singleton-a");
+  let joining_manager = ClusterSingletonManagerConfig::new().with_singleton_name("singleton-b");
+  let local_proxy = ClusterSingletonProxyConfig::new().with_buffer_size(500);
+  let joining_proxy = ClusterSingletonProxyConfig::new().with_buffer_size(1000);
+  let local =
+    ClusterExtensionConfig::new().with_singleton_manager_config(local_manager).with_singleton_proxy_config(local_proxy);
+  let joining = ClusterExtensionConfig::new()
+    .with_singleton_manager_config(joining_manager)
+    .with_singleton_proxy_config(joining_proxy);
+
+  let validation = local.check_join_compatibility(&joining);
+
+  assert_eq!(validation, ConfigValidation::Incompatible {
+    reason: "cluster.singleton mismatch: manager.singleton_name, proxy.buffer_size".to_string(),
+  });
 }

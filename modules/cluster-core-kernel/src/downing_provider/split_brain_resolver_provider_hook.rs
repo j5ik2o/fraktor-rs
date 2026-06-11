@@ -11,7 +11,7 @@ use fraktor_utils_core_rs::time::TimerInstant;
 use super::{
   DowningDecision, DowningDecisionContext, DowningDecisionTrace, DowningInput, DowningProvider,
   DowningProviderCompatibility, DowningStrategyDecision, LeaseAcquisitionOutcome, LeaseMajorityPort,
-  SplitBrainResolver, SplitBrainResolverSettings,
+  SplitBrainResolver, SplitBrainResolverConfig,
 };
 use crate::ClusterProviderError;
 
@@ -26,11 +26,11 @@ pub struct SplitBrainResolverProviderHook {
 }
 
 impl SplitBrainResolverProviderHook {
-  /// Creates a hook and its provider compatibility metadata from settings.
+  /// Creates a hook and its provider compatibility metadata from configuration.
   #[must_use]
-  pub fn new(settings: SplitBrainResolverSettings) -> Self {
-    let compatibility = Self::expected_compatibility(settings);
-    Self { compatibility, resolver: SplitBrainResolver::new(settings) }
+  pub fn new(config: SplitBrainResolverConfig) -> Self {
+    let compatibility = Self::expected_compatibility(config);
+    Self { compatibility, resolver: SplitBrainResolver::new(config) }
   }
 
   /// Creates a hook from externally supplied compatibility metadata.
@@ -38,16 +38,16 @@ impl SplitBrainResolverProviderHook {
   /// # Errors
   ///
   /// Returns [`ClusterProviderError::DownFailed`] when the metadata does not match the supplied
-  /// settings.
+  /// configuration.
   pub fn from_compatibility(
-    settings: SplitBrainResolverSettings,
+    config: SplitBrainResolverConfig,
     compatibility: DowningProviderCompatibility,
   ) -> Result<Self, ClusterProviderError> {
-    if !Self::compatibility_matches(settings, &compatibility) {
+    if !Self::compatibility_matches(config, &compatibility) {
       return Err(ClusterProviderError::down(COMPATIBILITY_MISMATCH));
     }
 
-    Ok(Self { compatibility, resolver: SplitBrainResolver::new(settings) })
+    Ok(Self { compatibility, resolver: SplitBrainResolver::new(config) })
   }
 
   /// Returns compatibility metadata advertised by this hook.
@@ -90,14 +90,14 @@ impl SplitBrainResolverProviderHook {
     Ok(Self::provider_decision(context, &strategy_decision))
   }
 
-  fn expected_compatibility(settings: SplitBrainResolverSettings) -> DowningProviderCompatibility {
-    DowningProviderCompatibility::new(SPLIT_BRAIN_RESOLVER_PROVIDER_KEY).with_split_brain_resolver_settings(settings)
+  fn expected_compatibility(config: SplitBrainResolverConfig) -> DowningProviderCompatibility {
+    DowningProviderCompatibility::new(SPLIT_BRAIN_RESOLVER_PROVIDER_KEY).with_split_brain_resolver_config(config)
   }
 
-  fn compatibility_matches(settings: SplitBrainResolverSettings, compatibility: &DowningProviderCompatibility) -> bool {
-    let expected = Self::expected_compatibility(settings);
+  fn compatibility_matches(config: SplitBrainResolverConfig, compatibility: &DowningProviderCompatibility) -> bool {
+    let expected = Self::expected_compatibility(config);
     compatibility.provider_key() == expected.provider_key()
-      && compatibility.sbr_settings_identity() == expected.sbr_settings_identity()
+      && compatibility.sbr_config_identity() == expected.sbr_config_identity()
   }
 
   const fn evaluation_time() -> TimerInstant {

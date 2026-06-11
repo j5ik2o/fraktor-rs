@@ -13,7 +13,7 @@ use alloc::{
 use fraktor_remote_core_rs::address::UniqueAddress;
 
 use crate::pub_sub::{
-  DistributedPubSubSettings, MediatorDeliveryIntent, MediatorDeliveryMode, MediatorPathKey, PubSubEnvelope,
+  DistributedPubSubConfig, MediatorDeliveryIntent, MediatorDeliveryMode, MediatorPathKey, PubSubEnvelope,
   PubSubNoSubscriberBehavior, PubSubRoutingMode, PubSubSubscriber, SendPathInput, SendToAllPathInput,
   TopicRegistryBucketView, TopicRegistryEntryKind,
 };
@@ -21,7 +21,7 @@ use crate::pub_sub::{
 /// Selects path delivery targets from topic registry bucket views.
 #[derive(Debug, Clone)]
 pub struct PubSubPathSemantics {
-  settings:            DistributedPubSubSettings,
+  config:              DistributedPubSubConfig,
   local_owner:         UniqueAddress,
   round_robin_cursors: BTreeMap<MediatorPathKey, usize>,
   random_cursor:       usize,
@@ -30,8 +30,8 @@ pub struct PubSubPathSemantics {
 impl PubSubPathSemantics {
   /// Creates a path selector.
   #[must_use]
-  pub const fn new(settings: DistributedPubSubSettings, local_owner: UniqueAddress) -> Self {
-    Self { settings, local_owner, round_robin_cursors: BTreeMap::new(), random_cursor: 0 }
+  pub const fn new(config: DistributedPubSubConfig, local_owner: UniqueAddress) -> Self {
+    Self { config, local_owner, round_robin_cursors: BTreeMap::new(), random_cursor: 0 }
   }
 
   /// Selects one matching path target for `Send`.
@@ -88,7 +88,7 @@ impl PubSubPathSemantics {
     if candidates.is_empty() {
       return None;
     }
-    match self.settings.routing_mode() {
+    match self.config.routing_mode() {
       | PubSubRoutingMode::Random => {
         self.random_cursor = next_random_cursor(self.random_cursor);
         candidates.get(stable_index(path.as_str(), self.random_cursor, candidates.len())).cloned()
@@ -128,7 +128,7 @@ impl PubSubPathSemantics {
   }
 
   const fn no_subscriber_intent(&self, path: MediatorPathKey, payload: PubSubEnvelope) -> MediatorDeliveryIntent {
-    match self.settings.no_subscriber_behavior() {
+    match self.config.no_subscriber_behavior() {
       | PubSubNoSubscriberBehavior::Drop => MediatorDeliveryIntent::Dropped { path, payload },
       | PubSubNoSubscriberBehavior::DeadLetter => MediatorDeliveryIntent::DeadLetter { path, payload },
     }

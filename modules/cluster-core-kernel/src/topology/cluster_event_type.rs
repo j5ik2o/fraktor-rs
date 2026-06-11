@@ -41,6 +41,8 @@ pub enum ClusterEventType {
   UnreachableDataCenter,
   /// Matches [`ClusterEvent::ReachableDataCenter`].
   ReachableDataCenter,
+  /// Matches [`ClusterEvent::SingletonHandOverStuck`].
+  SingletonHandOverStuck,
 }
 
 impl ClusterEventType {
@@ -63,7 +65,8 @@ impl ClusterEventType {
       | (Self::MemberPreparingForShutdown, ClusterEvent::MemberPreparingForShutdown { .. })
       | (Self::MemberReadyForShutdown, ClusterEvent::MemberReadyForShutdown { .. })
       | (Self::UnreachableDataCenter, ClusterEvent::UnreachableDataCenter { .. })
-      | (Self::ReachableDataCenter, ClusterEvent::ReachableDataCenter { .. }) => true,
+      | (Self::ReachableDataCenter, ClusterEvent::ReachableDataCenter { .. })
+      | (Self::SingletonHandOverStuck, ClusterEvent::SingletonHandOverStuck { .. }) => true,
       // NOTE: ワイルドカードは意図的。ClusterEvent/ClusterEventType にバリアントを追加する場合は
       // 対応する行もここに追加すること。
       | _ => false,

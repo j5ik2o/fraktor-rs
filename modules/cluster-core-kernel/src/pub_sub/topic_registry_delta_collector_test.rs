@@ -6,7 +6,7 @@ use fraktor_remote_core_rs::address::{Address, UniqueAddress};
 use crate::{
   activation::ClusterIdentity,
   pub_sub::{
-    DistributedPubSubSettings, MediatorPathKey, PubSubNoSubscriberBehavior, PubSubRoutingMode, PubSubSubscriber,
+    DistributedPubSubConfig, MediatorPathKey, PubSubNoSubscriberBehavior, PubSubRoutingMode, PubSubSubscriber,
     PubSubTopic, TopicRegistryApplyOutcome, TopicRegistryBucket, TopicRegistryDelta, TopicRegistryDeltaCollector,
     TopicRegistryDeltaEntry, TopicRegistryEntry, TopicRegistryEntryKey, TopicRegistryEntryKind, TopicRegistryStatus,
     TopicRegistryVersion,
@@ -25,8 +25,8 @@ fn path(value: &str) -> MediatorPathKey {
   MediatorPathKey::parse(value).expect("path")
 }
 
-fn settings(max_delta_elements: usize) -> DistributedPubSubSettings {
-  DistributedPubSubSettings::try_new(
+fn config(max_delta_elements: usize) -> DistributedPubSubConfig {
+  DistributedPubSubConfig::try_new(
     None,
     PubSubRoutingMode::Random,
     Duration::from_secs(1),
@@ -34,7 +34,7 @@ fn settings(max_delta_elements: usize) -> DistributedPubSubSettings {
     max_delta_elements,
     PubSubNoSubscriberBehavior::Drop,
   )
-  .expect("settings")
+  .expect("config")
 }
 
 #[test]
@@ -95,7 +95,7 @@ fn collector_returns_version_ordered_bounded_delta() {
   bucket.put_path(path("fraktor://sys/user/c"), subscriber("actor-c"));
   let peer_status = TopicRegistryStatus::new(vec![(local_owner, TopicRegistryVersion::new(1))]);
 
-  let delta = TopicRegistryDeltaCollector::collect_delta(&peer_status, &[bucket], &settings(1));
+  let delta = TopicRegistryDeltaCollector::collect_delta(&peer_status, &[bucket], &config(1));
 
   assert_eq!(delta.len(), 1);
   assert_eq!(delta.entries()[0].entry().version(), TopicRegistryVersion::new(2));
@@ -185,7 +185,7 @@ fn delta_for_replaced_key_carries_observed_version_floor_for_owner_convergence()
   source.remove_path(MediatorPathKey::parse("fraktor://sys/user/service").expect("path"), target, 10);
   let peer_status = TopicRegistryStatus::new(vec![(active_owner.clone(), TopicRegistryVersion::zero())]);
 
-  let delta = TopicRegistryDeltaCollector::collect_delta(&peer_status, &[source], &settings(10));
+  let delta = TopicRegistryDeltaCollector::collect_delta(&peer_status, &[source], &config(10));
   let mut buckets = vec![TopicRegistryBucket::new(active_owner.clone())];
   let outcomes = TopicRegistryDeltaCollector::apply_delta(&delta, &mut buckets, from_ref(&active_owner));
 
@@ -208,7 +208,7 @@ fn delta_for_lagging_bucket_carries_observed_version_floor_before_entry() {
   );
   let peer_status = TopicRegistryStatus::new(vec![(active_owner.clone(), TopicRegistryVersion::zero())]);
 
-  let delta = TopicRegistryDeltaCollector::collect_delta(&peer_status, &[source], &settings(10));
+  let delta = TopicRegistryDeltaCollector::collect_delta(&peer_status, &[source], &config(10));
   let mut buckets = vec![TopicRegistryBucket::new(active_owner.clone())];
   let outcomes = TopicRegistryDeltaCollector::apply_delta(&delta, &mut buckets, from_ref(&active_owner));
 
@@ -230,7 +230,7 @@ fn delta_for_large_lagging_bucket_uses_single_observed_version_floor() {
   );
   let peer_status = TopicRegistryStatus::new(vec![(active_owner, TopicRegistryVersion::zero())]);
 
-  let delta = TopicRegistryDeltaCollector::collect_delta(&peer_status, &[source], &settings(10));
+  let delta = TopicRegistryDeltaCollector::collect_delta(&peer_status, &[source], &config(10));
 
   assert_eq!(delta.len(), 1);
   assert_eq!(delta.entries()[0].observed_version_floor(), TopicRegistryVersion::new(199_999));
@@ -246,7 +246,7 @@ fn replaced_key_tombstone_from_delta_can_be_pruned_after_peer_status_round_trip(
   source.put_path(path.clone(), target.clone());
   source.remove_path(path, target, 10);
   let peer_status = TopicRegistryStatus::new(vec![(active_owner.clone(), TopicRegistryVersion::zero())]);
-  let delta = TopicRegistryDeltaCollector::collect_delta(&peer_status, &[source.clone()], &settings(10));
+  let delta = TopicRegistryDeltaCollector::collect_delta(&peer_status, &[source.clone()], &config(10));
   let mut peer_buckets = vec![TopicRegistryBucket::new(active_owner.clone())];
 
   let outcomes = TopicRegistryDeltaCollector::apply_delta(&delta, &mut peer_buckets, from_ref(&active_owner));

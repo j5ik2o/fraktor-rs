@@ -1,5 +1,5 @@
 //! Persistence configuration package.
 
-mod persistence_settings;
+mod persistence_config;
 
-pub use persistence_settings::PersistenceSettings;
+pub use persistence_config::PersistenceConfig;

@@ -9,20 +9,20 @@ use alloc::vec::Vec;
 use fraktor_remote_core_rs::address::UniqueAddress;
 
 use crate::pub_sub::{
-  DistributedPubSubSettings, TopicRegistryApplyOutcome, TopicRegistryBucket, TopicRegistryDelta,
-  TopicRegistryDeltaEntry, TopicRegistryStatus, TopicRegistryVersion,
+  DistributedPubSubConfig, TopicRegistryApplyOutcome, TopicRegistryBucket, TopicRegistryDelta, TopicRegistryDeltaEntry,
+  TopicRegistryStatus, TopicRegistryVersion,
 };
 
 /// Collects and applies bounded pub-sub registry deltas.
 pub struct TopicRegistryDeltaCollector;
 
 impl TopicRegistryDeltaCollector {
-  /// Collects local entries newer than `peer_status`, bounded by settings.
+  /// Collects local entries newer than `peer_status`, bounded by configuration.
   #[must_use]
   pub fn collect_delta(
     peer_status: &TopicRegistryStatus,
     local_buckets: &[TopicRegistryBucket],
-    settings: &DistributedPubSubSettings,
+    config: &DistributedPubSubConfig,
   ) -> TopicRegistryDelta {
     let mut entries = Vec::new();
     for bucket in local_buckets {
@@ -47,7 +47,7 @@ impl TopicRegistryDeltaCollector {
         .then(left.owner().cmp(right.owner()))
         .then(left.key().cmp(right.key()))
     });
-    entries.truncate(settings.max_delta_elements());
+    entries.truncate(config.max_delta_elements());
     TopicRegistryDelta::new(entries)
   }
 
