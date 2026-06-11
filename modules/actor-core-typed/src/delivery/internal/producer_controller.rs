@@ -265,11 +265,11 @@ impl ProducerController {
         ctx.system().emit_log(LogLevel::Warn, message, Some(ctx.pid()), None);
       }
 
-      let runtime_settings = config.clone();
+      let runtime_config = config.clone();
       let runtime_load_state_adapter = load_state_adapter;
       Behaviors::receive_message(move |ctx, command: &ProducerControllerCommand<A>| {
         let command_context = ProducerCommandContext {
-          config:             &runtime_settings,
+          config:             &runtime_config,
           self_ref:           &self_ref,
           load_state_adapter: &runtime_load_state_adapter,
         };

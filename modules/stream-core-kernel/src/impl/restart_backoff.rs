@@ -1,5 +1,9 @@
 use crate::RestartConfig;
 
+#[cfg(test)]
+#[path = "restart_backoff_test.rs"]
+mod tests;
+
 #[derive(Debug, Clone)]
 pub(crate) struct RestartBackoff {
   config:                RestartConfig,

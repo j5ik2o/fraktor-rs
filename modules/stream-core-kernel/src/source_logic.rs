@@ -56,7 +56,7 @@ pub trait SourceLogic: Send {
   }
 
   /// Attaches stream reference configuration resolved by the materializer.
-  fn attach_stream_ref_config(&mut self, _settings: StreamRefConfig) {}
+  fn attach_stream_ref_config(&mut self, _config: StreamRefConfig) {}
 
   /// Attaches the actor system resolved by the materializer.
   fn attach_actor_system(&mut self, system: ActorSystem) {

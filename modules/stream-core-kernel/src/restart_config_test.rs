@@ -115,6 +115,18 @@ fn restart_config_with_log_config_replaces_defaults() {
 }
 
 #[test]
+fn restart_config_debug_formats_all_fields() {
+  // 手書き Debug 実装が全フィールドを描画することを確認する
+  let config = RestartConfig::new(1, 8, 3);
+
+  let rendered = format!("{config:?}");
+
+  assert!(rendered.contains("min_backoff_ticks"));
+  assert!(rendered.contains("restart_on"));
+  assert!(rendered.contains("log_config"));
+}
+
+#[test]
 fn restart_log_level_equality() {
   // Given: RestartLogLevel variants
   // Then: equality works correctly

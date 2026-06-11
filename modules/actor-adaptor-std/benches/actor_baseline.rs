@@ -137,9 +137,10 @@ impl TokioBenchSystem {
     let handle = runtime.handle().clone();
     let system = runtime.block_on(async {
       let config = ActorSystemConfig::new(TokioTickDriver::default());
-      let config = DispatcherConfig::with_defaults(DEFAULT_DISPATCHER_ID);
+      let dispatcher_config = DispatcherConfig::with_defaults(DEFAULT_DISPATCHER_ID);
       let executor = ExecutorShared::new(Box::new(TokioExecutor::new(handle)), TrampolineState::new());
-      let configurator: Box<dyn MessageDispatcherFactory> = Box::new(DefaultDispatcherFactory::new(&config, executor));
+      let configurator: Box<dyn MessageDispatcherFactory> =
+        Box::new(DefaultDispatcherFactory::new(&dispatcher_config, executor));
       let config = config.with_dispatcher_factory(DEFAULT_DISPATCHER_ID, ArcShared::new(configurator));
       ActorSystem::create_from_props(props, config).expect("actor system")
     });
