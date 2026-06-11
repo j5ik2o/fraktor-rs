@@ -51,7 +51,7 @@
   - _Depends:_ 2.2, 2.3
 
 - [ ] 3. 観測契約
-- [ ] 3.1 (P) stuck 局面の語彙を定義する
+- [x] 3.1 (P) stuck 局面の語彙を定義する
   - 停滞の局面（oldest への昇格待ち / handover 実行中）を表す 2 値 enum を singleton モジュールに追加する
   - 完了条件: 2 variant の等価比較テストが通り、singleton モジュールから公開される
   - _Requirements:_ 7.2
