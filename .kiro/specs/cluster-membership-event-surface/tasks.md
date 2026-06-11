@@ -81,7 +81,7 @@
   - _Boundary:_ ClusterApi 購読統合（extension + topology + membership の統合タスク）
   - _Depends:_ 2.2, 2.3
 
-- [ ] 4.2 既存挙動の回帰確認と対象範囲のチェックを実行する
+- [x] 4.2 既存挙動の回帰確認と対象範囲のチェックを実行する
   - cluster-core-kernel / cluster-adaptor-std の unit-test、clippy、対象 dylint、no-std チェックを実行する
   - 既存イベント種別が削除されていないこと、既存テストが無変更で通ることを確認する
   - 完了条件: 対象範囲のチェックがすべて成功する
@@ -95,3 +95,4 @@
 - 1.2: trace field 契約に FIELD_TRANSITION（"cluster.lifecycle.transition"）が設計外で追加されている（レビュー承認済み）。3.3 の std 準拠化ではこの定数を遷移種別の出力 key として使うこと
 - 2.3: shutdown 系遷移の実発行点は emit_status_change ではなく register_membership_change（gossip delta パス）だった。design.md は訂正済み。3.1 で coordinator を触る際は両方の発行点に注意
 - 3.3: std 層の既存 tracing 出力（5 件）は全て I/O 系エラーで cluster lifecycle 遷移の記録は現存しない。要件 4.4 は条件付き要件として真空的に成立（コード変更なしで完了、レビュー承認済み）。将来 std 層に lifecycle 出力を追加する際は cluster_lifecycle_trace_field の契約定数を必ず参照すること
+- 4.2: `cluster_core_test.rs:1010,1054` に pre-existing の clippy エラー（comparison to empty slice）が 2 件ある（feature 開始前から存在、本 feature 無関係）。`./scripts/ci-check.sh clippy` は postcard 非互換のため fraktor-cluster-core-kernel-rs を除外しており公式 CI はパスする。`cargo clippy -p fraktor-cluster-core-kernel-rs --all-targets` を直接叩くと失敗するので注意
