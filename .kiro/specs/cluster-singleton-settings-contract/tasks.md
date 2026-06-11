@@ -86,7 +86,7 @@
   - _Boundary:_ ClusterExtensionConfig（統合タスク）
   - _Depends:_ 2.2, 2.3, 4.1
 
-- [ ] 4.3 install 境界で singleton 検証を実行する
+- [x] 4.3 install 境界で singleton 検証を実行する
   - installer の既存検証の直後に singleton 検証を追加し、失敗を同じ構成エラーへ写像する（検証の Result は握りつぶさない）
   - すべての設定が成立する場合は install を継続する
   - 完了条件: 不正な singleton 設定で install が構成エラーになり、既定値設定で install が成立する統合テストが通る

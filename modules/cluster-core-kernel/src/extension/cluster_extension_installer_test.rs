@@ -19,6 +19,7 @@ use crate::{
   failure_detector::FailureDetectorConfig,
   membership::NoopGossiper,
   pub_sub::{NoopClusterPubSub, cluster_pub_sub::ClusterPubSub},
+  singleton::{ClusterSingletonManagerSettings, ClusterSingletonProxySettings},
 };
 
 #[test]
@@ -95,6 +96,67 @@ fn install_rejects_invalid_failure_detector_config_before_building_components() 
   assert_eq!(*gossiper_calls.lock(), 0);
   assert_eq!(*pubsub_calls.lock(), 0);
   assert_eq!(*identity_lookup_calls.lock(), 0);
+}
+
+// RED フェーズ: validate_singleton() が install で呼ばれていない現時点では、
+// 不正な singleton 設定でも install が成立してしまい、このテストは失敗することを確認する。
+#[test]
+fn install_rejects_invalid_singleton_config_with_configuration_error() {
+  // 空の singleton 名 → EmptySingletonName（要件 4.4）
+  let cluster_config = ClusterExtensionConfig::new()
+    .with_advertised_address("node1:8080")
+    .with_singleton_manager_settings(ClusterSingletonManagerSettings::new().with_singleton_name(""));
+  let cluster_installer = ClusterExtensionInstaller::new(cluster_config, |_event_stream, _block_list, _address| {
+    Box::new(NoopClusterProvider::new())
+  });
+  let props = Props::from_fn(|| TestGuardian);
+  let system = ActorSystem::create_from_props(&props, ActorSystemConfig::new(TestTickDriver::default()))
+    .expect("build actor system");
+
+  let result = cluster_installer.install(&system);
+
+  let Err(ActorSystemBuildError::Configuration(reason)) = result else {
+    panic!("invalid singleton config should reject install with Configuration error");
+  };
+  assert!(reason.contains("EmptySingletonName"), "reason was: {reason}");
+}
+
+// 既定値設定では install が成立する（要件 6.2）。
+// singleton 未指定の ClusterExtensionConfig は既定値の singleton 設定を持つため
+// validate_singleton() が Ok(()) を返し、install が継続しなければならない。
+#[test]
+fn install_succeeds_with_default_singleton_settings() {
+  let cluster_config = ClusterExtensionConfig::new().with_advertised_address("node1:8080");
+  let cluster_installer = ClusterExtensionInstaller::new(cluster_config, |_event_stream, _block_list, _address| {
+    Box::new(NoopClusterProvider::new())
+  });
+  let props = Props::from_fn(|| TestGuardian);
+  let config = ActorSystemConfig::new(TestTickDriver::default())
+    .with_extension_installers(ExtensionInstallers::default().with_extension_installer(cluster_installer));
+  // 既定値設定で ActorSystem 構築が成立することを確認する
+  let _system =
+    ActorSystem::create_from_props(&props, config).expect("default singleton settings should allow install");
+}
+
+// buffer_size 10001 → BufferSizeOutOfRange（要件 4.2）
+#[test]
+fn install_rejects_singleton_proxy_with_buffer_size_out_of_range() {
+  let cluster_config = ClusterExtensionConfig::new()
+    .with_advertised_address("node1:8080")
+    .with_singleton_proxy_settings(ClusterSingletonProxySettings::new().with_buffer_size(10001));
+  let cluster_installer = ClusterExtensionInstaller::new(cluster_config, |_event_stream, _block_list, _address| {
+    Box::new(NoopClusterProvider::new())
+  });
+  let props = Props::from_fn(|| TestGuardian);
+  let system = ActorSystem::create_from_props(&props, ActorSystemConfig::new(TestTickDriver::default()))
+    .expect("build actor system");
+
+  let result = cluster_installer.install(&system);
+
+  let Err(ActorSystemBuildError::Configuration(reason)) = result else {
+    panic!("buffer_size out of range should reject install with Configuration error");
+  };
+  assert!(reason.contains("BufferSizeOutOfRange"), "reason was: {reason}");
 }
 
 struct RecordingDowningProvider;
