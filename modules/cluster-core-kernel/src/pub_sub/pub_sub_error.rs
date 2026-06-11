@@ -43,7 +43,7 @@ pub enum PubSubError {
     /// Failure reason.
     reason: String,
   },
-  /// Distributed pub-sub settings are invalid.
+  /// Distributed pub-sub configuration is invalid.
   InvalidConfig {
     /// Failure reason.
     reason: String,
