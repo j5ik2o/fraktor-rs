@@ -72,7 +72,7 @@
   - _Depends:_ 1.2
 
 - [ ] 4. 検証
-- [ ] 4.1 購読フィルタと配信の統合検証を追加する
+- [x] 4.1 購読フィルタと配信の統合検証を追加する
   - 新イベント種別だけを指定した購読者が shutdown 進行イベントのみを受信することを cluster の購読 API 経由で検証する
   - DC ラッチの遷移出力（`DataCenterReachabilityTransition`）から `UnreachableDataCenter` / `ReachableDataCenter` の `ClusterEvent` への変換ロジックを実装し、`data_center` 識別子が正しく引き継がれることをテストで検証する
   - cluster の公開 API に full shutdown を開始する command が追加されていないことを確認する
