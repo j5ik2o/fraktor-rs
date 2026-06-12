@@ -29,7 +29,7 @@
   - _Requirements:_ 3.3, 3.4, 3.5, 3.6
   - _Boundary:_ Murmur2MessageExtractor<M>
   - _Depends:_ 1.1, 1.2
-- [ ] 2.3 envelope なし HashCode 標準実装を実装する
+- [x] 2.3 envelope なし HashCode 標準実装を実装する
   - 利用者定義の entity id 導出規則を適用し、HashCode 標準実装と同一の shard 規則（共有ハッシュ）で shard id を導出する
   - 利用者定義導出の適用、導出不能の伝搬、HashCode 実装と同一 entity id → 同一 shard id になること、および同一入力 → 同一 shard id の決定性を検証する sibling テストが green になる
   - _Requirements:_ 3.2, 3.5, 3.6
@@ -58,3 +58,4 @@
 
 - 2.1 レビュー指摘（Suggestion）: 決定性テストは同一インスタンス2回呼びではなく、別インスタンス間（`new(n)` を2回）で書く方が強い。2.2 / 2.3 ではインスタンス横断で検証する
 - `*Config*Error` 型は `fmt::Display` + `core::error::Error` 実装と Display の sibling テストが既存パターン（1.2 レビューで確立）
+- `Box<dyn Fn(...)>` をフィールド/引数に直接書くと `clippy::type_complexity` で CI が fail する。private 型エイリアスで回避する（2.3 レビューで確立）
