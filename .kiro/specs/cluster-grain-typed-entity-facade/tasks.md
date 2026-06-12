@@ -9,7 +9,7 @@
   - _Depends:_ none
 
 - [ ] 2. コア: typed 宣言点と typed 参照
-- [ ] 2.1 (P) grain 種別の typed 宣言点を実装する
+- [x] 2.1 (P) grain 種別の typed 宣言点を実装する
   - kind とメッセージ型の対応を一箇所で宣言し、entity id を与えて typed 識別を導出できるようにする
   - 識別の検証は kernel の検証規則へ委譲し、不正な kind / entity id は既存のエラー契約（ClusterIdentityError）で拒否される
   - 宣言点の構築が Result を返すか infallible とするかは、kernel の kind 検証規則を単体で再利用できるかで実装時に決定する（いずれの場合も不正識別の拒否が契約上の要点）
