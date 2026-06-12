@@ -38,7 +38,7 @@
   - _Depends:_ 2.1, 2.2
 
 - [ ] 4. 検証
-- [ ] 4.1 取得経路と呼び出し往復の統合テストを追加する
+- [x] 4.1 取得経路と呼び出し往復の統合テストを追加する
   - 拡張導入済みシステムで宣言点 → 取得 → request 往復が typed 応答を返すことを検証する
   - 拡張未導入システムで取得が ClusterApiError::ExtensionNotInstalled で拒否されることを検証する
   - tell の送達、request_future の応答、失敗伝搬（宛先解決失敗 → GrainCallError::ResolveFailed、応答型不一致 → TypedAskError::TypeMismatch）を検証する
