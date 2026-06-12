@@ -45,7 +45,7 @@
   - _Boundary:_ ShardingRouter / ShardingDispatchError
   - _Depends:_ 1.2, 2.1
 
-- [ ] 4. 検証: 非回帰と範囲限定を確認する
+- [x] 4. 検証: 非回帰と範囲限定を確認する
   - kernel の既存ファイル差分が配線（grain.rs）のみであることを確認する
   - 既存テストが無変更で green になり、extractor 未指定の既存送信手段が維持されていることを確認する
   - placement / shard allocation / serialization に変更がないこと、shard id を消費する配置決定コードを導入していないことを確認する
