@@ -17,7 +17,6 @@ fi
 case "$ACCOUNT" in
 p) ACCOUNT=personal ;;
 c) ACCOUNT=corporate ;;
-z) ACCOUNT=zai ;;
 esac
 
 CLAUDE_WRAPPER="${SCRIPT_DIR}/run-claude-${ACCOUNT}.sh"
