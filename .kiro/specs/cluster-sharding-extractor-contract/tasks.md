@@ -1,6 +1,6 @@
 # 実装計画
 
-- [ ] 1. 基盤: envelope と extractor 契約を定義する
+- [x] 1. 基盤: envelope と extractor 契約を定義する
 - [x] 1.1 (P) メッセージ envelope 表現を実装する
   - entity id と内部メッセージの組を保持し、構築時に与えた値を参照できる envelope を定義する（内部メッセージの型を型パラメータとして保持する）
   - 構築値（entity id / 内部メッセージ）の参照一致と取り出しを検証する sibling テストが green になる
@@ -15,7 +15,7 @@
   - _Boundary:_ ShardingMessageExtractor<E, M> / ShardingExtractorConfigError
   - _Depends:_ none
 
-- [ ] 2. コア: 標準 extractor 実装群
+- [x] 2. コア: 標準 extractor 実装群
 - [x] 2.1 (P) HashCode 標準実装を実装する
   - envelope から entity id を取り出し、固定仕様のハッシュ（FNV-1a 32bit、定数を rustdoc に明記）と shard 数で決定的に shard id を導出する
   - shard 数 0 の構築拒否、同一入力 → 同一 shard id の決定性、既知ベクタによるハッシュ仕様の固定を検証する sibling テストが green になる
