@@ -1,15 +1,17 @@
 ---
 name: kiro-impl
-description: Implement approved tasks using TDD with subagent dispatch. Runs all pending tasks autonomously or selected tasks manually.
+description: Implement approved tasks using TDD with an independent reviewer gate per task. Executes directly in the main context (default) or via sub-agent dispatch for parallelizable task groups.
 ---
 
 
 # kiro-impl Skill
 
 <background_information>
-You operate in two modes:
-- **Autonomous mode** (no task numbers): Dispatch a fresh sub-agent per task, with independent review after each
-- **Manual mode** (task numbers provided): Execute selected tasks directly in the main context
+You operate in two execution engines (the per-task quality gate is identical in both):
+- **Direct mode**: The controller implements each task in the main context with TDD, gated by a fresh independent reviewer sub-agent before completion. Default for serial task queues on high-capability host models.
+- **Dispatch mode**: A fresh implementer sub-agent per task, with independent review after each. Reserve for parallelizable `(P)` task groups with isolation, or when main-context budget is constrained.
+
+In BOTH engines: the independent reviewer gate per task and parent-owned selective commits are mandatory and non-negotiable.
 
 - **Success Criteria**:
   - All tests written before implementation code
@@ -57,8 +59,17 @@ After all parallel research completes, synthesize implementation brief before st
 
 **Parse arguments**:
 - Extract feature name from `$1`
-- If task numbers provided in `$2` (e.g., "1.1" or "1,2,3"): **manual mode**
-- If no task numbers: **autonomous mode** (all pending tasks)
+- If task numbers provided in `$2` (e.g., "1.1" or "1,2,3"): **direct mode** on the selected tasks only
+- If no task numbers: all pending tasks; choose the execution engine with the decision flow below
+
+**Execution engine decision flow** (no task numbers):
+1. Are there 3+ unblocked `(P)` tasks touching disjoint boundaries that genuinely benefit from parallel implementation, AND does the host support isolated parallel write-agents (e.g., git worktree isolation)? → **dispatch mode** for that group, direct mode for the serial remainder
+2. Is main-context budget at risk (very large feature, heavy exploration expected per task)? → **dispatch mode**
+3. Otherwise → **direct mode** (default). Serial sub-agent dispatch adds orchestration latency (per-dispatch context rebuild, per-edit hook runs, handoff parsing and re-dispatch on protocol violations) without a quality gain when the controller model is high-capability — the quality lever is the independent reviewer gate, not the implementer dispatch.
+
+**Dispatch-mode handoff rule**: when the host supports schema-enforced structured outputs (e.g., workflow `agent({schema})` or structured-output sub-agents), use them for implementer status and reviewer verdicts instead of prose-block parsing. Prompt-based `## Status Report` / `## Review Verdict` blocks are the fallback only.
+
+**Read-only fan-out**: regardless of engine, review and validation steps may fan out as parallel read-only sub-agents (or a workflow). Repo-serialized build/lint constraints apply to write work, not to read-only review.
 
 **Build task queue**:
 - Read tasks.md, identify actionable sub-tasks (X.Y numbering like 1.1, 2.3)
@@ -70,7 +81,7 @@ After all parallel research completes, synthesize implementation brief before st
 
 ## Step 3: Execute Implementation
 
-### Autonomous Mode (sub-agent dispatch)
+### Dispatch Mode (sub-agent per task)
 
 **Iteration discipline**: Process exactly ONE sub-task (e.g., 1.1) per iteration. Do NOT batch multiple sub-tasks into a single sub-agent dispatch. Each iteration follows the full cycle: dispatch implementer → review → commit → re-read tasks.md → next.
 
@@ -149,11 +160,11 @@ The debug subagent runs in a **fresh context** — it receives only the error in
 - **Max 2 debug rounds per task**. Each round: fresh debug subagent → fresh implementer. If still failing after 2 rounds, the task is blocked.
 - Record debug findings in `## Implementation Notes` (this helps subsequent tasks avoid the same issue)
 
-**`(P)` markers**: Tasks marked `(P)` in tasks.md indicate they have no inter-dependencies and could theoretically run in parallel. However, kiro-impl processes them sequentially (one at a time) to avoid git conflicts and simplify review. The `(P)` marker is informational for task planning, not an execution directive.
+**`(P)` markers**: Tasks marked `(P)` in tasks.md have no inter-dependencies. In direct mode they are still processed sequentially. In dispatch mode they may run in parallel ONLY with per-agent isolation (e.g., git worktrees) and awareness of repo-serialized build/lint constraints (hooks or CI scripts that forbid concurrent runs); without isolation, process them sequentially to avoid git and build-lock conflicts.
 
-**Fallback**: If multi-agent is not available, fall back to manual mode execution for all tasks.
+**Fallback**: If multi-agent is not available, fall back to direct mode execution for all tasks (reviewer runs inline using the `kiro-review` protocol).
 
-### Manual Mode (main context)
+### Direct Mode (main context)
 
 For each selected task:
 
@@ -169,12 +180,15 @@ Before writing any code, read the relevant sections of requirements.md and desig
 - **GREEN**: Implement simplest solution to make test pass, following the design constraints.
 - **REFACTOR**: Improve code structure, remove duplication. All tests must still pass.
 - **VERIFY**: All tests pass (new and existing), no regressions. Confirm verification method passes.
-- **REVIEW**: Apply `kiro-review` before marking the task complete. If the host supports fresh sub-agents in manual mode, use a fresh reviewer; otherwise perform the review in the main context using the `kiro-review` protocol. Do NOT continue until the verdict is parseably `APPROVED`.
+- **REVIEW**: Apply `kiro-review` before marking the task complete. If the host supports fresh sub-agents, ALWAYS use a fresh reviewer sub-agent (the independence of the reviewer is the primary quality lever of this skill — the author must not be the sole judge of their own work); fall back to an inline `kiro-review` only when sub-agents are unavailable. Pre-screening by the controller (doc links, fmt, known failure classes) before dispatching the reviewer is encouraged. Do NOT continue until the verdict is parseably `APPROVED`.
 - **MARK COMPLETE**: Only after review returns `APPROVED`, apply `kiro-verify-completion`, then update the checkbox from `- [ ]` to `- [x]` in tasks.md.
+- **COMMIT** (selective staging): Stage only the files changed for this task plus tasks.md with explicit paths (`git add <file1> <file2> ...`). NEVER `git add -A` or `git add .`. Commit message format: `feat(<feature-name>): <task description>` (or `test(...)`/`docs(...)` as appropriate).
+
+**Hook reconciliation note**: if the host runs long validation hooks on every file edit and the user has authorized temporarily disabling them, the controller may do so for an editing burst, but MUST then run the equivalent checks manually (fmt, lint, targeted tests) before committing, and restore the hooks immediately after. Never leave hooks disabled past the editing burst, and never commit the hook-config change.
 
 ## Step 4: Final Validation
 
-**Autonomous mode**:
+**Full-feature run (all pending tasks, either engine)**:
 - After all tasks complete, run `$kiro-validate-impl $1` as a GO/NO-GO gate
 - If validation returns GO → before reporting feature success, apply `kiro-verify-completion` to the feature-level claim using the validation result and fresh supporting evidence
 - If validation returns NO-GO:
@@ -182,7 +196,7 @@ Before writing any code, read the relevant sections of requirements.md and desig
   - Cap remediation at 3 rounds; if still NO-GO, stop and report remaining findings
 - If validation returns MANUAL_VERIFY_REQUIRED → stop and report the missing verification step
 
-**Manual mode**:
+**Partial run (explicit task numbers)**:
 - Suggest running `$kiro-validate-impl $1` but do not auto-execute
 
 ## Feature Flag Protocol
@@ -208,9 +222,9 @@ For tasks that add or change behavior, enforce RED → GREEN with a feature flag
 
 ## Output Description
 
-**Autonomous mode**: For each task, report: task ID, implementer status, reviewer verdict, files changed, commit hash. After all tasks: final validation result.
+**Dispatch mode**: For each task, report: task ID, implementer status, reviewer verdict, files changed, commit hash. After all tasks: final validation result.
 
-**Manual mode**: Tasks executed with test results. Status of completed/remaining tasks.
+**Direct mode**: For each task, report: task ID, test results, reviewer verdict, files changed, commit hash. After all tasks: final validation result (full-feature run) or remaining-task status (partial run).
 
 **Format**: Concise, in the language specified in spec.json.
 
