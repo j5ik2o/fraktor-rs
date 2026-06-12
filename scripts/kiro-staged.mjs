@@ -100,7 +100,12 @@ export function main(argv = process.argv.slice(2)) {
     console.error(error.message);
     return 1;
   }
-  const result = spawnSync(command, taktArgs, { stdio: "inherit" });
+  // run-takt.sh は ACCOUNT 未設定だと先頭位置引数（--pipeline 等）をアカウント名として
+  // 消費するため、既定アカウントを env で明示して takt 引数を温存する
+  const result = spawnSync(command, taktArgs, {
+    stdio: "inherit",
+    env: { ...process.env, ACCOUNT: process.env.ACCOUNT || "corporate" },
+  });
 
   if (result.error) {
     console.error(result.error.message);
