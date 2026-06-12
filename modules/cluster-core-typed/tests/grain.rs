@@ -82,6 +82,7 @@ struct TestActorRefProvider {
   system:        ActorSystem,
   send_counter:  Option<ArcShared<SpinSyncMutex<usize>>>,
   reply_on_send: bool,
+  fail_on_send:  bool,
 }
 
 impl ActorRefProvider for TestActorRefProvider {
@@ -93,7 +94,11 @@ impl ActorRefProvider for TestActorRefProvider {
   fn actor_ref(&mut self, _path: ActorPath) -> Result<ActorRef, ActorError> {
     Ok(ActorRef::with_system(
       Pid::new(1, 0),
-      TestSender { send_counter: self.send_counter.clone(), reply_on_send: self.reply_on_send },
+      TestSender {
+        send_counter:  self.send_counter.clone(),
+        reply_on_send: self.reply_on_send,
+        fail_on_send:  self.fail_on_send,
+      },
       &self.system.state(),
     ))
   }
@@ -106,10 +111,15 @@ impl ActorRefProvider for TestActorRefProvider {
 struct TestSender {
   send_counter:  Option<ArcShared<SpinSyncMutex<usize>>>,
   reply_on_send: bool,
+  fail_on_send:  bool,
 }
 
 impl ActorRefSender for TestSender {
   fn send(&mut self, message: AnyMessage) -> Result<SendOutcome, SendError> {
+    // fail_on_send: 送達失敗を起こす（失敗伝搬の検証用）
+    if self.fail_on_send {
+      return Err(SendError::timeout(AnyMessage::new(())));
+    }
     // reply_on_send: 送信者へ String("reply") を返す（ask future を完了させる）
     if self.reply_on_send
       && let Some(mut sender) = message.sender().cloned()
@@ -131,6 +141,15 @@ fn build_typed_system_with_extension(
   send_counter: Option<&ArcShared<SpinSyncMutex<usize>>>,
   reply_on_send: bool,
 ) -> (TypedActorSystem<UserMessage>, ArcShared<ClusterExtension>) {
+  build_typed_system_with_extension_config(send_counter, reply_on_send, false)
+}
+
+// 送達失敗（fail_on_send）も指定できる完全版。
+fn build_typed_system_with_extension_config(
+  send_counter: Option<&ArcShared<SpinSyncMutex<usize>>>,
+  reply_on_send: bool,
+  fail_on_send: bool,
+) -> (TypedActorSystem<UserMessage>, ArcShared<ClusterExtension>) {
   let scheduler_config = SchedulerConfig::default().with_runner_api_enabled(true);
   let cluster_config = ClusterExtensionConfig::new().with_advertised_address("node1:8080");
   let cluster_installer = ClusterExtensionInstaller::new(cluster_config, |_event_stream, _block_list, _address| {
@@ -147,6 +166,7 @@ fn build_typed_system_with_extension(
         system: system.clone(),
         send_counter: send_counter.clone(),
         reply_on_send,
+        fail_on_send,
       });
       system.extended().register_actor_ref_provider(&provider)
     });
@@ -208,6 +228,26 @@ fn grain_tell_with_sender_delivers_message() {
   grain.tell_with_sender(UserMessage, &sender).expect("tell");
 
   assert_eq!(*send_counter.lock(), 1, "tell should deliver exactly one message");
+}
+
+// ─── テスト: tell の送信失敗伝搬（要件 2.3） ─────────────────────────────────
+
+#[test]
+fn grain_tell_with_sender_propagates_send_failure() {
+  let (system, _ext) = build_typed_system_with_extension_config(None, false, true);
+
+  let cluster = Cluster::get(&system).expect("cluster facade");
+  let key = GrainTypeKey::<UserMessage>::new("user");
+  let identity = key.identity_for("abc").expect("identity");
+  let grain = cluster.grain_ref_for(&identity);
+
+  let sender: TypedActorRef<UserMessage> = TypedActorRef::from_untyped(ActorRef::null());
+  // 送達失敗は GrainCallError::RequestFailed(SendFailed) として呼び出し元へ返る
+  match grain.tell_with_sender(UserMessage, &sender) {
+    | Err(GrainCallError::RequestFailed(_)) => {},
+    | Err(other) => panic!("expected RequestFailed, got: {other:?}"),
+    | Ok(()) => panic!("expected Err(RequestFailed) but tell succeeded"),
+  }
 }
 
 // ─── テスト: request_future の応答（要件 2.5） ───────────────────────────────
