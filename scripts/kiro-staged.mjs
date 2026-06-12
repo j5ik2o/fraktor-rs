@@ -41,13 +41,35 @@ export function buildTaktArgs(workflowPath, forwardedArgs) {
     : [...argsForTakt.slice(0, taskArgIndex), "-w", workflowPath, ...argsForTakt.slice(taskArgIndex)];
 }
 
-function collapseTaskPayload(args) {
+export function collapseTaskPayload(args) {
   const taskArgIndex = args.findIndex((arg) => arg === "-t" || arg === "--task");
   if (taskArgIndex === -1 || taskArgIndex === args.length - 1) {
     return args;
   }
 
-  const taskPayload = args.slice(taskArgIndex + 1).join(" ");
+  const rest = args.slice(taskArgIndex + 1);
+  const separatorIndex = rest.indexOf("--");
+
+  // `--` 区切りがある場合: 区切り前は takt のオプションとして -t の前へ移し、
+  // 区切り後だけを task 本文として結合する（オプションを task に飲み込まない）
+  if (separatorIndex !== -1) {
+    const options = rest.slice(0, separatorIndex);
+    const payloadParts = rest.slice(separatorIndex + 1);
+    return payloadParts.length === 0
+      ? [...args.slice(0, taskArgIndex), ...options]
+      : [...args.slice(0, taskArgIndex), ...options, args[taskArgIndex], payloadParts.join(" ")];
+  }
+
+  // 区切りなしでオプションらしき引数が先頭に来ている場合は、task 本文へ
+  // 飲み込まず明示的に使い方エラーにする（--provider 等の値の区切りが曖昧なため）
+  if (rest[0]?.startsWith("-")) {
+    throw new Error(
+      "Takt options must be separated from the task text: " +
+        'npm run kiro:<command> -- [takt options...] -- "task text"',
+    );
+  }
+
+  const taskPayload = rest.join(" ");
   return [...args.slice(0, taskArgIndex + 1), taskPayload];
 }
 
@@ -68,9 +90,17 @@ export function main(argv = process.argv.slice(2)) {
     return 1;
   }
 
-  const taktWrapper = resolve(repoRoot, "scripts", "takt.sh");
+  // mise env と TAKT_*_CLI_PATH を設定する既存の起動経路（run-takt.sh）を経由する
+  const taktWrapper = resolve(repoRoot, "scripts", "run-takt.sh");
   const command = existsSync(taktWrapper) ? taktWrapper : "takt";
-  const result = spawnSync(command, buildTaktArgs(workflowPath, forwardedArgs), { stdio: "inherit" });
+  let taktArgs;
+  try {
+    taktArgs = buildTaktArgs(workflowPath, forwardedArgs);
+  } catch (error) {
+    console.error(error.message);
+    return 1;
+  }
+  const result = spawnSync(command, taktArgs, { stdio: "inherit" });
 
   if (result.error) {
     console.error(result.error.message);
