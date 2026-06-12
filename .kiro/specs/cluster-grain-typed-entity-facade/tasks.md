@@ -48,7 +48,7 @@
   - _Boundary:_ 統合（cluster-core-typed の crate 統合テスト）
   - _Depends:_ 3
 
-- [ ] 4.2 非回帰と範囲限定を確認する
+- [x] 4.2 非回帰と範囲限定を確認する
   - cluster-core-kernel に差分がないことを確認する
   - cluster-core-typed / actor-core-typed の既存テストが無変更で green になる（3 の実装制約の事後確認を含む）
   - lifecycle / 配置 / envelope / extractor / behavior factory を導入していないことを確認する
