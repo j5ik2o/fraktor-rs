@@ -18,7 +18,7 @@
   - _Boundary:_ GrainTypeKey<M>
   - _Depends:_ none
 
-- [ ] 2.2 (P) typed grain 参照と型安全な呼び出しを実装する
+- [x] 2.2 (P) typed grain 参照と型安全な呼び出しを実装する
   - メッセージ型でパラメータ化された grain 参照を提供し、型付き tell / request / request_future、識別の参照、呼び出しオプション・codec のパススルーを実装する
   - request / request_future の応答型付けには、タスク 1 で公開した from_untyped（TypedAskResponse / TypedAskFuture）を使用する
   - untyped との明示的相互変換（from_kernel / as_kernel / into_kernel）を提供し、From / Into による暗黙変換は実装しない
