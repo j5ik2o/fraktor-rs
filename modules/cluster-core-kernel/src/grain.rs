@@ -24,6 +24,8 @@ mod schema_negotiator;
 mod serialization_grain_codec;
 mod serialized_message;
 mod sharding_envelope;
+mod sharding_extractor_config_error;
+mod sharding_message_extractor;
 
 pub use grain_call_error::GrainCallError;
 pub use grain_call_options::GrainCallOptions;
@@ -49,3 +51,5 @@ pub use schema_negotiator::SchemaNegotiator;
 pub use serialization_grain_codec::SerializationGrainCodec;
 pub use serialized_message::SerializedMessage;
 pub use sharding_envelope::ShardingEnvelope;
+pub use sharding_extractor_config_error::ShardingExtractorConfigError;
+pub use sharding_message_extractor::ShardingMessageExtractor;
