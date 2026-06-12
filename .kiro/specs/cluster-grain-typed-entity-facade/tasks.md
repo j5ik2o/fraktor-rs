@@ -1,6 +1,6 @@
 # 実装計画
 
-- [ ] 1. 基盤: 応答型付けの変換点を公開する
+- [x] 1. 基盤: 応答型付けの変換点を公開する
   - actor-core-typed の typed 応答（response / future）に公開コンストラクタ from_untyped を追加する（既存 pub(crate) 実体の公開化、取り出し契約は変更しない）
   - rustdoc に typed facade crate 向けの変換点である旨を明記し、#[must_use] を付与する
   - from_untyped で構築した typed 応答が既存の取り出し契約（try_take / TypedAskError）で動作する単体テストが green になる
