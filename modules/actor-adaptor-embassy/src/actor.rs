@@ -24,15 +24,15 @@ pub fn embassy_actor_system_config<const N: usize>(
   executor_factory: &EmbassyExecutorFactory<N>,
   spawner: SendSpawner,
 ) -> ActorSystemConfig {
-  let default_settings = DispatcherConfig::with_defaults(DEFAULT_DISPATCHER_ID);
+  let default_config = DispatcherConfig::with_defaults(DEFAULT_DISPATCHER_ID);
   let default_executor = executor_factory.create(DEFAULT_DISPATCHER_ID);
   let default_configurator: Box<dyn MessageDispatcherFactory> =
-    Box::new(DefaultDispatcherFactory::new(&default_settings, default_executor));
+    Box::new(DefaultDispatcherFactory::new(&default_config, default_executor));
 
-  let blocking_settings = DispatcherConfig::with_defaults(DEFAULT_BLOCKING_DISPATCHER_ID);
+  let blocking_config = DispatcherConfig::with_defaults(DEFAULT_BLOCKING_DISPATCHER_ID);
   let blocking_executor = executor_factory.create(DEFAULT_BLOCKING_DISPATCHER_ID);
   let blocking_configurator: Box<dyn MessageDispatcherFactory> =
-    Box::new(DefaultDispatcherFactory::new(&blocking_settings, blocking_executor));
+    Box::new(DefaultDispatcherFactory::new(&blocking_config, blocking_executor));
 
   ActorSystemConfig::new(EmbassyTickDriver::new(Duration::from_millis(10), spawner))
     .with_mailbox_clock(embassy_monotonic_mailbox_clock())

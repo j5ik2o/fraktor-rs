@@ -74,8 +74,8 @@ pub trait SinkLogic: Send {
     Ok(())
   }
 
-  /// Attaches stream reference settings resolved by the materializer.
-  fn attach_stream_ref_settings(&mut self, _settings: StreamRefConfig) {}
+  /// Attaches stream reference configuration resolved by the materializer.
+  fn attach_stream_ref_config(&mut self, _config: StreamRefConfig) {}
 
   /// Attaches the actor system resolved by the materializer.
   fn attach_actor_system(&mut self, system: ActorSystem) {

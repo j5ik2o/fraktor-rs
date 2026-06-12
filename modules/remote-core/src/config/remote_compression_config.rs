@@ -1,4 +1,4 @@
-//! Typed compression settings carried by `RemoteConfig`.
+//! Typed compression configuration carried by `RemoteConfig`.
 
 use core::{num::NonZeroUsize, time::Duration};
 
@@ -10,7 +10,7 @@ const fn default_compression_max() -> NonZeroUsize {
   unsafe { NonZeroUsize::new_unchecked(DEFAULT_COMPRESSION_MAX) }
 }
 
-/// Compression table settings for actor refs and serializer manifests.
+/// Compression table configuration for actor refs and serializer manifests.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct RemoteCompressionConfig {
   actor_ref_max:                    Option<NonZeroUsize>,
@@ -20,7 +20,7 @@ pub struct RemoteCompressionConfig {
 }
 
 impl RemoteCompressionConfig {
-  /// Creates compression settings with Pekko-compatible defaults.
+  /// Creates compression configuration with Pekko-compatible defaults.
   #[must_use]
   pub const fn new() -> Self {
     Self {

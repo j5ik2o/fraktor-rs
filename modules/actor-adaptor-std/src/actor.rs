@@ -46,15 +46,15 @@ pub fn install_panic_invoke_guard(config: ActorSystemConfig) -> ActorSystemConfi
 #[cfg(feature = "tokio-executor")]
 #[must_use]
 pub fn tokio_actor_system_config(handle: Handle) -> ActorSystemConfig {
-  let default_settings = DispatcherConfig::with_defaults(DEFAULT_DISPATCHER_ID);
+  let default_config = DispatcherConfig::with_defaults(DEFAULT_DISPATCHER_ID);
   let default_executor = TokioTaskExecutorFactory::new(handle.clone()).create(DEFAULT_DISPATCHER_ID);
   let default_configurator: Box<dyn MessageDispatcherFactory> =
-    Box::new(DefaultDispatcherFactory::new(&default_settings, default_executor));
+    Box::new(DefaultDispatcherFactory::new(&default_config, default_executor));
 
-  let blocking_settings = DispatcherConfig::with_defaults(DEFAULT_BLOCKING_DISPATCHER_ID);
+  let blocking_config = DispatcherConfig::with_defaults(DEFAULT_BLOCKING_DISPATCHER_ID);
   let blocking_executor = TokioExecutorFactory::new(handle).create(DEFAULT_BLOCKING_DISPATCHER_ID);
   let blocking_configurator: Box<dyn MessageDispatcherFactory> =
-    Box::new(DefaultDispatcherFactory::new(&blocking_settings, blocking_executor));
+    Box::new(DefaultDispatcherFactory::new(&blocking_config, blocking_executor));
 
   ActorSystemConfig::new(TokioTickDriver::default())
     .with_mailbox_clock(std_monotonic_mailbox_clock())

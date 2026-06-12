@@ -504,10 +504,10 @@ where
     self
   }
 
-  /// Enables restart semantics by explicit restart settings.
+  /// Enables restart semantics by explicit restart configuration.
   #[must_use]
-  pub fn restart_sink_with_settings(mut self, settings: RestartConfig) -> Self {
-    self.graph.set_sink_restart(&Some(RestartBackoff::from_settings(settings)));
+  pub fn restart_sink_with_config(mut self, config: RestartConfig) -> Self {
+    self.graph.set_sink_restart(&Some(RestartBackoff::from_config(config)));
     self
   }
 

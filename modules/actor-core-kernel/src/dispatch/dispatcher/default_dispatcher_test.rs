@@ -27,7 +27,7 @@ fn make_dispatcher() -> DefaultDispatcher {
 }
 
 #[test]
-fn new_initialises_core_from_settings() {
+fn new_initialises_core_from_config() {
   let dispatcher = make_dispatcher();
   assert_eq!(dispatcher.id(), "default-id");
   assert_eq!(dispatcher.throughput(), nz(7));

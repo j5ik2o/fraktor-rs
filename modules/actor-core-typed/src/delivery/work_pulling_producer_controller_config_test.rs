@@ -35,7 +35,7 @@ fn default_internal_ask_timeout() {
 
   // Then: internal_ask_timeout matches Pekko's default (60 seconds)
   assert_eq!(config.internal_ask_timeout(), Duration::from_secs(60));
-  assert_eq!(config.producer_controller_settings().durable_queue_retry_attempts(), 10);
+  assert_eq!(config.producer_controller_config().durable_queue_retry_attempts(), 10);
 }
 
 #[test]
@@ -89,18 +89,18 @@ fn with_buffer_size_preserves_internal_ask_timeout() {
 }
 
 #[test]
-fn with_producer_controller_settings_overrides_nested_config() {
+fn with_producer_controller_config_overrides_nested_config() {
   let producer_config = ProducerControllerConfig::new()
     .with_durable_queue_retry_attempts(3)
     .with_durable_queue_request_timeout(Duration::from_millis(75));
-  let config = WorkPullingProducerControllerConfig::new().with_producer_controller_settings(producer_config.clone());
+  let config = WorkPullingProducerControllerConfig::new().with_producer_controller_config(producer_config.clone());
 
   assert_eq!(
-    config.producer_controller_settings().durable_queue_retry_attempts(),
+    config.producer_controller_config().durable_queue_retry_attempts(),
     producer_config.durable_queue_retry_attempts()
   );
   assert_eq!(
-    config.producer_controller_settings().durable_queue_request_timeout(),
+    config.producer_controller_config().durable_queue_request_timeout(),
     producer_config.durable_queue_request_timeout()
   );
 }

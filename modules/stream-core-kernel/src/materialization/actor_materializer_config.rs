@@ -16,7 +16,7 @@ pub struct ActorMaterializerConfig {
   debug_logging:         bool,
   output_burst_limit:    usize,
   max_fixed_buffer_size: usize,
-  stream_ref_settings:   StreamRefConfig,
+  stream_ref_config:     StreamRefConfig,
 }
 
 impl ActorMaterializerConfig {
@@ -31,7 +31,7 @@ impl ActorMaterializerConfig {
       debug_logging:         false,
       output_burst_limit:    1000,
       max_fixed_buffer_size: 1_000_000_000,
-      stream_ref_settings:   StreamRefConfig::new(),
+      stream_ref_config:     StreamRefConfig::new(),
     }
   }
 
@@ -79,8 +79,8 @@ impl ActorMaterializerConfig {
 
   /// Returns the configured stream reference settings.
   #[must_use]
-  pub fn stream_ref_settings(&self) -> StreamRefConfig {
-    self.stream_ref_settings.clone()
+  pub fn stream_ref_config(&self) -> StreamRefConfig {
+    self.stream_ref_config.clone()
   }
 
   /// Updates the drive interval.
@@ -134,8 +134,8 @@ impl ActorMaterializerConfig {
 
   /// Updates the stream reference settings.
   #[must_use]
-  pub const fn with_stream_ref_settings(mut self, stream_ref_settings: StreamRefConfig) -> Self {
-    self.stream_ref_settings = stream_ref_settings;
+  pub const fn with_stream_ref_config(mut self, stream_ref_config: StreamRefConfig) -> Self {
+    self.stream_ref_config = stream_ref_config;
     self
   }
 }

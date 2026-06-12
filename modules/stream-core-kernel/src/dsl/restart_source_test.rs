@@ -12,9 +12,9 @@ fn restart_source_with_backoff_keeps_data_path_behavior() {
 }
 
 #[test]
-fn restart_source_with_settings_keeps_data_path_behavior() {
+fn restart_source_with_config_keeps_data_path_behavior() {
   let settings = RestartConfig::new(1, 2, 3);
-  let source = RestartSource::with_settings(Source::from_array([1_u32, 2]), settings);
+  let source = RestartSource::with_config(Source::from_array([1_u32, 2]), settings);
   let values = source.run_with_collect_sink().expect("run_with_collect_sink");
   assert_eq!(values, vec![1_u32, 2_u32]);
 }

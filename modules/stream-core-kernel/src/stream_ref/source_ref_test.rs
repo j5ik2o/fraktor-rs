@@ -117,7 +117,7 @@ fn actor_backed_source_ref_fails_when_partner_never_subscribes_before_timeout() 
   let system = build_system();
   let (target, _system_messages, _user_messages) = temp_recording_actor(&system);
   let mut logic = ActorBackedSourceRefLogic::<u32>::new(target);
-  logic.attach_stream_ref_settings(StreamRefConfig::new().with_subscription_timeout_ticks(1));
+  logic.attach_stream_ref_config(StreamRefConfig::new().with_subscription_timeout_ticks(1));
 
   let error = logic.pull().expect_err("subscription timeout");
 
@@ -143,7 +143,7 @@ fn actor_backed_source_ref_reports_startup_and_missing_endpoint_errors() {
 #[test]
 fn actor_backed_source_ref_waits_before_timeout_and_reports_handoff_failure() {
   let mut waiting = ActorBackedSourceRefLogic::<u32>::new(ActorRef::null());
-  waiting.attach_stream_ref_settings(StreamRefConfig::new().with_subscription_timeout_ticks(2));
+  waiting.attach_stream_ref_config(StreamRefConfig::new().with_subscription_timeout_ticks(2));
 
   assert_eq!(waiting.pull().expect_err("waiting should block"), StreamError::WouldBlock);
 

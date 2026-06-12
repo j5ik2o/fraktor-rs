@@ -67,10 +67,10 @@ where
   StopWorkerPc(TypedActorRef<ProducerControllerCommand<A>>),
   /// Spawn a per-worker ProducerController and wire it up.
   SpawnWorker {
-    worker_ref:                   ActorRef,
-    producer_id:                  String,
-    demand_adapter:               TypedActorRef<ProducerControllerRequestNext<A>>,
-    producer_controller_settings: ProducerControllerConfig,
+    worker_ref:                 ActorRef,
+    producer_id:                String,
+    demand_adapter:             TypedActorRef<ProducerControllerRequestNext<A>>,
+    producer_controller_config: ProducerControllerConfig,
   },
   LogDropped {
     total_seq_nr: u64,
@@ -257,7 +257,7 @@ impl WorkPullingProducerController {
   ) -> Behavior<WorkPullingProducerControllerCommand<A>>
   where
     A: Clone + Send + Sync + 'static, {
-    Self::behavior_with_settings(
+    Self::behavior_with_config(
       producer_id,
       worker_service_key,
       &WorkPullingProducerControllerConfig::new(),
@@ -266,7 +266,7 @@ impl WorkPullingProducerController {
   }
 
   /// Creates the work-pulling producer controller behavior with default
-  /// settings.
+  /// configuration.
   #[must_use]
   pub fn behavior<A>(
     producer_id: impl Into<String>,
@@ -274,25 +274,25 @@ impl WorkPullingProducerController {
   ) -> Behavior<WorkPullingProducerControllerCommand<A>>
   where
     A: Clone + Send + Sync + 'static, {
-    Self::behavior_with_settings(producer_id, worker_service_key, &WorkPullingProducerControllerConfig::new(), None)
+    Self::behavior_with_config(producer_id, worker_service_key, &WorkPullingProducerControllerConfig::new(), None)
   }
 
   /// Creates the work-pulling producer controller behavior with custom
-  /// settings.
+  /// configuration.
   #[must_use]
-  pub fn behavior_with_settings<A>(
+  pub fn behavior_with_config<A>(
     producer_id: impl Into<String>,
     worker_service_key: ServiceKey<ConsumerControllerCommand<A>>,
-    settings: &WorkPullingProducerControllerConfig,
+    config: &WorkPullingProducerControllerConfig,
     durable_queue_behavior: Option<Behavior<DurableProducerQueueCommand<A>>>,
   ) -> Behavior<WorkPullingProducerControllerCommand<A>>
   where
     A: Clone + Send + Sync + 'static, {
     let producer_id = producer_id.into();
-    let buffer_size = settings.buffer_size();
-    let internal_ask_timeout = settings.internal_ask_timeout();
-    let producer_controller_settings = settings.producer_controller_settings().clone();
-    let durable_queue_request_timeout = producer_controller_settings.durable_queue_request_timeout();
+    let buffer_size = config.buffer_size();
+    let internal_ask_timeout = config.internal_ask_timeout();
+    let producer_controller_config = config.producer_controller_config().clone();
+    let durable_queue_request_timeout = producer_controller_config.durable_queue_request_timeout();
 
     Behaviors::setup(move |ctx| {
       let self_ref = ctx.self_ref();
@@ -403,13 +403,13 @@ impl WorkPullingProducerController {
 
       let producer_id_inner = producer_id.clone();
       let runtime_load_state_adapter = load_state_adapter;
-      let runtime_producer_controller_settings = producer_controller_settings.clone();
+      let runtime_producer_controller_config = producer_controller_config.clone();
       let runtime_durable_queue_request_timeout = durable_queue_request_timeout;
       Behaviors::receive_message(move |ctx, command: &WorkPullingProducerControllerCommand<A>| {
         let command_context = WorkPullingCommandContext {
           producer_id: &producer_id_inner,
           self_ref: &self_ref,
-          producer_controller_settings: &runtime_producer_controller_settings,
+          producer_controller_config: &runtime_producer_controller_config,
           load_state_adapter: &runtime_load_state_adapter,
           internal_ask_timeout,
           durable_queue_request_timeout: runtime_durable_queue_request_timeout,
@@ -484,7 +484,7 @@ where
   A: Clone + Send + Sync + 'static, {
   producer_id: &'a str,
   self_ref: &'a TypedActorRef<WorkPullingProducerControllerCommand<A>>,
-  producer_controller_settings: &'a ProducerControllerConfig,
+  producer_controller_config: &'a ProducerControllerConfig,
   load_state_adapter: &'a Option<TypedActorRef<DurableProducerQueueState<A>>>,
   internal_ask_timeout: Duration,
   durable_queue_request_timeout: Duration,
@@ -546,7 +546,7 @@ fn collect_wppc_deferred_for_command<A>(
         listing,
         command_context.producer_id,
         command_context.self_ref,
-        command_context.producer_controller_settings,
+        command_context.producer_controller_config,
         deferred,
       );
     },
@@ -563,7 +563,7 @@ fn collect_wppc_deferred_for_command<A>(
       collect_wppc_load_timeout(
         state,
         *attempt,
-        command_context.producer_controller_settings,
+        command_context.producer_controller_config,
         command_context.load_state_adapter,
         deferred,
         stop_self,
@@ -574,7 +574,7 @@ fn collect_wppc_deferred_for_command<A>(
         state,
         *seq_nr,
         *attempt,
-        command_context.producer_controller_settings,
+        command_context.producer_controller_config,
         deferred,
         stop_self,
       );
@@ -618,7 +618,7 @@ fn collect_wppc_durable_queue_loaded<A>(
 fn collect_wppc_load_timeout<A>(
   state: &mut WorkPullingState<A>,
   attempt: u32,
-  producer_controller_settings: &ProducerControllerConfig,
+  producer_controller_config: &ProducerControllerConfig,
   load_state_adapter: &Option<TypedActorRef<DurableProducerQueueState<A>>>,
   deferred: &mut Vec<WppcDeferredAction<A>>,
   stop_self: &mut Option<String>,
@@ -627,7 +627,7 @@ fn collect_wppc_load_timeout<A>(
   if !state.awaiting_load {
     return;
   }
-  if attempt >= producer_controller_settings.durable_queue_retry_attempts() {
+  if attempt >= producer_controller_config.durable_queue_retry_attempts() {
     *stop_self =
       Some(alloc::format!("WorkPullingProducerController durable queue load timed out after {} attempts", attempt));
   } else if let (Some(durable_queue), Some(load_state_adapter)) =
@@ -645,7 +645,7 @@ fn collect_wppc_store_timeout<A>(
   state: &mut WorkPullingState<A>,
   seq_nr: u64,
   attempt: u32,
-  producer_controller_settings: &ProducerControllerConfig,
+  producer_controller_config: &ProducerControllerConfig,
   deferred: &mut Vec<WppcDeferredAction<A>>,
   stop_self: &mut Option<String>,
 ) where
@@ -653,7 +653,7 @@ fn collect_wppc_store_timeout<A>(
   let Some(pending) = state.pending_stores.get(&seq_nr) else {
     return;
   };
-  if attempt >= producer_controller_settings.durable_queue_retry_attempts() {
+  if attempt >= producer_controller_config.durable_queue_retry_attempts() {
     *stop_self = Some(alloc::format!(
       "WorkPullingProducerController durable queue store timed out for seq_nr {} after {} attempts",
       seq_nr,
@@ -760,7 +760,7 @@ pub(crate) fn collect_on_worker_listing<A>(
   listing: &Listing,
   producer_id: &str,
   self_ref: &TypedActorRef<WorkPullingProducerControllerCommand<A>>,
-  producer_controller_settings: &ProducerControllerConfig,
+  producer_controller_config: &ProducerControllerConfig,
   deferred: &mut Vec<WppcDeferredAction<A>>,
 ) where
   A: Clone + Send + Sync + 'static, {
@@ -794,10 +794,10 @@ pub(crate) fn collect_on_worker_listing<A>(
       let pc_producer_id = alloc::format!("{}-worker-{}", producer_id, actor_ref.pid());
 
       deferred.push(WppcDeferredAction::SpawnWorker {
-        worker_ref:                   actor_ref.clone(),
-        producer_id:                  pc_producer_id,
-        demand_adapter:               demand_adapter.clone(),
-        producer_controller_settings: producer_controller_settings.clone(),
+        worker_ref:                 actor_ref.clone(),
+        producer_id:                pc_producer_id,
+        demand_adapter:             demand_adapter.clone(),
+        producer_controller_config: producer_controller_config.clone(),
       });
     }
   }
@@ -1115,7 +1115,7 @@ fn execute_wppc_action<A>(
       worker_ref,
       producer_id: pc_producer_id,
       demand_adapter,
-      producer_controller_settings,
+      producer_controller_config,
     } => {
       execute_wppc_spawn_worker(
         ctx,
@@ -1124,7 +1124,7 @@ fn execute_wppc_action<A>(
         &worker_ref,
         &pc_producer_id,
         demand_adapter,
-        &producer_controller_settings,
+        &producer_controller_config,
       );
     },
     | WppcDeferredAction::LogDropped { total_seq_nr, buffered_len, buffer_size, message_type } => {
@@ -1259,14 +1259,13 @@ fn execute_wppc_spawn_worker<A>(
   worker_ref: &ActorRef,
   pc_producer_id: &str,
   demand_adapter: TypedActorRef<ProducerControllerRequestNext<A>>,
-  producer_controller_settings: &ProducerControllerConfig,
+  producer_controller_config: &ProducerControllerConfig,
 ) where
   A: Clone + Send + Sync + 'static, {
   // ワーカー PC を生成し、先に state に登録してから tell() する。
   // インラインディスパッチで InternalDemand が即座に返るため、
   // 登録前に tell() すると demand シグナルが消失する。
-  if let Some((entry, pc_ref)) = spawn_worker_actor::<A>(ctx, worker_ref, pc_producer_id, producer_controller_settings)
-  {
+  if let Some((entry, pc_ref)) = spawn_worker_actor::<A>(ctx, worker_ref, pc_producer_id, producer_controller_config) {
     // 1 回目の state.with_lock は spawn_worker_actor の結果を登録するためだけに使う。
     // start_spawned_worker_pc のインラインディスパッチで InternalDemand
     // が同期的に返る可能性があるため、 collect_after_worker_spawn の 2 回目の state.with_lock で
@@ -1352,15 +1351,15 @@ fn spawn_worker_actor<A>(
   ctx: &mut TypedActorContext<'_, WorkPullingProducerControllerCommand<A>>,
   worker_ref: &ActorRef,
   pc_producer_id: &str,
-  producer_controller_settings: &ProducerControllerConfig,
+  producer_controller_config: &ProducerControllerConfig,
 ) -> Option<SpawnedWorker<A>>
 where
   A: Clone + Send + Sync + 'static, {
   let pc_id = pc_producer_id.to_string();
-  let producer_controller_settings = producer_controller_settings.clone();
+  let producer_controller_config = producer_controller_config.clone();
 
   let pc_props = TypedProps::<ProducerControllerCommand<A>>::from_behavior_factory(move || {
-    ProducerController::behavior_with_settings::<A>(pc_id.clone(), &producer_controller_settings, None)
+    ProducerController::behavior_with_config::<A>(pc_id.clone(), &producer_controller_config, None)
   });
 
   let pc_ref = match ctx.spawn_child(&pc_props) {

@@ -319,7 +319,7 @@ fn source_completion_fails_when_restart_budget_exhaustion_is_configured_to_fail(
     mat_combine: MatCombine::Right,
     logic:       Box::new(EmptyTestSourceLogic),
     supervision: SupervisionStrategy::Stop,
-    restart:     Some(RestartBackoff::from_settings(RestartConfig::new(0, 0, 0).with_complete_on_max_restarts(false))),
+    restart:     Some(RestartBackoff::from_config(RestartConfig::new(0, 0, 0).with_complete_on_max_restarts(false))),
     attributes:  Attributes::new(),
   };
   let sink = collect_u32_sequence_sink(sink_inlet, StreamFuture::new());
@@ -385,7 +385,7 @@ fn flow_input_rejects_type_mismatch_before_applying_logic() {
 
 #[test]
 fn flow_failure_complete_updates_step_and_closes_sources() {
-  let restart = RestartBackoff::from_settings(RestartConfig::new(0, 0, 0));
+  let restart = RestartBackoff::from_config(RestartConfig::new(0, 0, 0));
   let (mut interpreter, _, flow_index, _) =
     single_flow_interpreter_with_logic(Box::new(DrainFailingFlowLogic), Some(restart));
   let mut step = FlowStageStep::default();
@@ -430,7 +430,7 @@ fn flow_async_restart_exhaustion_skips_timer_callback() {
   assert_eq!(coverage_logic.on_timer().expect("timer output").len(), 1);
   assert_eq!(*coverage_timer_calls.lock(), 1);
 
-  let restart = RestartBackoff::from_settings(RestartConfig::new(0, 0, 0));
+  let restart = RestartBackoff::from_config(RestartConfig::new(0, 0, 0));
   let (mut interpreter, _, flow_index, _) = single_flow_interpreter_with_logic(
     Box::new(AsyncRestartExhaustedFlowLogic { timer_calls: timer_calls.clone() }),
     Some(restart),
@@ -444,7 +444,7 @@ fn flow_async_restart_exhaustion_skips_timer_callback() {
 
 #[test]
 fn flow_drain_failure_complete_finishes_flow_without_failing_stream() {
-  let restart = RestartBackoff::from_settings(RestartConfig::new(0, 0, 0));
+  let restart = RestartBackoff::from_config(RestartConfig::new(0, 0, 0));
   let (mut interpreter, _, flow_index, _) =
     single_flow_interpreter_with_logic(Box::new(DrainFailingFlowLogic), Some(restart));
   assert!(!interpreter.all_sources_done());
@@ -548,7 +548,7 @@ fn sink_failure_completes_when_restart_budget_is_exhausted() {
     mat_combine: MatCombine::Right,
     logic:       Box::new(AlwaysFailCollectSinkLogic { completion }),
     supervision: SupervisionStrategy::Stop,
-    restart:     Some(RestartBackoff::from_settings(RestartConfig::new(0, 0, 0))),
+    restart:     Some(RestartBackoff::from_config(RestartConfig::new(0, 0, 0))),
     attributes:  Attributes::new(),
   };
   let plan = stream_plan(vec![StageDefinition::Source(source), StageDefinition::Sink(sink)], vec![(
@@ -616,7 +616,7 @@ fn sink_drive_returns_after_tick_completes_sink() {
     mat_combine: MatCombine::Right,
     logic:       Box::new(CompletingTickSinkLogic { can_accept_calls: can_accept_calls.clone() }),
     supervision: SupervisionStrategy::Stop,
-    restart:     Some(RestartBackoff::from_settings(RestartConfig::new(0, 0, 0))),
+    restart:     Some(RestartBackoff::from_config(RestartConfig::new(0, 0, 0))),
     attributes:  Attributes::new(),
   };
   let plan = stream_plan(vec![StageDefinition::Source(source), StageDefinition::Sink(sink)], vec![(
@@ -2634,7 +2634,7 @@ fn source_restart_with_backoff_fails_on_budget_exhaustion_when_configured() {
     mat_combine: MatCombine::Right,
     logic:       Box::new(AlwaysFailSourceLogic),
     supervision: SupervisionStrategy::Stop,
-    restart:     Some(RestartBackoff::from_settings(RestartConfig::new(0, 0, 1).with_complete_on_max_restarts(false))),
+    restart:     Some(RestartBackoff::from_config(RestartConfig::new(0, 0, 1).with_complete_on_max_restarts(false))),
     attributes:  Attributes::new(),
   };
   let sink = collect_u32_sequence_sink(sink_inlet, completion.clone());
@@ -2741,7 +2741,7 @@ fn flow_restart_with_backoff_fails_on_budget_exhaustion_when_configured() {
     mat_combine: MatCombine::Left,
     logic:       Box::new(RestartCounterFlowLogic { restart_calls: ArcShared::new(SpinSyncMutex::new(0_u32)) }),
     supervision: SupervisionStrategy::Stop,
-    restart:     Some(RestartBackoff::from_settings(RestartConfig::new(0, 0, 1).with_complete_on_max_restarts(false))),
+    restart:     Some(RestartBackoff::from_config(RestartConfig::new(0, 0, 1).with_complete_on_max_restarts(false))),
     attributes:  Attributes::new(),
   };
   let sink = collect_u32_sequence_sink(sink_inlet, completion.clone());
@@ -2805,7 +2805,7 @@ fn sink_restart_with_backoff_fails_on_budget_exhaustion_when_configured() {
     mat_combine: MatCombine::Right,
     logic:       Box::new(AlwaysFailCollectSinkLogic { completion: completion.clone() }),
     supervision: SupervisionStrategy::Stop,
-    restart:     Some(RestartBackoff::from_settings(RestartConfig::new(0, 0, 1).with_complete_on_max_restarts(false))),
+    restart:     Some(RestartBackoff::from_config(RestartConfig::new(0, 0, 1).with_complete_on_max_restarts(false))),
     attributes:  Attributes::new(),
   };
   let plan = stream_plan(vec![StageDefinition::Source(source), StageDefinition::Sink(sink)], vec![(

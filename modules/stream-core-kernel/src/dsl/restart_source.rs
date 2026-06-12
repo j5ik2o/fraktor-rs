@@ -10,7 +10,7 @@ use super::{RestartConfig, source::Source};
 pub struct RestartSource;
 
 impl RestartSource {
-  /// Applies restart-on-failure backoff settings to a source.
+  /// Applies restart-on-failure backoff configuration to a source.
   #[must_use]
   pub fn with_backoff<Out, Mat>(
     source: Source<Out, Mat>,
@@ -22,11 +22,11 @@ impl RestartSource {
     source.restart_source_with_backoff(min_backoff_ticks, max_restarts)
   }
 
-  /// Applies restart settings to a source.
+  /// Applies restart configuration to a source.
   #[must_use]
-  pub fn with_settings<Out, Mat>(source: Source<Out, Mat>, settings: RestartConfig) -> Source<Out, Mat>
+  pub fn with_config<Out, Mat>(source: Source<Out, Mat>, config: RestartConfig) -> Source<Out, Mat>
   where
     Out: Send + Sync + 'static, {
-    source.restart_source_with_settings(settings)
+    source.restart_source_with_config(config)
   }
 }

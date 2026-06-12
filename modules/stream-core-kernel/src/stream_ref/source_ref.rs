@@ -98,7 +98,7 @@ struct ActorBackedSourceRefLogic<T> {
   endpoint_actor: Option<StageActor>,
   startup_error:  Option<StreamError>,
   waiting_ticks:  u64,
-  settings:       StreamRefConfig,
+  config:         StreamRefConfig,
   _pd:            PhantomData<fn() -> T>,
 }
 
@@ -110,7 +110,7 @@ impl<T> ActorBackedSourceRefLogic<T> {
       endpoint_actor: None,
       startup_error: None,
       waiting_ticks: 0,
-      settings: StreamRefConfig::new(),
+      config: StreamRefConfig::new(),
       _pd: PhantomData,
     }
   }
@@ -139,7 +139,7 @@ impl<T> ActorBackedSourceRefLogic<T> {
       return Ok(());
     }
     self.waiting_ticks = self.waiting_ticks.saturating_add(1);
-    if self.waiting_ticks >= u64::from(self.settings.subscription_timeout_ticks()) {
+    if self.waiting_ticks >= u64::from(self.config.subscription_timeout_ticks()) {
       return Err(StreamRefHandoff::<T>::subscription_timeout_error());
     }
     Err(StreamError::WouldBlock)
@@ -212,9 +212,9 @@ where
     false
   }
 
-  fn attach_stream_ref_settings(&mut self, settings: StreamRefConfig) {
-    self.handoff.configure_buffer_capacity(settings.buffer_capacity());
-    self.settings = settings;
+  fn attach_stream_ref_config(&mut self, config: StreamRefConfig) {
+    self.handoff.configure_buffer_capacity(config.buffer_capacity());
+    self.config = config;
   }
 
   fn attach_actor_system(&mut self, system: ActorSystem) {

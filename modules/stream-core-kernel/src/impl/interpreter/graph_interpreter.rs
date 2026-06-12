@@ -94,11 +94,11 @@ impl GraphInterpreter {
     plan: StreamPlan,
     buffer_config: StreamBufferConfig,
     actor_system: Option<&ActorSystem>,
-    stream_ref_settings: &StreamRefConfig,
+    stream_ref_config: &StreamRefConfig,
   ) -> Self {
     let compiled = CompiledGraphPlan::compile(plan, buffer_config);
     let mut stages = compiled.stages;
-    Self::attach_materializer_context(&mut stages, actor_system, stream_ref_settings);
+    Self::attach_materializer_context(&mut stages, actor_system, stream_ref_config);
     let stage_count = stages.len();
     let flow_count = compiled.flow_order.len();
     let source_indices_len = compiled.source_indices.len();
@@ -132,7 +132,7 @@ impl GraphInterpreter {
   fn attach_materializer_context(
     stages: &mut [StageDefinition],
     actor_system: Option<&ActorSystem>,
-    stream_ref_settings: &StreamRefConfig,
+    stream_ref_config: &StreamRefConfig,
   ) {
     for stage in stages {
       match stage {
@@ -140,7 +140,7 @@ impl GraphInterpreter {
           if let Some(system) = actor_system {
             source.logic.attach_actor_system(system.clone());
           }
-          source.logic.attach_stream_ref_settings(stream_ref_settings.clone());
+          source.logic.attach_stream_ref_config(stream_ref_config.clone());
         },
         | StageDefinition::Flow(flow) => {
           if let Some(system) = actor_system {
@@ -151,7 +151,7 @@ impl GraphInterpreter {
           if let Some(system) = actor_system {
             sink.logic.attach_actor_system(system.clone());
           }
-          sink.logic.attach_stream_ref_settings(stream_ref_settings.clone());
+          sink.logic.attach_stream_ref_config(stream_ref_config.clone());
         },
       };
     }

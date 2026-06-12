@@ -110,7 +110,7 @@ fn sink_ref_source_fails_when_remote_sink_never_subscribes_before_timeout() {
   // Given: subscription timeout を 1 tick に縮めた materializer
   let settings = StreamRefConfig::new().with_subscription_timeout_ticks(1);
   let config =
-    ActorMaterializerConfig::default().with_drive_interval(Duration::from_millis(1)).with_stream_ref_settings(settings);
+    ActorMaterializerConfig::default().with_drive_interval(Duration::from_millis(1)).with_stream_ref_config(settings);
   let mut materializer = build_materializer_with_config(config);
   let graph = StreamRefs::sink_ref::<u32>().into_mat(collect_sink(), KeepBoth);
 

@@ -436,7 +436,7 @@ fn verify_restart_supervision_surface() {
     .with_jitter_seed(31);
 
   let source_values = Source::single(1_u32)
-    .restart_source_with_settings(settings.clone())
+    .restart_source_with_config(settings.clone())
     .supervision_resume()
     .supervision_restart()
     .supervision_stop()
@@ -447,7 +447,7 @@ fn verify_restart_supervision_surface() {
   let flow_values = Source::single(1_u32)
     .via(
       Flow::<u32, u32, StreamNotUsed>::new()
-        .restart_flow_with_settings(settings.clone())
+        .restart_flow_with_config(settings.clone())
         .supervision_resume()
         .supervision_restart()
         .supervision_stop(),
@@ -457,7 +457,7 @@ fn verify_restart_supervision_surface() {
   assert_eq!(flow_values, vec![1_u32]);
 
   let sink = Sink::<u32, _>::head()
-    .restart_sink_with_settings(settings)
+    .restart_sink_with_config(settings)
     .supervision_resume()
     .supervision_restart()
     .supervision_stop();

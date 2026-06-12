@@ -10,7 +10,7 @@ use super::{RestartConfig, flow::Flow};
 pub struct RestartFlow;
 
 impl RestartFlow {
-  /// Applies restart-on-failure backoff settings to a flow.
+  /// Applies restart-on-failure backoff configuration to a flow.
   #[must_use]
   pub fn with_backoff<In, Out, Mat>(
     flow: Flow<In, Out, Mat>,
@@ -23,12 +23,12 @@ impl RestartFlow {
     flow.restart_flow_with_backoff(min_backoff_ticks, max_restarts)
   }
 
-  /// Applies restart settings to a flow.
+  /// Applies restart configuration to a flow.
   #[must_use]
-  pub fn with_settings<In, Out, Mat>(flow: Flow<In, Out, Mat>, settings: RestartConfig) -> Flow<In, Out, Mat>
+  pub fn with_config<In, Out, Mat>(flow: Flow<In, Out, Mat>, config: RestartConfig) -> Flow<In, Out, Mat>
   where
     In: Send + Sync + 'static,
     Out: Send + Sync + 'static, {
-    flow.restart_flow_with_settings(settings)
+    flow.restart_flow_with_config(config)
   }
 }

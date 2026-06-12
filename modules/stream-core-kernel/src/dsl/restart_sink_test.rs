@@ -22,9 +22,9 @@ fn restart_sink_with_backoff_keeps_data_path_behavior() {
 }
 
 #[test]
-fn restart_sink_with_settings_keeps_data_path_behavior() {
+fn restart_sink_with_config_keeps_data_path_behavior() {
   let settings = RestartConfig::new(1, 2, 3);
-  let sink = RestartSink::with_settings(Sink::<u32, _>::ignore(), settings);
+  let sink = RestartSink::with_config(Sink::<u32, _>::ignore(), settings);
   let graph = Source::single(2_u32).into_mat(sink, KeepRight);
   let (plan, completion) = graph.into_parts();
   let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());

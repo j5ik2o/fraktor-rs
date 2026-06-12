@@ -50,7 +50,7 @@ fn new_uses_defaults_for_optional_fields() {
 }
 
 #[test]
-fn advanced_artery_settings_use_pekko_compatible_defaults() {
+fn advanced_artery_config_uses_pekko_compatible_defaults() {
   // Given: デフォルト構成
   let s = RemoteConfig::new("localhost");
 
@@ -136,7 +136,7 @@ fn method_chain_applies_all_changes() {
 }
 
 #[test]
-fn advanced_artery_settings_method_chain_applies_all_changes() {
+fn advanced_artery_config_method_chain_applies_all_changes() {
   // Given: advanced 設定をすべて上書きした構成
   let destinations = LargeMessageDestinations::new()
     .with_pattern(LargeMessageDestinationPattern::new("/user/large"))
@@ -360,7 +360,7 @@ fn with_remove_quarantined_association_after_rejects_zero() {
 }
 
 #[test]
-fn restart_timing_settings_reject_zero_duration() {
+fn restart_timing_config_rejects_zero_duration() {
   let outbound_backoff =
     std::panic::catch_unwind(|| RemoteConfig::new("localhost").with_outbound_restart_backoff(Duration::ZERO));
   let outbound_timeout =
@@ -452,7 +452,7 @@ fn remote_compression_config_rejects_zero_advertisement_interval() {
 }
 
 #[test]
-fn advanced_settings_sources_keep_no_std_boundary() {
+fn advanced_config_sources_keep_no_std_boundary() {
   let sources = [
     include_str!("config/remote_config.rs"),
     include_str!("config/large_message_destination_pattern.rs"),
@@ -461,6 +461,6 @@ fn advanced_settings_sources_keep_no_std_boundary() {
   ];
 
   for source in sources {
-    assert!(!source.contains("use std::"), "remote-core config advanced settings must remain no_std");
+    assert!(!source.contains("use std::"), "remote-core advanced config sources must remain no_std");
   }
 }

@@ -37,7 +37,7 @@ pub(crate) struct StreamRefSinkLogic<T> {
   endpoint:        Option<StreamRefEndpointSlot>,
   subscription:    StreamRefSinkSubscription,
   completion:      Option<StreamFuture<StreamDone>>,
-  settings:        StreamRefConfig,
+  config:          StreamRefConfig,
   demand_started:  bool,
   terminal_queued: bool,
   waiting_ticks:   u64,
@@ -73,7 +73,7 @@ impl<T> StreamRefSinkLogic<T> {
       endpoint,
       subscription,
       completion,
-      settings: StreamRefConfig::new(),
+      config: StreamRefConfig::new(),
       demand_started: false,
       terminal_queued: false,
       waiting_ticks: 0,
@@ -98,7 +98,7 @@ impl<T> StreamRefSinkLogic<T> {
       return Ok(());
     }
     self.waiting_ticks = self.waiting_ticks.saturating_add(1);
-    if self.waiting_ticks >= u64::from(self.settings.subscription_timeout_ticks()) {
+    if self.waiting_ticks >= u64::from(self.config.subscription_timeout_ticks()) {
       return Err(StreamRefHandoff::<T>::subscription_timeout_error());
     }
     Ok(())
@@ -294,9 +294,9 @@ where
     self.terminal_queued && self.handoff.has_pending_protocols()
   }
 
-  fn attach_stream_ref_settings(&mut self, settings: StreamRefConfig) {
-    self.handoff.configure_buffer_capacity(settings.buffer_capacity());
-    self.settings = settings;
+  fn attach_stream_ref_config(&mut self, config: StreamRefConfig) {
+    self.handoff.configure_buffer_capacity(config.buffer_capacity());
+    self.config = config;
   }
 
   fn attach_actor_system(&mut self, system: ActorSystem) {

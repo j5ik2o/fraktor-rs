@@ -1,8 +1,12 @@
 use crate::RestartConfig;
 
+#[cfg(test)]
+#[path = "restart_backoff_test.rs"]
+mod tests;
+
 #[derive(Debug, Clone)]
 pub(crate) struct RestartBackoff {
-  settings:              RestartConfig,
+  config:                RestartConfig,
   restart_count:         usize,
   cooldown_ticks:        u32,
   pending:               bool,
@@ -13,14 +17,14 @@ pub(crate) struct RestartBackoff {
 
 impl RestartBackoff {
   pub(crate) fn new(min_backoff_ticks: u32, max_restarts: usize) -> Self {
-    Self::from_settings(RestartConfig::new(min_backoff_ticks, min_backoff_ticks, max_restarts))
+    Self::from_config(RestartConfig::new(min_backoff_ticks, min_backoff_ticks, max_restarts))
   }
 
-  pub(crate) const fn from_settings(settings: RestartConfig) -> Self {
-    let min_backoff_ticks = settings.min_backoff_ticks();
-    let jitter_seed = settings.jitter_seed();
+  pub(crate) const fn from_config(config: RestartConfig) -> Self {
+    let min_backoff_ticks = config.min_backoff_ticks();
+    let jitter_seed = config.jitter_seed();
     Self {
-      settings,
+      config,
       restart_count: 0,
       cooldown_ticks: 0,
       pending: false,
@@ -35,12 +39,12 @@ impl RestartBackoff {
   }
 
   pub(crate) const fn complete_on_max_restarts(&self) -> bool {
-    self.settings.complete_on_max_restarts()
+    self.config.complete_on_max_restarts()
   }
 
   pub(crate) fn schedule(&mut self, now_tick: u64) -> bool {
     self.reset_backoff_if_window_elapsed(now_tick);
-    if self.restart_count >= self.settings.max_restarts() {
+    if self.restart_count >= self.config.max_restarts() {
       return false;
     }
     self.restart_count = self.restart_count.saturating_add(1);
@@ -64,8 +68,8 @@ impl RestartBackoff {
   }
 
   fn next_cooldown_ticks(&mut self) -> u32 {
-    let min_ticks = self.settings.min_backoff_ticks();
-    let max_ticks = self.settings.max_backoff_ticks();
+    let min_ticks = self.config.min_backoff_ticks();
+    let max_ticks = self.config.max_backoff_ticks();
     let base = self.current_backoff_ticks.max(min_ticks).min(max_ticks);
     let jitter_ticks = self.compute_jitter_ticks(base);
     self.current_backoff_ticks = base.saturating_mul(2).min(max_ticks).max(min_ticks);
@@ -73,17 +77,17 @@ impl RestartBackoff {
   }
 
   fn reset_backoff_if_window_elapsed(&mut self, now_tick: u64) {
-    let window = u64::from(self.settings.max_restarts_within_ticks());
+    let window = u64::from(self.config.max_restarts_within_ticks());
     if window == 0 {
       return;
     }
     if now_tick.saturating_sub(self.last_schedule_tick) > window {
-      self.current_backoff_ticks = self.settings.min_backoff_ticks();
+      self.current_backoff_ticks = self.config.min_backoff_ticks();
     }
   }
 
   fn compute_jitter_ticks(&mut self, base_ticks: u32) -> u32 {
-    let factor = u32::from(self.settings.random_factor_permille());
+    let factor = u32::from(self.config.random_factor_permille());
     if factor == 0 || base_ticks == 0 {
       return 0;
     }

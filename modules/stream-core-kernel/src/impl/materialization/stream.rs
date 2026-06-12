@@ -48,7 +48,7 @@ impl Stream {
     buffer_config: StreamBufferConfig,
     kill_switch_state: KillSwitchStateHandle,
     actor_system: Option<&ActorSystem>,
-    stream_ref_settings: &StreamRefConfig,
+    stream_ref_config: &StreamRefConfig,
   ) -> Self {
     let linked_kill_switch_states = plan.shared_kill_switch_states().to_vec();
     Self {
@@ -57,7 +57,7 @@ impl Stream {
         plan,
         buffer_config,
         actor_system,
-        stream_ref_settings,
+        stream_ref_config,
       ),
       kill_switch_state,
       linked_kill_switch_states,

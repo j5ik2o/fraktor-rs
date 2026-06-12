@@ -22,7 +22,7 @@ pub struct RestartConfig {
   complete_on_max_restarts:  bool,
   jitter_seed:               u64,
   restart_on:                Option<ArcShared<RestartPredicate>>,
-  log_settings:              RestartLogConfig,
+  log_config:                RestartLogConfig,
 }
 
 // PartialEq/Eq は restart_on (クロージャ) を含むため正確な等値比較ができず削除。
@@ -39,13 +39,13 @@ impl fmt::Debug for RestartConfig {
       .field("complete_on_max_restarts", &self.complete_on_max_restarts)
       .field("jitter_seed", &self.jitter_seed)
       .field("restart_on", &self.restart_on.as_ref().map(|_| ".."))
-      .field("log_settings", &self.log_settings)
+      .field("log_config", &self.log_config)
       .finish()
   }
 }
 
 impl RestartConfig {
-  /// Creates restart settings with required fields.
+  /// Creates restart configuration with required fields.
   #[must_use]
   pub fn new(min_backoff_ticks: u32, max_backoff_ticks: u32, max_restarts: usize) -> Self {
     let normalized_max_backoff =
@@ -59,7 +59,7 @@ impl RestartConfig {
       complete_on_max_restarts: true,
       jitter_seed: 0,
       restart_on: None,
-      log_settings: RestartLogConfig::default(),
+      log_config: RestartLogConfig::default(),
     }
   }
 
@@ -140,10 +140,10 @@ impl RestartConfig {
     self
   }
 
-  /// Sets log settings for restart event diagnostics.
+  /// Sets log configuration for restart event diagnostics.
   #[must_use]
-  pub const fn with_log_settings(mut self, log_settings: RestartLogConfig) -> Self {
-    self.log_settings = log_settings;
+  pub const fn with_log_config(mut self, log_config: RestartLogConfig) -> Self {
+    self.log_config = log_config;
     self
   }
 
@@ -200,9 +200,9 @@ impl RestartConfig {
     self.jitter_seed
   }
 
-  /// Returns log settings for restart event diagnostics.
+  /// Returns log configuration for restart event diagnostics.
   #[must_use]
-  pub const fn log_settings(&self) -> &RestartLogConfig {
-    &self.log_settings
+  pub const fn log_config(&self) -> &RestartLogConfig {
+    &self.log_config
   }
 }

@@ -31,7 +31,7 @@ where
 struct ConsumerControllerState<A>
 where
   A: Clone + Send + Sync + 'static, {
-  settings:            ConsumerControllerConfig,
+  config:              ConsumerControllerConfig,
   received_seq_nr:     SeqNr,
   delivered_seq_nr:    SeqNr,
   confirmed_seq_nr:    SeqNr,
@@ -47,9 +47,9 @@ impl<A> ConsumerControllerState<A>
 where
   A: Clone + Send + Sync + 'static,
 {
-  const fn new(settings: ConsumerControllerConfig) -> Self {
+  const fn new(config: ConsumerControllerConfig) -> Self {
     Self {
-      settings,
+      config,
       received_seq_nr: 0,
       delivered_seq_nr: 0,
       confirmed_seq_nr: 0,
@@ -68,7 +68,7 @@ where
 
   fn should_request_more(&self) -> bool {
     let remaining = self.requested_seq_nr.saturating_sub(self.received_seq_nr);
-    let window = u64::from(self.settings.flow_control_window());
+    let window = u64::from(self.config.flow_control_window());
     remaining <= window / 2
   }
 
@@ -120,20 +120,20 @@ impl ConsumerController {
     ConsumerControllerCommand::deliver_then_stop()
   }
 
-  /// Creates the consumer controller behavior with default settings.
+  /// Creates the consumer controller behavior with default configuration.
   #[must_use]
   pub fn behavior<A>() -> Behavior<ConsumerControllerCommand<A>>
   where
     A: Clone + Send + Sync + 'static, {
-    Self::behavior_with_settings(ConsumerControllerConfig::new())
+    Self::behavior_with_config(ConsumerControllerConfig::new())
   }
 
-  /// Creates the consumer controller behavior with custom settings.
+  /// Creates the consumer controller behavior with custom configuration.
   #[must_use]
-  pub fn behavior_with_settings<A>(settings: ConsumerControllerConfig) -> Behavior<ConsumerControllerCommand<A>>
+  pub fn behavior_with_config<A>(config: ConsumerControllerConfig) -> Behavior<ConsumerControllerCommand<A>>
   where
     A: Clone + Send + Sync + 'static, {
-    let state = SharedLock::new_with_driver::<DefaultMutex<_>>(ConsumerControllerState::<A>::new(settings));
+    let state = SharedLock::new_with_driver::<DefaultMutex<_>>(ConsumerControllerState::<A>::new(config));
 
     Behaviors::setup(move |ctx| {
       let self_ref = ctx.self_ref();
@@ -220,7 +220,7 @@ fn collect_on_sequenced_message<A>(
   }
 
   if !is_first && !state.is_within_requested_window(seq_nr) {
-    if !state.settings.only_flow_control()
+    if !state.config.only_flow_control()
       && let Some(pc) = state.producer_controller.clone()
     {
       deferred.push(DeferredAction::SendToProducer(pc, ProducerControllerCommand::resend(state.received_seq_nr + 1)));
@@ -245,7 +245,7 @@ fn collect_on_sequenced_message<A>(
     if !state.stashed.iter().any(|stashed| stashed.seq_nr() == seq_nr) {
       state.stashed.push(seq_msg);
     }
-    if !state.settings.only_flow_control()
+    if !state.config.only_flow_control()
       && let Some(pc) = state.producer_controller.clone()
     {
       deferred.push(DeferredAction::SendToProducer(pc, ProducerControllerCommand::resend(state.received_seq_nr + 1)));
@@ -321,13 +321,13 @@ fn collect_send_request<A>(
   deferred: &mut Vec<DeferredAction<A>>,
 ) where
   A: Clone + Send + Sync + 'static, {
-  let window = u64::from(state.settings.flow_control_window());
+  let window = u64::from(state.config.flow_control_window());
   let new_requested = state.received_seq_nr + window;
   if new_requested > state.requested_seq_nr
     && let Some(pc) = state.producer_controller.clone()
   {
     state.requested_seq_nr = new_requested;
-    let support_resend = !state.settings.only_flow_control();
+    let support_resend = !state.config.only_flow_control();
     deferred.push(DeferredAction::SendToProducer(
       pc,
       ProducerControllerCommand::request(state.confirmed_seq_nr, state.requested_seq_nr, support_resend),
