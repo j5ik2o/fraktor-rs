@@ -36,7 +36,7 @@
   - _Boundary:_ HashCodeNoEnvelopeMessageExtractor<M>
   - _Depends:_ 2.1
 
-- [ ] 3. 統合: 配送経路への接続点を実装する
+- [x] 3. 統合: 配送経路への接続点を実装する
   - kind と extractor を保持し、メッセージから宛先識別を導出して既存の grain 参照へ委譲する接続点と、専用の失敗種別（導出不能 / 識別不正 / 呼び出し失敗）を実装する
   - 実装順の示唆: 失敗種別（エラー型）を先に定義してから接続点本体に入る
   - 接続点経由で解決した宛先が、同一 kind / entity id の明示構築と同一の grain を指すことを検証する sibling テストが green になる
