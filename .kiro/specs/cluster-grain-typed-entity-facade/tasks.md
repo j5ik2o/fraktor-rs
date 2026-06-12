@@ -28,7 +28,7 @@
   - _Boundary:_ GrainRef<M>（typed）
   - _Depends:_ 1
 
-- [ ] 3. 統合: typed システムからの取得経路を配線する
+- [x] 3. 統合: typed システムからの取得経路を配線する
   - typed Cluster facade に typed 識別から grain 参照を構築する取得点を追加し、モジュール配線（公開面）を整える
   - 実装制約: GrainRef<M>（typed）境界への追加実装のみとし、Cluster の既存メソッドシグネチャを変更しない（事後の非回帰確認は 4.2 が所有）
   - cluster 拡張未導入時は既存の取得失敗契約（ExtensionNotInstalled）がそのまま適用される
