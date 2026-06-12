@@ -22,10 +22,6 @@ impl<R> TypedAskResponse<R>
 where
   R: Send + Sync + 'static,
 {
-  pub(crate) fn from_generic(response: AskResponse) -> Self {
-    Self::from_untyped(response)
-  }
-
   /// Wraps an untyped ask response with an asserted response type.
   ///
   /// This is the canonical conversion point for typed facade crates

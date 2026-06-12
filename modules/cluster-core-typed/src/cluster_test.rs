@@ -49,7 +49,7 @@ impl IdentityLookup for StaticIdentityLookup {
   }
 }
 
-/// メッセージ型パラメータ用のテスト型。
+// メッセージ型パラメータ用のテスト型。
 #[derive(Debug)]
 struct TestMsg;
 

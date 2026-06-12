@@ -120,6 +120,7 @@ fn roundtrip_identity_preserved() {
   let kernel_ref = grain.into_kernel();
   assert_eq!(kernel_ref.identity().kind(), kind);
   assert_eq!(kernel_ref.identity().identity(), entity_id);
+  system.terminate().expect("terminate");
 }
 
 // ─── identity() が typed ClusterIdentity<M> を返す ─────────────────────────
@@ -142,6 +143,7 @@ fn typed_identity_wraps_kernel() {
   // kernel identity との参照一致
   let kernel_id = grain.as_kernel().identity();
   assert_eq!(typed_id.as_kernel(), kernel_id);
+  system.terminate().expect("terminate");
 }
 
 // ─── M 違いの識別が同一 kernel 宛先になる ─────────────────────────────────
@@ -164,6 +166,7 @@ fn different_message_type_same_kernel_destination() {
   assert_eq!(grain_a.as_kernel().identity(), grain_b.as_kernel().identity());
   assert_eq!(grain_a.identity().kind(), grain_b.identity().kind());
   assert_eq!(grain_a.identity().identity(), grain_b.identity().identity());
+  system.terminate().expect("terminate");
 }
 
 // ─── with_options が kernel へパススルーされる ──────────────────────────────
@@ -194,6 +197,7 @@ fn with_options_passes_through_to_kernel() {
   // send_counter: 初回 + 2 retry = 3（options retry policy が kernel に到達した証明）
   let sends = *send_counter.lock();
   assert_eq!(sends, 3, "options retry policy reached kernel: expected 3 sends");
+  system.terminate().expect("terminate");
 }
 
 // ─── with_codec が kernel へパススルーされる ────────────────────────────────
@@ -219,6 +223,7 @@ fn with_codec_reaches_kernel() {
     | Err(other) => panic!("expected CodecFailed, got: {other:?}"),
     | Ok(_) => panic!("expected Err(CodecFailed) but got Ok"),
   }
+  system.terminate().expect("terminate");
 }
 
 // ─── GrainRef<M> は Send + Sync ──────────────────────────────────────────────

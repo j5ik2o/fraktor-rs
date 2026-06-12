@@ -194,6 +194,7 @@ fn grain_request_round_trip_returns_typed_response() {
   assert!(future.is_ready(), "reply should complete the future synchronously");
   let reply = future.try_take().expect("future ready").expect("typed reply");
   assert_eq!(reply, "reply");
+  system.terminate().expect("terminate");
 }
 
 // ─── テスト: 拡張未導入の取得拒否（要件 3.2） ────────────────────────────────
@@ -210,6 +211,7 @@ fn cluster_get_rejects_system_without_cluster_extension() {
     "expected ExtensionNotInstalled, got: {:?}",
     result.err()
   );
+  system.terminate().expect("terminate");
 }
 
 // ─── テスト: tell の送達（要件 2.3） ─────────────────────────────────────────
@@ -228,6 +230,7 @@ fn grain_tell_with_sender_delivers_message() {
   grain.tell_with_sender(UserMessage, &sender).expect("tell");
 
   assert_eq!(*send_counter.lock(), 1, "tell should deliver exactly one message");
+  system.terminate().expect("terminate");
 }
 
 // ─── テスト: tell の送信失敗伝搬（要件 2.3） ─────────────────────────────────
@@ -248,6 +251,7 @@ fn grain_tell_with_sender_propagates_send_failure() {
     | Err(other) => panic!("expected RequestFailed, got: {other:?}"),
     | Ok(()) => panic!("expected Err(RequestFailed) but tell succeeded"),
   }
+  system.terminate().expect("terminate");
 }
 
 // ─── テスト: request_future の応答（要件 2.5） ───────────────────────────────
@@ -265,6 +269,7 @@ fn grain_request_future_resolves_typed_reply() {
   assert!(future.is_ready(), "reply should complete the future synchronously");
   let reply = future.try_take().expect("future ready").expect("typed reply");
   assert_eq!(reply, "reply");
+  system.terminate().expect("terminate");
 }
 
 // ─── テスト: 宛先解決失敗の伝搬（要件 2.6） ──────────────────────────────────
@@ -284,6 +289,7 @@ fn grain_request_to_unregistered_kind_fails_with_resolve_failed() {
     | Err(other) => panic!("expected ResolveFailed, got: {other:?}"),
     | Ok(_) => panic!("expected Err(ResolveFailed) but request succeeded"),
   }
+  system.terminate().expect("terminate");
 }
 
 // ─── テスト: 応答型不一致の伝搬（要件 2.6） ──────────────────────────────────
@@ -305,4 +311,5 @@ fn grain_request_type_mismatch_surfaces_on_take() {
     matches!(result, Err(TypedAskError::TypeMismatch)),
     "expected TypeMismatch for wrong response type assertion"
   );
+  system.terminate().expect("terminate");
 }

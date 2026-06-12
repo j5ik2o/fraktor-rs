@@ -58,7 +58,7 @@ use crate::ClusterIdentity;
 /// use fraktor_cluster_core_typed_rs::{ClusterIdentity, GrainRef};
 /// use fraktor_actor_core_kernel_rs::actor::actor_ref::ActorRef;
 ///
-/// // 型 M = u32 の GrainRef に String を送ろうとするとコンパイルエラーになる。
+/// // Sending a String to a GrainRef<u32> is rejected at compile time.
 /// fn wrong_type(grain: &GrainRef<u32>, sender: &fraktor_actor_core_typed_rs::TypedActorRef<()>) {
 ///     let _ = grain.tell_with_sender(String::from("wrong"), sender);
 /// }
