@@ -91,7 +91,7 @@ where
       let reply_typed = TypedActorRef::from_untyped(reply_ref);
       AnyMessage::new(build(reply_typed))
     });
-    TypedAskResponse::from_generic(response)
+    TypedAskResponse::from_untyped(response)
   }
 
   /// Sends a typed request expecting a [`StatusReply<R>`] response.
