@@ -1,7 +1,7 @@
 # 実装計画
 
 - [ ] 1. 基盤: envelope と extractor 契約を定義する
-- [ ] 1.1 (P) メッセージ envelope 表現を実装する
+- [x] 1.1 (P) メッセージ envelope 表現を実装する
   - entity id と内部メッセージの組を保持し、構築時に与えた値を参照できる envelope を定義する（内部メッセージの型を型パラメータとして保持する）
   - 構築値（entity id / 内部メッセージ）の参照一致と取り出しを検証する sibling テストが green になる
   - _Requirements:_ 1.1, 1.2, 1.3
