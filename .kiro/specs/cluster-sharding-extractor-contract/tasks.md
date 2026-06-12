@@ -16,7 +16,7 @@
   - _Depends:_ none
 
 - [ ] 2. コア: 標準 extractor 実装群
-- [ ] 2.1 (P) HashCode 標準実装を実装する
+- [x] 2.1 (P) HashCode 標準実装を実装する
   - envelope から entity id を取り出し、固定仕様のハッシュ（FNV-1a 32bit、定数を rustdoc に明記）と shard 数で決定的に shard id を導出する
   - shard 数 0 の構築拒否、同一入力 → 同一 shard id の決定性、既知ベクタによるハッシュ仕様の固定を検証する sibling テストが green になる
   - _Requirements:_ 3.1, 3.5, 3.6
@@ -53,3 +53,8 @@
   - _Requirements:_ 4.4, 5.1, 5.2, 5.3, 5.4
   - _Boundary:_ 全体検証
   - _Depends:_ 3
+
+## Implementation Notes
+
+- 2.1 レビュー指摘（Suggestion）: 決定性テストは同一インスタンス2回呼びではなく、別インスタンス間（`new(n)` を2回）で書く方が強い。2.2 / 2.3 ではインスタンス横断で検証する
+- `*Config*Error` 型は `fmt::Display` + `core::error::Error` 実装と Display の sibling テストが既存パターン（1.2 レビューで確立）
