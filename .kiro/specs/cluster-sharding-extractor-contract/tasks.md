@@ -22,7 +22,7 @@
   - _Requirements:_ 3.1, 3.5, 3.6
   - _Boundary:_ HashCodeMessageExtractor<M>
   - _Depends:_ 1.1, 1.2
-- [ ] 2.2 (P) Kafka 互換 Murmur2 標準実装を実装する
+- [x] 2.2 (P) Kafka 互換 Murmur2 標準実装を実装する
   - Kafka DefaultPartitioner と同一の定数・手順で shard id を導出する（murmur2 関数は同ファイル内 private）
   - Kafka リファレンス出力が既知の entity id を与えたとき shard id が一致することを、出典コメント付きの参照ベクタ sibling テストで検証し green になる
   - 同一入力 → 同一 shard id の決定性と shard 数 0 の構築拒否も検証する
