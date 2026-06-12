@@ -19,6 +19,8 @@ mod cluster_setup;
 mod cluster_singleton_config;
 mod cluster_state_subscription;
 mod cluster_state_subscription_result;
+mod grain_ref;
+mod grain_type_key;
 mod self_removed;
 mod self_up;
 
@@ -30,5 +32,7 @@ pub use cluster_setup::ClusterSetup;
 pub use cluster_singleton_config::ClusterSingletonConfig;
 pub use cluster_state_subscription::ClusterStateSubscription;
 pub use cluster_state_subscription_result::ClusterStateSubscriptionResult;
+pub use grain_ref::GrainRef;
+pub use grain_type_key::GrainTypeKey;
 pub use self_removed::SelfRemoved;
 pub use self_up::SelfUp;

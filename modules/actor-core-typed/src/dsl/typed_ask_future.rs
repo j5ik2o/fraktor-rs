@@ -1,5 +1,9 @@
 //! Typed wrapper over ask futures.
 
+#[cfg(test)]
+#[path = "typed_ask_future_test.rs"]
+mod tests;
+
 use core::marker::PhantomData;
 
 use fraktor_actor_core_kernel_rs::{
@@ -33,6 +37,22 @@ where
 {
   pub(crate) const fn new(inner: ActorFutureShared<AskResult>) -> Self {
     Self { inner, marker: PhantomData }
+  }
+
+  /// Wraps an untyped ask future with an asserted response type `R`.
+  ///
+  /// This is the canonical conversion point for typed facade crates
+  /// (such as `cluster-core-typed`) that need to attach a response type
+  /// assertion to a raw [`ActorFutureShared<AskResult>`] produced by the untyped kernel.
+  ///
+  /// # Note
+  ///
+  /// The response type `R` is asserted, not verified at construction time.
+  /// A type mismatch is detected at call-site via [`TypedAskError::TypeMismatch`]
+  /// when the caller attempts to take the resolved value via [`Self::try_take`].
+  #[must_use]
+  pub const fn from_untyped(inner: ActorFutureShared<AskResult>) -> Self {
+    Self::new(inner)
   }
 
   /// Consumes the typed future and returns the underlying untyped shared future.

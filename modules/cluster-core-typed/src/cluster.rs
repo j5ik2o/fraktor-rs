@@ -1,17 +1,23 @@
 //! Typed cluster access point.
 
+#[cfg(test)]
+#[path = "cluster_test.rs"]
+mod tests;
+
 use alloc::string::String;
+use core::any::Any;
 
 use fraktor_actor_core_kernel_rs::event::stream::{EventStreamEvent, EventStreamSubscriber, subscriber_handle};
 use fraktor_actor_core_typed_rs::{TypedActorRef, TypedActorSystem};
 use fraktor_cluster_core_kernel_rs::{
   extension::{ClusterApi, ClusterApiError, ClusterError, ClusterSubscriptionInitialStateMode},
+  grain::GrainRef as KernelGrainRef,
   membership::{CurrentClusterState, NodeStatus},
   topology::{ClusterEvent, ClusterEventType},
 };
 use fraktor_utils_core_rs::sync::{DefaultMutex, SharedAccess, SharedLock};
 
-use crate::{ClusterEventSubscription, SelfRemoved, SelfUp};
+use crate::{ClusterEventSubscription, ClusterIdentity, GrainRef, SelfRemoved, SelfUp};
 
 struct TypedClusterEventSubscriber {
   subscriber:        TypedActorRef<ClusterEvent>,
@@ -372,6 +378,27 @@ impl Cluster {
 
   pub(crate) fn down(&self, authority: &str) -> Result<(), ClusterError> {
     self.inner.down(authority)
+  }
+
+  /// Builds a typed grain reference for the given typed identity.
+  ///
+  /// This is the fraktor equivalent of Pekko's `ClusterSharding#entityRefFor`.
+  /// The caller must have already obtained this [`Cluster`] via [`Cluster::get`],
+  /// which guarantees the cluster extension is installed. The returned
+  /// [`GrainRef<M>`](crate::GrainRef) wraps a kernel reference constructed from
+  /// the internal [`ClusterApi`] and the kernel identity derived from `identity`.
+  ///
+  /// # Note
+  ///
+  /// Obtaining a grain reference is infallible. Any failure (e.g. cluster
+  /// extension not installed) occurs at [`Cluster::get`] time and is represented
+  /// by [`ClusterApiError::ExtensionNotInstalled`].
+  #[must_use]
+  pub fn grain_ref_for<M>(&self, identity: &ClusterIdentity<M>) -> GrainRef<M>
+  where
+    M: Any + Send + Sync + 'static, {
+    let kernel_ref = KernelGrainRef::new(self.inner.clone(), identity.as_kernel().clone());
+    GrainRef::from_kernel(kernel_ref)
   }
 }
 
