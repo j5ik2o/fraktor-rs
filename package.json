@@ -17,10 +17,10 @@
     "kiro:validate:design": "node scripts/kiro-staged.mjs kiro-validate-design --pipeline --skip-git -t",
     "kiro:spec:tasks": "node scripts/kiro-staged.mjs kiro-spec-tasks --pipeline --skip-git -t",
     "kiro:spec:quick": "node scripts/kiro-staged.mjs kiro-spec-quick --pipeline --skip-git -t",
-    "kiro:spec:batch": "node scripts/kiro-staged.mjs kiro-spec-batch --pipeline --skip-git -t \"roadmap.md から依存 wave 順に全 spec を並列作成する\"",
-    "kiro:spec:status": "node scripts/kiro-staged.mjs kiro-spec-status --pipeline --skip-git -t",
+    "kiro:spec:batch": "node scripts/kiro-staged.mjs kiro-spec-batch --default-task \"roadmap.md から依存 wave 順に全 spec を並列作成する\" --pipeline --skip-git -t",
+    "kiro:spec:status": "node scripts/kiro-staged.mjs kiro-spec-status --default-task \".kiro/specs 配下の全 spec の進捗状況を一覧表示する\" --pipeline --skip-git -t",
     "kiro:impl": "node scripts/kiro-staged.mjs kiro-impl --pipeline --skip-git -t",
-    "kiro:validate:impl": "node scripts/kiro-staged.mjs kiro-validate-impl --pipeline --skip-git -t"
+    "kiro:validate:impl": "node scripts/kiro-staged.mjs kiro-validate-impl --default-task \".kiro/specs から完了タスクのある spec を検出し、実装の統合検証を実行する\" --pipeline --skip-git -t"
   },
   "devDependencies": {
     "takt": "^0.45.0"

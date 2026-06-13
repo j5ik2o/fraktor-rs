@@ -52,6 +52,22 @@ function stripTaskFlagForHelp(args) {
   return args.filter((arg) => arg !== "-t" && arg !== "--task");
 }
 
+export function resolveForwardedArgs(args) {
+  const index = args.indexOf("--default-task");
+  if (index === -1) {
+    return args;
+  }
+  const defaultTask = args[index + 1];
+  if (defaultTask === undefined) {
+    throw new Error("--default-task requires a value");
+  }
+  // --default-task は wrapper 専用フラグなので takt へ転送しない。
+  // 利用者が引数を渡さず `-t` が値なしで終わる場合だけ既定 task を補う
+  const rest = [...args.slice(0, index), ...args.slice(index + 2)];
+  const last = rest[rest.length - 1];
+  return last === "-t" || last === "--task" ? [...rest, defaultTask] : rest;
+}
+
 export function buildTaktArgs(workflowPath, forwardedArgs) {
   const argsForTakt = collapseTaskPayload(stripTaskFlagForHelp(forwardedArgs));
   const taskArgIndex = argsForTakt.findIndex((arg) => arg === "-t" || arg === "--task");
@@ -123,7 +139,7 @@ export function main(argv = process.argv.slice(2)) {
   const command = existsSync(taktWrapper) ? taktWrapper : "takt";
   let taktArgs;
   try {
-    taktArgs = buildTaktArgs(workflowPath, forwardedArgs);
+    taktArgs = buildTaktArgs(workflowPath, resolveForwardedArgs(forwardedArgs));
   } catch (error) {
     console.error(error.message);
     return 1;
