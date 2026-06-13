@@ -100,22 +100,358 @@ struct StartAndEmitSelfUpProvider {
   event_stream: EventStreamShared,
   authority:    String,
   node_id:      String,
+  status:       NodeStatus,
 }
 
 impl StartAndEmitSelfUpProvider {
   const fn new(event_stream: EventStreamShared, authority: String, node_id: String) -> Self {
-    Self { event_stream, authority, node_id }
+    Self { event_stream, authority, node_id, status: NodeStatus::Up }
+  }
+
+  const fn with_status(
+    event_stream: EventStreamShared,
+    authority: String,
+    node_id: String,
+    status: NodeStatus,
+  ) -> Self {
+    Self { event_stream, authority, node_id, status }
   }
 }
 
 impl ClusterProvider for StartAndEmitSelfUpProvider {
   fn start_member(&mut self) -> Result<(), ClusterProviderError> {
-    publish_member_status(&self.event_stream, &self.node_id, &self.authority, NodeStatus::Joining, NodeStatus::Up);
+    publish_member_status(&self.event_stream, &self.node_id, &self.authority, NodeStatus::Joining, self.status);
     Ok(())
   }
 
   fn start_client(&mut self) -> Result<(), ClusterProviderError> {
-    publish_member_status(&self.event_stream, &self.node_id, &self.authority, NodeStatus::Joining, NodeStatus::Up);
+    publish_member_status(&self.event_stream, &self.node_id, &self.authority, NodeStatus::Joining, self.status);
+    Ok(())
+  }
+
+  fn down(&mut self, _authority: &str) -> Result<(), ClusterProviderError> {
+    Ok(())
+  }
+
+  fn join(&mut self, _authority: &str) -> Result<(), ClusterProviderError> {
+    Ok(())
+  }
+
+  fn leave(&mut self, _authority: &str) -> Result<(), ClusterProviderError> {
+    Ok(())
+  }
+
+  fn shutdown(&mut self, _graceful: bool) -> Result<(), ClusterProviderError> {
+    Ok(())
+  }
+}
+
+struct StartAndEmitRestartSelfUpProvider {
+  event_stream:      EventStreamShared,
+  authority:         String,
+  first_node_id:     String,
+  restarted_node_id: String,
+  start_count:       usize,
+}
+
+impl StartAndEmitRestartSelfUpProvider {
+  fn new(event_stream: EventStreamShared, authority: String, first_node_id: String, restarted_node_id: String) -> Self {
+    Self { event_stream, authority, first_node_id, restarted_node_id, start_count: 0 }
+  }
+
+  fn current_node_id(&mut self) -> String {
+    let node_id = if self.start_count == 0 { self.first_node_id.clone() } else { self.restarted_node_id.clone() };
+    self.start_count += 1;
+    node_id
+  }
+}
+
+impl ClusterProvider for StartAndEmitRestartSelfUpProvider {
+  fn start_member(&mut self) -> Result<(), ClusterProviderError> {
+    let node_id = self.current_node_id();
+    publish_member_status(&self.event_stream, &node_id, &self.authority, NodeStatus::Joining, NodeStatus::Up);
+    Ok(())
+  }
+
+  fn start_client(&mut self) -> Result<(), ClusterProviderError> {
+    let node_id = self.current_node_id();
+    publish_member_status(&self.event_stream, &node_id, &self.authority, NodeStatus::Joining, NodeStatus::Up);
+    Ok(())
+  }
+
+  fn down(&mut self, _authority: &str) -> Result<(), ClusterProviderError> {
+    Ok(())
+  }
+
+  fn join(&mut self, _authority: &str) -> Result<(), ClusterProviderError> {
+    Ok(())
+  }
+
+  fn leave(&mut self, _authority: &str) -> Result<(), ClusterProviderError> {
+    Ok(())
+  }
+
+  fn shutdown(&mut self, _graceful: bool) -> Result<(), ClusterProviderError> {
+    Ok(())
+  }
+}
+
+struct RestartEmitsSameIdentityJoiningProvider {
+  event_stream: EventStreamShared,
+  authority:    String,
+  node_id:      String,
+  start_count:  usize,
+}
+
+impl RestartEmitsSameIdentityJoiningProvider {
+  const fn new(event_stream: EventStreamShared, authority: String, node_id: String) -> Self {
+    Self { event_stream, authority, node_id, start_count: 0 }
+  }
+
+  fn publish_start_status(&mut self) {
+    if self.start_count == 0 {
+      publish_member_status(&self.event_stream, &self.node_id, &self.authority, NodeStatus::Joining, NodeStatus::Up);
+    } else {
+      publish_member_status(
+        &self.event_stream,
+        &self.node_id,
+        &self.authority,
+        NodeStatus::Removed,
+        NodeStatus::Joining,
+      );
+    }
+    self.start_count += 1;
+  }
+}
+
+impl ClusterProvider for RestartEmitsSameIdentityJoiningProvider {
+  fn start_member(&mut self) -> Result<(), ClusterProviderError> {
+    self.publish_start_status();
+    Ok(())
+  }
+
+  fn start_client(&mut self) -> Result<(), ClusterProviderError> {
+    self.publish_start_status();
+    Ok(())
+  }
+
+  fn down(&mut self, _authority: &str) -> Result<(), ClusterProviderError> {
+    Ok(())
+  }
+
+  fn join(&mut self, _authority: &str) -> Result<(), ClusterProviderError> {
+    Ok(())
+  }
+
+  fn leave(&mut self, _authority: &str) -> Result<(), ClusterProviderError> {
+    Ok(())
+  }
+
+  fn shutdown(&mut self, _graceful: bool) -> Result<(), ClusterProviderError> {
+    Ok(())
+  }
+}
+
+struct RestartEmitsRetiredThenCurrentProvider {
+  event_stream:    EventStreamShared,
+  authority:       String,
+  retired_node_id: String,
+  current_node_id: String,
+  started_member:  bool,
+}
+
+impl RestartEmitsRetiredThenCurrentProvider {
+  const fn new(
+    event_stream: EventStreamShared,
+    authority: String,
+    retired_node_id: String,
+    current_node_id: String,
+  ) -> Self {
+    Self { event_stream, authority, retired_node_id, current_node_id, started_member: false }
+  }
+}
+
+impl ClusterProvider for RestartEmitsRetiredThenCurrentProvider {
+  fn start_member(&mut self) -> Result<(), ClusterProviderError> {
+    if self.started_member {
+      publish_member_status(
+        &self.event_stream,
+        &self.retired_node_id,
+        &self.authority,
+        NodeStatus::Joining,
+        NodeStatus::Up,
+      );
+      publish_member_status(
+        &self.event_stream,
+        &self.current_node_id,
+        &self.authority,
+        NodeStatus::Joining,
+        NodeStatus::Joining,
+      );
+    } else {
+      self.started_member = true;
+      publish_member_status(
+        &self.event_stream,
+        &self.retired_node_id,
+        &self.authority,
+        NodeStatus::Joining,
+        NodeStatus::Up,
+      );
+    }
+    Ok(())
+  }
+
+  fn start_client(&mut self) -> Result<(), ClusterProviderError> {
+    Ok(())
+  }
+
+  fn down(&mut self, _authority: &str) -> Result<(), ClusterProviderError> {
+    Ok(())
+  }
+
+  fn join(&mut self, _authority: &str) -> Result<(), ClusterProviderError> {
+    Ok(())
+  }
+
+  fn leave(&mut self, _authority: &str) -> Result<(), ClusterProviderError> {
+    Ok(())
+  }
+
+  fn shutdown(&mut self, _graceful: bool) -> Result<(), ClusterProviderError> {
+    Ok(())
+  }
+}
+
+struct StartFirstOnlyEmitSelfUpProvider {
+  event_stream:   EventStreamShared,
+  authority:      String,
+  node_id:        String,
+  started_member: bool,
+}
+
+impl StartFirstOnlyEmitSelfUpProvider {
+  const fn new(event_stream: EventStreamShared, authority: String, node_id: String) -> Self {
+    Self { event_stream, authority, node_id, started_member: false }
+  }
+}
+
+impl ClusterProvider for StartFirstOnlyEmitSelfUpProvider {
+  fn start_member(&mut self) -> Result<(), ClusterProviderError> {
+    if !self.started_member {
+      self.started_member = true;
+      publish_member_status(&self.event_stream, &self.node_id, &self.authority, NodeStatus::Joining, NodeStatus::Up);
+    }
+    Ok(())
+  }
+
+  fn start_client(&mut self) -> Result<(), ClusterProviderError> {
+    Ok(())
+  }
+
+  fn down(&mut self, _authority: &str) -> Result<(), ClusterProviderError> {
+    Ok(())
+  }
+
+  fn join(&mut self, _authority: &str) -> Result<(), ClusterProviderError> {
+    Ok(())
+  }
+
+  fn leave(&mut self, _authority: &str) -> Result<(), ClusterProviderError> {
+    Ok(())
+  }
+
+  fn shutdown(&mut self, _graceful: bool) -> Result<(), ClusterProviderError> {
+    Ok(())
+  }
+}
+
+struct StartOnceThenFailProvider {
+  started_member: bool,
+  started_client: bool,
+}
+
+impl StartOnceThenFailProvider {
+  const fn new() -> Self {
+    Self { started_member: false, started_client: false }
+  }
+}
+
+impl ClusterProvider for StartOnceThenFailProvider {
+  fn start_member(&mut self) -> Result<(), ClusterProviderError> {
+    if self.started_member {
+      return Err(ClusterProviderError::start_member("restart failed"));
+    }
+    self.started_member = true;
+    Ok(())
+  }
+
+  fn start_client(&mut self) -> Result<(), ClusterProviderError> {
+    if self.started_client {
+      return Err(ClusterProviderError::start_client("restart failed"));
+    }
+    self.started_client = true;
+    Ok(())
+  }
+
+  fn down(&mut self, _authority: &str) -> Result<(), ClusterProviderError> {
+    Ok(())
+  }
+
+  fn join(&mut self, _authority: &str) -> Result<(), ClusterProviderError> {
+    Ok(())
+  }
+
+  fn leave(&mut self, _authority: &str) -> Result<(), ClusterProviderError> {
+    Ok(())
+  }
+
+  fn shutdown(&mut self, _graceful: bool) -> Result<(), ClusterProviderError> {
+    Ok(())
+  }
+}
+
+struct StartEmitThenFailOnceProvider {
+  event_stream: EventStreamShared,
+  authority:    String,
+  failed_node:  String,
+  member_calls: usize,
+  client_calls: usize,
+}
+
+impl StartEmitThenFailOnceProvider {
+  const fn new(event_stream: EventStreamShared, authority: String, failed_node: String) -> Self {
+    Self { event_stream, authority, failed_node, member_calls: 0, client_calls: 0 }
+  }
+}
+
+impl ClusterProvider for StartEmitThenFailOnceProvider {
+  fn start_member(&mut self) -> Result<(), ClusterProviderError> {
+    self.member_calls += 1;
+    if self.member_calls == 2 {
+      publish_member_status(
+        &self.event_stream,
+        &self.failed_node,
+        &self.authority,
+        NodeStatus::Joining,
+        NodeStatus::Up,
+      );
+      return Err(ClusterProviderError::start_member("restart failed"));
+    }
+    Ok(())
+  }
+
+  fn start_client(&mut self) -> Result<(), ClusterProviderError> {
+    self.client_calls += 1;
+    if self.client_calls == 2 {
+      publish_member_status(
+        &self.event_stream,
+        &self.failed_node,
+        &self.authority,
+        NodeStatus::Joining,
+        NodeStatus::Up,
+      );
+      return Err(ClusterProviderError::start_client("restart failed"));
+    }
     Ok(())
   }
 
@@ -263,6 +599,656 @@ fn grain_readiness_snapshot_transitions_from_not_ready_to_ready() {
 }
 
 #[test]
+fn grain_readiness_snapshot_uses_observed_self_status() {
+  let system = create_noop_actor_system();
+  let event_stream = system.event_stream();
+  let authority = String::from("fraktor://demo");
+  let ext_id = ClusterExtensionId::new(
+    ClusterExtensionConfig::new().with_advertised_address(&authority),
+    Box::new(StartAndEmitSelfUpProvider::with_status(
+      event_stream,
+      authority,
+      String::from("node-self"),
+      NodeStatus::Joining,
+    )),
+    ArcShared::new(StubBlockList),
+    Box::new(NoopDowningProvider::new()),
+    Box::new(StubGossiper),
+    Box::new(StubPubSub),
+    Box::new(PartitionIdentityLookup::with_defaults()),
+  );
+  let ext_shared = system.extended().register_extension(&ext_id);
+  let expected = vec![String::from("grain-kind")];
+
+  ext_shared.start_member().expect("start member");
+  ext_shared.setup_member_kinds(vec![ActivatedKind::new("grain-kind")]).expect("setup kinds");
+
+  assert_eq!(ext_shared.grain_readiness_snapshot().readiness(&expected), GrainReadiness::NotReady {
+    reasons: vec![GrainUnreadyReason::SelfNodeNotUp { status: Some(NodeStatus::Joining) }],
+  });
+}
+
+#[test]
+fn grain_readiness_snapshot_clears_observed_self_status_after_shutdown() {
+  let system = create_noop_actor_system();
+  let event_stream = system.event_stream();
+  let authority = String::from("fraktor://demo");
+  let ext_id = ClusterExtensionId::new(
+    ClusterExtensionConfig::new().with_advertised_address(&authority),
+    Box::new(StartAndEmitSelfUpProvider::new(event_stream, authority, String::from("node-self"))),
+    ArcShared::new(StubBlockList),
+    Box::new(NoopDowningProvider::new()),
+    Box::new(StubGossiper),
+    Box::new(StubPubSub),
+    Box::new(PartitionIdentityLookup::with_defaults()),
+  );
+  let ext_shared = system.extended().register_extension(&ext_id);
+  let expected = vec![String::from("grain-kind")];
+
+  ext_shared.start_member().expect("start member");
+  ext_shared.setup_member_kinds(vec![ActivatedKind::new("grain-kind")]).expect("setup kinds");
+  assert_eq!(ext_shared.grain_readiness_snapshot().readiness(&expected), GrainReadiness::Ready);
+
+  ext_shared.shutdown(true).expect("shutdown");
+
+  assert_eq!(ext_shared.grain_readiness_snapshot().readiness(&expected), GrainReadiness::NotReady {
+    reasons: vec![GrainUnreadyReason::SelfNodeNotUp { status: None }],
+  });
+}
+
+#[test]
+fn grain_readiness_snapshot_ignores_late_observed_self_status_after_shutdown() {
+  let system = create_noop_actor_system();
+  let event_stream = system.event_stream();
+  let authority = String::from("fraktor://demo");
+  let ext_id = ClusterExtensionId::new(
+    ClusterExtensionConfig::new().with_advertised_address(&authority),
+    Box::new(StartAndEmitSelfUpProvider::new(event_stream.clone(), authority.clone(), String::from("node-self"))),
+    ArcShared::new(StubBlockList),
+    Box::new(NoopDowningProvider::new()),
+    Box::new(StubGossiper),
+    Box::new(StubPubSub),
+    Box::new(PartitionIdentityLookup::with_defaults()),
+  );
+  let ext_shared = system.extended().register_extension(&ext_id);
+  let expected = vec![String::from("grain-kind")];
+
+  ext_shared.start_member().expect("start member");
+  ext_shared.setup_member_kinds(vec![ActivatedKind::new("grain-kind")]).expect("setup kinds");
+  assert_eq!(ext_shared.grain_readiness_snapshot().readiness(&expected), GrainReadiness::Ready);
+
+  ext_shared.shutdown(true).expect("shutdown");
+  publish_member_status(&event_stream, "node-self", &authority, NodeStatus::Joining, NodeStatus::Up);
+
+  assert_eq!(ext_shared.grain_readiness_snapshot().readiness(&expected), GrainReadiness::NotReady {
+    reasons: vec![GrainUnreadyReason::SelfNodeNotUp { status: None }],
+  });
+}
+
+#[test]
+fn grain_readiness_snapshot_ignores_observed_self_status_when_self_leaves_topology() {
+  let system = create_noop_actor_system();
+  let event_stream = system.event_stream();
+  let authority = String::from("fraktor://demo");
+  let ext_id = ClusterExtensionId::new(
+    ClusterExtensionConfig::new().with_advertised_address(&authority),
+    Box::new(StartAndEmitSelfUpProvider::new(event_stream, authority.clone(), String::from("node-self"))),
+    ArcShared::new(StubBlockList),
+    Box::new(NoopDowningProvider::new()),
+    Box::new(StubGossiper),
+    Box::new(StubPubSub),
+    Box::new(PartitionIdentityLookup::with_defaults()),
+  );
+  let ext_shared = system.extended().register_extension(&ext_id);
+  let expected = vec![String::from("grain-kind")];
+
+  ext_shared.start_member().expect("start member");
+  ext_shared.setup_member_kinds(vec![ActivatedKind::new("grain-kind")]).expect("setup kinds");
+  assert_eq!(ext_shared.grain_readiness_snapshot().readiness(&expected), GrainReadiness::Ready);
+
+  ext_shared.on_topology(&build_update(20, Vec::new(), Vec::new(), vec![authority], Vec::new()));
+
+  assert_eq!(ext_shared.grain_readiness_snapshot().readiness(&expected), GrainReadiness::NotReady {
+    reasons: vec![GrainUnreadyReason::SelfNodeNotUp { status: None }],
+  });
+}
+
+#[test]
+fn grain_readiness_snapshot_accepts_observed_status_when_self_rejoins_topology() {
+  let system = create_noop_actor_system();
+  let event_stream = system.event_stream();
+
+  let ext_id = stub_extension_id(ClusterExtensionConfig::new().with_advertised_address("fraktor://demo"));
+  let ext_shared = system.extended().register_extension(&ext_id);
+  let expected = vec![String::from("grain-kind")];
+
+  ext_shared.start_member().expect("start member");
+  ext_shared.setup_member_kinds(vec![ActivatedKind::new("grain-kind")]).expect("setup kinds");
+  publish_member_status(&event_stream, "node-self", "fraktor://demo", NodeStatus::Joining, NodeStatus::Up);
+  ext_shared.on_topology(&build_update(2, Vec::new(), Vec::new(), vec![String::from("fraktor://demo")], Vec::new()));
+  ext_shared.on_topology(&build_update(
+    3,
+    vec![String::from("fraktor://demo")],
+    vec![String::from("fraktor://demo")],
+    Vec::new(),
+    Vec::new(),
+  ));
+
+  publish_member_status(&event_stream, "node-self", "fraktor://demo", NodeStatus::Removed, NodeStatus::Joining);
+
+  match ext_shared.grain_readiness_snapshot().readiness(&expected) {
+    | GrainReadiness::NotReady { reasons } => {
+      assert!(
+        reasons.contains(&GrainUnreadyReason::SelfNodeNotUp { status: Some(NodeStatus::Joining) }),
+        "rejoined self status should remain observed as Joining"
+      );
+    },
+    | GrainReadiness::Ready => panic!("rejoined self should not be ready while Joining"),
+  }
+}
+
+#[test]
+fn grain_readiness_snapshot_accepts_up_after_removed_rejoin_from_topology_absent() {
+  let system = create_noop_actor_system();
+  let event_stream = system.event_stream();
+  let authority = String::from("fraktor://demo");
+
+  let ext_id = stub_extension_id(ClusterExtensionConfig::new().with_advertised_address(&authority));
+  let ext_shared = system.extended().register_extension(&ext_id);
+  let expected = vec![String::from("grain-kind")];
+
+  ext_shared.start_member().expect("start member");
+  ext_shared.setup_member_kinds(vec![ActivatedKind::new("grain-kind")]).expect("setup kinds");
+  publish_member_status(&event_stream, "node-self", &authority, NodeStatus::Joining, NodeStatus::Up);
+  ext_shared.on_topology(&build_update(2, Vec::new(), Vec::new(), vec![authority.clone()], Vec::new()));
+  publish_member_status(&event_stream, "node-self", &authority, NodeStatus::Exiting, NodeStatus::Removed);
+  ext_shared.on_topology(&build_update(3, vec![authority.clone()], vec![authority.clone()], Vec::new(), Vec::new()));
+  publish_member_status(&event_stream, "node-self", &authority, NodeStatus::Removed, NodeStatus::Joining);
+
+  match ext_shared.grain_readiness_snapshot().readiness(&expected) {
+    | GrainReadiness::NotReady { reasons } => {
+      assert!(reasons.contains(&GrainUnreadyReason::SelfNodeNotUp { status: Some(NodeStatus::Joining) }));
+    },
+    | GrainReadiness::Ready => panic!("rejoined self should not be ready while Joining"),
+  }
+
+  publish_member_status(&event_stream, "node-self", &authority, NodeStatus::Joining, NodeStatus::Up);
+
+  if let GrainReadiness::NotReady { reasons } = ext_shared.grain_readiness_snapshot().readiness(&expected) {
+    assert!(
+      !reasons.iter().any(|reason| matches!(reason, GrainUnreadyReason::SelfNodeNotUp { .. })),
+      "self Up should clear the self-node readiness blocker"
+    );
+  }
+}
+
+#[test]
+fn grain_readiness_snapshot_ignores_old_up_before_fresh_rejoin_status() {
+  let system = create_noop_actor_system();
+  let event_stream = system.event_stream();
+
+  let ext_id = stub_extension_id(ClusterExtensionConfig::new().with_advertised_address("fraktor://demo"));
+  let ext_shared = system.extended().register_extension(&ext_id);
+  let expected = vec![String::from("grain-kind")];
+
+  ext_shared.start_member().expect("start member");
+  ext_shared.setup_member_kinds(vec![ActivatedKind::new("grain-kind")]).expect("setup kinds");
+  publish_member_status(&event_stream, "node-old", "fraktor://demo", NodeStatus::Joining, NodeStatus::Up);
+  ext_shared.on_topology(&build_update(2, Vec::new(), Vec::new(), vec![String::from("fraktor://demo")], Vec::new()));
+  ext_shared.on_topology(&build_update(
+    3,
+    vec![String::from("fraktor://demo")],
+    vec![String::from("fraktor://demo")],
+    Vec::new(),
+    Vec::new(),
+  ));
+
+  publish_member_status(&event_stream, "node-old", "fraktor://demo", NodeStatus::Joining, NodeStatus::Up);
+  publish_member_status(&event_stream, "node-new", "fraktor://demo", NodeStatus::Joining, NodeStatus::Joining);
+
+  match ext_shared.grain_readiness_snapshot().readiness(&expected) {
+    | GrainReadiness::NotReady { reasons } => {
+      assert!(
+        reasons.contains(&GrainUnreadyReason::SelfNodeNotUp { status: Some(NodeStatus::Joining) }),
+        "fresh rejoin status should win over old Up"
+      );
+    },
+    | GrainReadiness::Ready => panic!("fresh rejoin should not be ready while Joining"),
+  }
+}
+
+#[test]
+fn grain_readiness_snapshot_drops_stale_observed_status_when_self_rejoins_topology() {
+  let system = create_noop_actor_system();
+  let event_stream = system.event_stream();
+  let authority = String::from("fraktor://demo");
+  let ext_id = ClusterExtensionId::new(
+    ClusterExtensionConfig::new().with_advertised_address(&authority),
+    Box::new(StartAndEmitSelfUpProvider::new(event_stream.clone(), authority.clone(), String::from("node-self"))),
+    ArcShared::new(StubBlockList),
+    Box::new(NoopDowningProvider::new()),
+    Box::new(StubGossiper),
+    Box::new(StubPubSub),
+    Box::new(PartitionIdentityLookup::with_defaults()),
+  );
+  let ext_shared = system.extended().register_extension(&ext_id);
+  let expected = vec![String::from("grain-kind")];
+
+  ext_shared.start_member().expect("start member");
+  ext_shared.setup_member_kinds(vec![ActivatedKind::new("grain-kind")]).expect("setup kinds");
+  publish_member_status(&event_stream, "node-self", &authority, NodeStatus::Up, NodeStatus::Joining);
+  assert_eq!(ext_shared.grain_readiness_snapshot().readiness(&expected), GrainReadiness::NotReady {
+    reasons: vec![GrainUnreadyReason::SelfNodeNotUp { status: Some(NodeStatus::Joining) }],
+  });
+
+  ext_shared.on_topology(&build_update(20, Vec::new(), Vec::new(), vec![authority.clone()], Vec::new()));
+  ext_shared.on_topology(&build_update(21, vec![authority], Vec::new(), Vec::new(), Vec::new()));
+
+  assert_eq!(ext_shared.grain_readiness_snapshot().readiness(&expected), GrainReadiness::Ready);
+}
+
+#[test]
+fn grain_readiness_snapshot_keeps_observed_status_on_deduped_topology() {
+  let system = create_noop_actor_system();
+  let event_stream = system.event_stream();
+  let authority = String::from("fraktor://demo");
+  let ext_id = ClusterExtensionId::new(
+    ClusterExtensionConfig::new().with_advertised_address(&authority),
+    Box::new(StartAndEmitSelfUpProvider::new(event_stream.clone(), authority.clone(), String::from("node-self"))),
+    ArcShared::new(StubBlockList),
+    Box::new(NoopDowningProvider::new()),
+    Box::new(StubGossiper),
+    Box::new(StubPubSub),
+    Box::new(PartitionIdentityLookup::with_defaults()),
+  );
+  let ext_shared = system.extended().register_extension(&ext_id);
+  let expected = vec![String::from("grain-kind")];
+
+  ext_shared.start_member().expect("start member");
+  ext_shared.setup_member_kinds(vec![ActivatedKind::new("grain-kind")]).expect("setup kinds");
+  ext_shared.on_topology(&build_update(20, vec![authority.clone()], Vec::new(), Vec::new(), Vec::new()));
+  publish_member_status(&event_stream, "node-self", &authority, NodeStatus::Up, NodeStatus::Joining);
+  assert_eq!(ext_shared.grain_readiness_snapshot().readiness(&expected), GrainReadiness::NotReady {
+    reasons: vec![GrainUnreadyReason::SelfNodeNotUp { status: Some(NodeStatus::Joining) }],
+  });
+
+  ext_shared.on_topology(&build_update(20, Vec::new(), Vec::new(), vec![authority], Vec::new()));
+
+  assert_eq!(ext_shared.grain_readiness_snapshot().readiness(&expected), GrainReadiness::NotReady {
+    reasons: vec![GrainUnreadyReason::SelfNodeNotUp { status: Some(NodeStatus::Joining) }],
+  });
+}
+
+#[test]
+fn grain_readiness_snapshot_ignores_late_removed_from_previous_lifecycle_after_restart() {
+  let system = create_noop_actor_system();
+  let event_stream = system.event_stream();
+  let authority = String::from("fraktor://demo");
+  let ext_id = ClusterExtensionId::new(
+    ClusterExtensionConfig::new().with_advertised_address(&authority),
+    Box::new(StartAndEmitRestartSelfUpProvider::new(
+      event_stream.clone(),
+      authority.clone(),
+      String::from("node-old"),
+      String::from("node-new"),
+    )),
+    ArcShared::new(StubBlockList),
+    Box::new(NoopDowningProvider::new()),
+    Box::new(StubGossiper),
+    Box::new(StubPubSub),
+    Box::new(PartitionIdentityLookup::with_defaults()),
+  );
+  let ext_shared = system.extended().register_extension(&ext_id);
+  let expected = vec![String::from("grain-kind")];
+
+  ext_shared.start_member().expect("start member");
+  ext_shared.setup_member_kinds(vec![ActivatedKind::new("grain-kind")]).expect("setup kinds");
+  ext_shared.shutdown(true).expect("shutdown");
+  ext_shared.start_member().expect("restart member");
+  assert_eq!(ext_shared.grain_readiness_snapshot().readiness(&expected), GrainReadiness::Ready);
+
+  publish_member_status(&event_stream, "node-old", &authority, NodeStatus::Exiting, NodeStatus::Removed);
+
+  assert_eq!(ext_shared.grain_readiness_snapshot().readiness(&expected), GrainReadiness::Ready);
+}
+
+#[test]
+fn grain_readiness_snapshot_ignores_late_removed_before_restart_identity_is_observed() {
+  let system = create_noop_actor_system();
+  let event_stream = system.event_stream();
+  let authority = String::from("fraktor://demo");
+  let ext_id = ClusterExtensionId::new(
+    ClusterExtensionConfig::new().with_advertised_address(&authority),
+    Box::new(StartFirstOnlyEmitSelfUpProvider::new(event_stream.clone(), authority.clone(), String::from("node-old"))),
+    ArcShared::new(StubBlockList),
+    Box::new(NoopDowningProvider::new()),
+    Box::new(StubGossiper),
+    Box::new(StubPubSub),
+    Box::new(PartitionIdentityLookup::with_defaults()),
+  );
+  let ext_shared = system.extended().register_extension(&ext_id);
+  let expected = vec![String::from("grain-kind")];
+
+  ext_shared.start_member().expect("start member");
+  ext_shared.setup_member_kinds(vec![ActivatedKind::new("grain-kind")]).expect("setup kinds");
+  ext_shared.shutdown(true).expect("shutdown");
+  ext_shared.start_member().expect("restart member");
+  assert_eq!(ext_shared.grain_readiness_snapshot().readiness(&expected), GrainReadiness::Ready);
+
+  publish_member_status(&event_stream, "node-old", &authority, NodeStatus::Exiting, NodeStatus::Removed);
+
+  assert_eq!(ext_shared.grain_readiness_snapshot().readiness(&expected), GrainReadiness::Ready);
+}
+
+#[test]
+fn grain_readiness_snapshot_ignores_late_non_removed_then_removed_before_restart_identity_is_observed() {
+  let system = create_noop_actor_system();
+  let event_stream = system.event_stream();
+  let authority = String::from("fraktor://demo");
+  let ext_id = ClusterExtensionId::new(
+    ClusterExtensionConfig::new().with_advertised_address(&authority),
+    Box::new(StartFirstOnlyEmitSelfUpProvider::new(event_stream.clone(), authority.clone(), String::from("node-old"))),
+    ArcShared::new(StubBlockList),
+    Box::new(NoopDowningProvider::new()),
+    Box::new(StubGossiper),
+    Box::new(StubPubSub),
+    Box::new(PartitionIdentityLookup::with_defaults()),
+  );
+  let ext_shared = system.extended().register_extension(&ext_id);
+  let expected = vec![String::from("grain-kind")];
+
+  ext_shared.start_member().expect("start member");
+  ext_shared.setup_member_kinds(vec![ActivatedKind::new("grain-kind")]).expect("setup kinds");
+  ext_shared.shutdown(true).expect("shutdown");
+  ext_shared.start_member().expect("restart member");
+  assert_eq!(ext_shared.grain_readiness_snapshot().readiness(&expected), GrainReadiness::Ready);
+
+  publish_member_status(&event_stream, "node-old", &authority, NodeStatus::Joining, NodeStatus::Up);
+  publish_member_status(&event_stream, "node-old", &authority, NodeStatus::Exiting, NodeStatus::Removed);
+
+  assert_eq!(ext_shared.grain_readiness_snapshot().readiness(&expected), GrainReadiness::Ready);
+}
+
+#[test]
+fn grain_readiness_snapshot_ignores_late_non_removed_from_older_retired_lifecycle_before_restart_identity_is_observed()
+{
+  let system = create_noop_actor_system();
+  let event_stream = system.event_stream();
+  let authority = String::from("fraktor://demo");
+  let ext_id = ClusterExtensionId::new(
+    ClusterExtensionConfig::new().with_advertised_address(&authority),
+    Box::new(StartFirstOnlyEmitSelfUpProvider::new(
+      event_stream.clone(),
+      authority.clone(),
+      String::from("node-first"),
+    )),
+    ArcShared::new(StubBlockList),
+    Box::new(NoopDowningProvider::new()),
+    Box::new(StubGossiper),
+    Box::new(StubPubSub),
+    Box::new(PartitionIdentityLookup::with_defaults()),
+  );
+  let ext_shared = system.extended().register_extension(&ext_id);
+  let expected = vec![String::from("grain-kind")];
+
+  ext_shared.start_member().expect("start member");
+  ext_shared.setup_member_kinds(vec![ActivatedKind::new("grain-kind")]).expect("setup kinds");
+  ext_shared.shutdown(true).expect("shutdown first lifecycle");
+  ext_shared.start_member().expect("start second lifecycle");
+  publish_member_status(&event_stream, "node-second", &authority, NodeStatus::Joining, NodeStatus::Up);
+  assert_eq!(ext_shared.grain_readiness_snapshot().readiness(&expected), GrainReadiness::Ready);
+  ext_shared.shutdown(true).expect("shutdown second lifecycle");
+  ext_shared.start_member().expect("start third lifecycle");
+
+  publish_member_status(&event_stream, "node-first", &authority, NodeStatus::Joining, NodeStatus::Up);
+  publish_member_status(&event_stream, "node-third", &authority, NodeStatus::Joining, NodeStatus::Joining);
+
+  assert_eq!(ext_shared.grain_readiness_snapshot().readiness(&expected), GrainReadiness::NotReady {
+    reasons: vec![GrainUnreadyReason::SelfNodeNotUp { status: Some(NodeStatus::Joining) }],
+  });
+}
+
+#[test]
+fn grain_readiness_snapshot_ignores_old_removed_to_joining_from_older_retired_lifecycle() {
+  let system = create_noop_actor_system();
+  let event_stream = system.event_stream();
+  let authority = String::from("fraktor://demo");
+  let ext_id = ClusterExtensionId::new(
+    ClusterExtensionConfig::new().with_advertised_address(&authority),
+    Box::new(StartFirstOnlyEmitSelfUpProvider::new(
+      event_stream.clone(),
+      authority.clone(),
+      String::from("node-first"),
+    )),
+    ArcShared::new(StubBlockList),
+    Box::new(NoopDowningProvider::new()),
+    Box::new(StubGossiper),
+    Box::new(StubPubSub),
+    Box::new(PartitionIdentityLookup::with_defaults()),
+  );
+  let ext_shared = system.extended().register_extension(&ext_id);
+  let expected = vec![String::from("grain-kind")];
+
+  ext_shared.start_member().expect("start member");
+  ext_shared.setup_member_kinds(vec![ActivatedKind::new("grain-kind")]).expect("setup kinds");
+  ext_shared.shutdown(true).expect("shutdown first lifecycle");
+  ext_shared.start_member().expect("start second lifecycle");
+  publish_member_status(&event_stream, "node-second", &authority, NodeStatus::Joining, NodeStatus::Up);
+  ext_shared.shutdown(true).expect("shutdown second lifecycle");
+  ext_shared.start_member().expect("start third lifecycle");
+
+  publish_member_status(&event_stream, "node-first", &authority, NodeStatus::Removed, NodeStatus::Joining);
+  publish_member_status(&event_stream, "node-third", &authority, NodeStatus::Joining, NodeStatus::Joining);
+
+  assert_eq!(ext_shared.grain_readiness_snapshot().readiness(&expected), GrainReadiness::NotReady {
+    reasons: vec![GrainUnreadyReason::SelfNodeNotUp { status: Some(NodeStatus::Joining) }],
+  });
+}
+
+#[test]
+fn grain_readiness_snapshot_ignores_retired_identity_arriving_during_restart_start_window() {
+  let system = create_noop_actor_system();
+  let event_stream = system.event_stream();
+  let authority = String::from("fraktor://demo");
+  let ext_id = ClusterExtensionId::new(
+    ClusterExtensionConfig::new().with_advertised_address(&authority),
+    Box::new(RestartEmitsRetiredThenCurrentProvider::new(
+      event_stream,
+      authority.clone(),
+      String::from("node-old"),
+      String::from("node-new"),
+    )),
+    ArcShared::new(StubBlockList),
+    Box::new(NoopDowningProvider::new()),
+    Box::new(StubGossiper),
+    Box::new(StubPubSub),
+    Box::new(PartitionIdentityLookup::with_defaults()),
+  );
+  let ext_shared = system.extended().register_extension(&ext_id);
+  let expected = vec![String::from("grain-kind")];
+
+  ext_shared.start_member().expect("start member");
+  ext_shared.setup_member_kinds(vec![ActivatedKind::new("grain-kind")]).expect("setup kinds");
+  ext_shared.shutdown(true).expect("shutdown");
+  ext_shared.start_member().expect("restart member");
+
+  assert_eq!(ext_shared.grain_readiness_snapshot().readiness(&expected), GrainReadiness::NotReady {
+    reasons: vec![GrainUnreadyReason::SelfNodeNotUp { status: Some(NodeStatus::Joining) }],
+  });
+}
+
+#[test]
+fn grain_readiness_snapshot_accepts_same_node_id_rejoin_after_restart_start_window() {
+  let system = create_noop_actor_system();
+  let event_stream = system.event_stream();
+  let authority = String::from("fraktor://demo");
+  let ext_id = ClusterExtensionId::new(
+    ClusterExtensionConfig::new().with_advertised_address(&authority),
+    Box::new(StartFirstOnlyEmitSelfUpProvider::new(event_stream.clone(), authority.clone(), String::from("node-self"))),
+    ArcShared::new(StubBlockList),
+    Box::new(NoopDowningProvider::new()),
+    Box::new(StubGossiper),
+    Box::new(StubPubSub),
+    Box::new(PartitionIdentityLookup::with_defaults()),
+  );
+  let ext_shared = system.extended().register_extension(&ext_id);
+  let expected = vec![String::from("grain-kind")];
+
+  ext_shared.start_member().expect("start member");
+  ext_shared.setup_member_kinds(vec![ActivatedKind::new("grain-kind")]).expect("setup kinds");
+  ext_shared.shutdown(true).expect("shutdown");
+  ext_shared.start_member().expect("restart member");
+
+  publish_member_status(&event_stream, "node-self", &authority, NodeStatus::Removed, NodeStatus::Joining);
+
+  assert_eq!(ext_shared.grain_readiness_snapshot().readiness(&expected), GrainReadiness::NotReady {
+    reasons: vec![GrainUnreadyReason::SelfNodeNotUp { status: Some(NodeStatus::Joining) }],
+  });
+
+  publish_member_status(&event_stream, "node-self", &authority, NodeStatus::Joining, NodeStatus::Up);
+
+  assert_eq!(ext_shared.grain_readiness_snapshot().readiness(&expected), GrainReadiness::Ready);
+
+  let calls = ArcShared::new(SpinSyncMutex::new(Vec::<(String, String)>::new()));
+  let calls_for_callback = calls.clone();
+  let _subscription = ext_shared.register_on_member_up(move |node_id, authority| {
+    calls_for_callback.lock().push((String::from(node_id), String::from(authority)));
+  });
+
+  let recorded = calls.lock().clone();
+  assert_eq!(recorded, vec![(String::from("node-self"), String::from("fraktor://demo"))]);
+}
+
+#[test]
+fn grain_readiness_snapshot_accepts_same_node_id_rejoin_during_restart_start_window() {
+  let system = create_noop_actor_system();
+  let event_stream = system.event_stream();
+  let authority = String::from("fraktor://demo");
+  let ext_id = ClusterExtensionId::new(
+    ClusterExtensionConfig::new().with_advertised_address(&authority),
+    Box::new(RestartEmitsSameIdentityJoiningProvider::new(event_stream, authority.clone(), String::from("node-self"))),
+    ArcShared::new(StubBlockList),
+    Box::new(NoopDowningProvider::new()),
+    Box::new(StubGossiper),
+    Box::new(StubPubSub),
+    Box::new(PartitionIdentityLookup::with_defaults()),
+  );
+  let ext_shared = system.extended().register_extension(&ext_id);
+  let expected = vec![String::from("grain-kind")];
+
+  ext_shared.start_member().expect("start member");
+  ext_shared.setup_member_kinds(vec![ActivatedKind::new("grain-kind")]).expect("setup kinds");
+  ext_shared.shutdown(true).expect("shutdown");
+  ext_shared.start_member().expect("restart member");
+
+  assert_eq!(ext_shared.grain_readiness_snapshot().readiness(&expected), GrainReadiness::NotReady {
+    reasons: vec![GrainUnreadyReason::SelfNodeNotUp { status: Some(NodeStatus::Joining) }],
+  });
+}
+
+#[test]
+fn grain_readiness_snapshot_accepts_same_node_id_up_during_restart_start_window() {
+  let system = create_noop_actor_system();
+  let event_stream = system.event_stream();
+  let authority = String::from("fraktor://demo");
+  let ext_id = ClusterExtensionId::new(
+    ClusterExtensionConfig::new().with_advertised_address(&authority),
+    Box::new(StartAndEmitRestartSelfUpProvider::new(
+      event_stream,
+      authority.clone(),
+      String::from("node-self"),
+      String::from("node-self"),
+    )),
+    ArcShared::new(StubBlockList),
+    Box::new(NoopDowningProvider::new()),
+    Box::new(StubGossiper),
+    Box::new(StubPubSub),
+    Box::new(PartitionIdentityLookup::with_defaults()),
+  );
+  let ext_shared = system.extended().register_extension(&ext_id);
+  let expected = vec![String::from("grain-kind")];
+
+  ext_shared.start_member().expect("start member");
+  ext_shared.setup_member_kinds(vec![ActivatedKind::new("grain-kind")]).expect("setup kinds");
+  ext_shared.shutdown(true).expect("shutdown");
+  ext_shared.start_member().expect("restart member");
+
+  assert_eq!(ext_shared.grain_readiness_snapshot().readiness(&expected), GrainReadiness::Ready);
+
+  let calls = ArcShared::new(SpinSyncMutex::new(Vec::<(String, String)>::new()));
+  let calls_for_callback = calls.clone();
+  let _subscription = ext_shared.register_on_member_up(move |node_id, authority| {
+    calls_for_callback.lock().push((String::from(node_id), String::from(authority)));
+  });
+
+  let recorded = calls.lock().clone();
+  assert_eq!(recorded, vec![(String::from("node-self"), String::from("fraktor://demo"))]);
+}
+
+#[test]
+fn grain_readiness_snapshot_accepts_removed_from_new_lifecycle_before_restart_identity_is_observed() {
+  let system = create_noop_actor_system();
+  let event_stream = system.event_stream();
+  let authority = String::from("fraktor://demo");
+  let ext_id = ClusterExtensionId::new(
+    ClusterExtensionConfig::new().with_advertised_address(&authority),
+    Box::new(StartFirstOnlyEmitSelfUpProvider::new(event_stream.clone(), authority.clone(), String::from("node-old"))),
+    ArcShared::new(StubBlockList),
+    Box::new(NoopDowningProvider::new()),
+    Box::new(StubGossiper),
+    Box::new(StubPubSub),
+    Box::new(PartitionIdentityLookup::with_defaults()),
+  );
+  let ext_shared = system.extended().register_extension(&ext_id);
+  let expected = vec![String::from("grain-kind")];
+
+  ext_shared.start_member().expect("start member");
+  ext_shared.setup_member_kinds(vec![ActivatedKind::new("grain-kind")]).expect("setup kinds");
+  ext_shared.shutdown(true).expect("shutdown");
+  ext_shared.start_member().expect("restart member");
+  assert_eq!(ext_shared.grain_readiness_snapshot().readiness(&expected), GrainReadiness::Ready);
+
+  publish_member_status(&event_stream, "node-new", &authority, NodeStatus::Exiting, NodeStatus::Removed);
+
+  assert_eq!(ext_shared.grain_readiness_snapshot().readiness(&expected), GrainReadiness::NotReady {
+    reasons: vec![GrainUnreadyReason::SelfNodeNotUp { status: Some(NodeStatus::Removed) }],
+  });
+}
+
+#[test]
+fn grain_readiness_snapshot_ignores_late_non_removed_from_previous_lifecycle_after_restart_identity_is_observed() {
+  let system = create_noop_actor_system();
+  let event_stream = system.event_stream();
+  let authority = String::from("fraktor://demo");
+  let ext_id = ClusterExtensionId::new(
+    ClusterExtensionConfig::new().with_advertised_address(&authority),
+    Box::new(StartFirstOnlyEmitSelfUpProvider::new(event_stream.clone(), authority.clone(), String::from("node-old"))),
+    ArcShared::new(StubBlockList),
+    Box::new(NoopDowningProvider::new()),
+    Box::new(StubGossiper),
+    Box::new(StubPubSub),
+    Box::new(PartitionIdentityLookup::with_defaults()),
+  );
+  let ext_shared = system.extended().register_extension(&ext_id);
+  let expected = vec![String::from("grain-kind")];
+
+  ext_shared.start_member().expect("start member");
+  ext_shared.setup_member_kinds(vec![ActivatedKind::new("grain-kind")]).expect("setup kinds");
+  ext_shared.shutdown(true).expect("shutdown");
+  ext_shared.start_member().expect("restart member");
+  publish_member_status(&event_stream, "node-new", &authority, NodeStatus::Joining, NodeStatus::Joining);
+  assert_eq!(ext_shared.grain_readiness_snapshot().readiness(&expected), GrainReadiness::NotReady {
+    reasons: vec![GrainUnreadyReason::SelfNodeNotUp { status: Some(NodeStatus::Joining) }],
+  });
+
+  publish_member_status(&event_stream, "node-old", &authority, NodeStatus::Joining, NodeStatus::Up);
+
+  assert_eq!(ext_shared.grain_readiness_snapshot().readiness(&expected), GrainReadiness::NotReady {
+    reasons: vec![GrainUnreadyReason::SelfNodeNotUp { status: Some(NodeStatus::Joining) }],
+  });
+}
+
+#[test]
 fn register_on_member_up_invokes_callback_for_up_transition() {
   let system = create_noop_actor_system();
   let event_stream = system.event_stream();
@@ -366,6 +1352,51 @@ fn register_on_member_up_invokes_callback_when_status_arrives_during_start_clien
   run_member_up_during_start_test(|ext| ext.start_client());
 }
 
+fn run_member_up_during_restart_test(start_fn: impl Fn(&ClusterExtension) -> Result<(), ClusterError>) {
+  let system = create_noop_actor_system();
+  let event_stream = system.event_stream();
+  let authority = String::from("fraktor://demo");
+
+  let ext_id = ClusterExtensionId::new(
+    ClusterExtensionConfig::new().with_advertised_address(&authority),
+    Box::new(StartAndEmitRestartSelfUpProvider::new(
+      event_stream.clone(),
+      authority.clone(),
+      String::from("node-old"),
+      String::from("node-new"),
+    )),
+    ArcShared::new(StubBlockList),
+    Box::new(NoopDowningProvider::new()),
+    Box::new(StubGossiper),
+    Box::new(StubPubSub),
+    Box::new(StubIdentity),
+  );
+  let ext_shared = system.extended().register_extension(&ext_id);
+
+  start_fn(&ext_shared).expect("start");
+  ext_shared.shutdown(true).expect("shutdown");
+  start_fn(&ext_shared).expect("restart");
+
+  let calls = ArcShared::new(SpinSyncMutex::new(Vec::<(String, String)>::new()));
+  let calls_for_callback = calls.clone();
+  let _subscription = ext_shared.register_on_member_up(move |node_id, authority| {
+    calls_for_callback.lock().push((String::from(node_id), String::from(authority)));
+  });
+
+  let recorded = calls.lock().clone();
+  assert_eq!(recorded, vec![(String::from("node-new"), String::from("fraktor://demo"))]);
+}
+
+#[test]
+fn register_on_member_up_invokes_callback_when_status_arrives_during_restart_member() {
+  run_member_up_during_restart_test(|ext| ext.start_member());
+}
+
+#[test]
+fn register_on_member_up_invokes_callback_when_status_arrives_during_restart_client() {
+  run_member_up_during_restart_test(|ext| ext.start_client());
+}
+
 #[test]
 fn register_on_member_removed_invokes_callback_immediately_when_self_already_removed() {
   let system = create_noop_actor_system();
@@ -410,6 +1441,137 @@ fn register_on_member_removed_invokes_callback_immediately_after_shutdown() {
 }
 
 #[test]
+fn register_on_member_removed_after_shutdown_ignores_late_non_removed_identity() {
+  let system = create_noop_actor_system();
+  let event_stream = system.event_stream();
+
+  let ext_id = stub_extension_id(ClusterExtensionConfig::new().with_advertised_address("fraktor://demo"));
+  let ext_shared = system.extended().register_extension(&ext_id);
+  ext_shared.start_member().expect("start member");
+  publish_member_status(&event_stream, "node-removed", "fraktor://demo", NodeStatus::Exiting, NodeStatus::Removed);
+  ext_shared.shutdown(true).expect("shutdown");
+  publish_member_status(&event_stream, "node-late", "fraktor://demo", NodeStatus::Joining, NodeStatus::Up);
+
+  let calls = ArcShared::new(SpinSyncMutex::new(Vec::<(String, String)>::new()));
+  let calls_for_callback = calls.clone();
+  let _subscription = ext_shared.register_on_member_removed(move |node_id, authority| {
+    calls_for_callback.lock().push((String::from(node_id), String::from(authority)));
+  });
+
+  let recorded = calls.lock().clone();
+  assert_eq!(recorded, vec![(String::from("node-removed"), String::from("fraktor://demo"))]);
+}
+
+#[test]
+fn register_on_member_removed_after_shutdown_ignores_late_removed_from_previous_lifecycle() {
+  let system = create_noop_actor_system();
+  let event_stream = system.event_stream();
+  let authority = String::from("fraktor://demo");
+
+  let ext_id = ClusterExtensionId::new(
+    ClusterExtensionConfig::new().with_advertised_address(&authority),
+    Box::new(StartFirstOnlyEmitSelfUpProvider::new(event_stream.clone(), authority.clone(), String::from("node-old"))),
+    ArcShared::new(StubBlockList),
+    Box::new(NoopDowningProvider::new()),
+    Box::new(StubGossiper),
+    Box::new(StubPubSub),
+    Box::new(StubIdentity),
+  );
+  let ext_shared = system.extended().register_extension(&ext_id);
+
+  ext_shared.start_member().expect("start member");
+  ext_shared.shutdown(true).expect("shutdown");
+  ext_shared.start_member().expect("restart member");
+  publish_member_status(&event_stream, "node-new", &authority, NodeStatus::Joining, NodeStatus::Up);
+  ext_shared.shutdown(true).expect("shutdown again");
+  publish_member_status(&event_stream, "node-old", &authority, NodeStatus::Exiting, NodeStatus::Removed);
+
+  let calls = ArcShared::new(SpinSyncMutex::new(Vec::<(String, String)>::new()));
+  let calls_for_callback = calls.clone();
+  let _subscription = ext_shared.register_on_member_removed(move |node_id, authority| {
+    calls_for_callback.lock().push((String::from(node_id), String::from(authority)));
+  });
+
+  let recorded = calls.lock().clone();
+  assert_eq!(recorded, vec![(String::from("node-new"), String::from("fraktor://demo"))]);
+}
+
+#[test]
+fn register_on_member_removed_after_shutdown_ignores_retired_removed_when_current_identity_unknown() {
+  let system = create_noop_actor_system();
+  let event_stream = system.event_stream();
+  let authority = String::from("fraktor://demo");
+
+  let ext_id = ClusterExtensionId::new(
+    ClusterExtensionConfig::new().with_advertised_address(&authority),
+    Box::new(StartFirstOnlyEmitSelfUpProvider::new(event_stream.clone(), authority.clone(), String::from("node-old"))),
+    ArcShared::new(StubBlockList),
+    Box::new(NoopDowningProvider::new()),
+    Box::new(StubGossiper),
+    Box::new(StubPubSub),
+    Box::new(StubIdentity),
+  );
+  let ext_shared = system.extended().register_extension(&ext_id);
+
+  ext_shared.start_member().expect("start member");
+  ext_shared.shutdown(true).expect("shutdown");
+  ext_shared.start_member().expect("restart member");
+  ext_shared.shutdown(true).expect("shutdown again");
+  publish_member_status(&event_stream, "node-old", &authority, NodeStatus::Exiting, NodeStatus::Removed);
+
+  let calls = ArcShared::new(SpinSyncMutex::new(Vec::<(String, String)>::new()));
+  let calls_for_callback = calls.clone();
+  let _subscription = ext_shared.register_on_member_removed(move |node_id, authority| {
+    calls_for_callback.lock().push((String::from(node_id), String::from(authority)));
+  });
+
+  let recorded = calls.lock().clone();
+  assert_eq!(recorded, vec![(String::from("fraktor://demo"), String::from("fraktor://demo"))]);
+}
+
+fn run_failed_restart_preserves_removed_identity_test(
+  start_fn: impl Fn(&ClusterExtension) -> Result<(), ClusterError>,
+) {
+  let system = create_noop_actor_system();
+  let event_stream = system.event_stream();
+
+  let ext_id = ClusterExtensionId::new(
+    ClusterExtensionConfig::new().with_advertised_address("fraktor://demo"),
+    Box::new(StartOnceThenFailProvider::new()),
+    ArcShared::new(StubBlockList),
+    Box::new(NoopDowningProvider::new()),
+    Box::new(StubGossiper),
+    Box::new(StubPubSub),
+    Box::new(StubIdentity),
+  );
+  let ext_shared = system.extended().register_extension(&ext_id);
+
+  start_fn(&ext_shared).expect("start");
+  publish_member_status(&event_stream, "node-removed", "fraktor://demo", NodeStatus::Exiting, NodeStatus::Removed);
+  ext_shared.shutdown(true).expect("shutdown");
+  assert!(start_fn(&ext_shared).is_err());
+
+  let calls = ArcShared::new(SpinSyncMutex::new(Vec::<(String, String)>::new()));
+  let calls_for_callback = calls.clone();
+  let _subscription = ext_shared.register_on_member_removed(move |node_id, authority| {
+    calls_for_callback.lock().push((String::from(node_id), String::from(authority)));
+  });
+
+  let recorded = calls.lock().clone();
+  assert_eq!(recorded, vec![(String::from("node-removed"), String::from("fraktor://demo"))]);
+}
+
+#[test]
+fn register_on_member_removed_after_failed_member_restart_preserves_removed_identity() {
+  run_failed_restart_preserves_removed_identity_test(|ext| ext.start_member());
+}
+
+#[test]
+fn register_on_member_removed_after_failed_client_restart_preserves_removed_identity() {
+  run_failed_restart_preserves_removed_identity_test(|ext| ext.start_client());
+}
+
+#[test]
 fn register_on_member_removed_after_shutdown_falls_back_to_authority_when_node_id_is_unknown() {
   let system = create_noop_actor_system();
 
@@ -451,6 +1613,213 @@ fn register_on_member_up_does_not_fire_for_buffered_old_up_events() {
 
   let recorded = calls.lock().clone();
   assert_eq!(recorded, vec![(String::from("node-new"), String::from("fraktor://demo"))]);
+}
+
+#[test]
+fn register_on_member_up_does_not_fire_for_retired_up_after_restart() {
+  let system = create_noop_actor_system();
+  let event_stream = system.event_stream();
+  let authority = String::from("fraktor://demo");
+
+  let ext_id = ClusterExtensionId::new(
+    ClusterExtensionConfig::new().with_advertised_address(&authority),
+    Box::new(StartFirstOnlyEmitSelfUpProvider::new(event_stream.clone(), authority.clone(), String::from("node-old"))),
+    ArcShared::new(StubBlockList),
+    Box::new(NoopDowningProvider::new()),
+    Box::new(StubGossiper),
+    Box::new(StubPubSub),
+    Box::new(StubIdentity),
+  );
+  let ext_shared = system.extended().register_extension(&ext_id);
+
+  ext_shared.start_member().expect("start member");
+  ext_shared.shutdown(true).expect("shutdown");
+  ext_shared.start_member().expect("restart member");
+
+  let calls = ArcShared::new(SpinSyncMutex::new(Vec::<(String, String)>::new()));
+  let calls_for_callback = calls.clone();
+  let _subscription = ext_shared.register_on_member_up(move |node_id, authority| {
+    calls_for_callback.lock().push((String::from(node_id), String::from(authority)));
+  });
+
+  publish_member_status(&event_stream, "node-old", &authority, NodeStatus::Joining, NodeStatus::Up);
+  assert!(calls.lock().is_empty());
+
+  publish_member_status(&event_stream, "node-new", &authority, NodeStatus::Joining, NodeStatus::Up);
+
+  let recorded = calls.lock().clone();
+  assert_eq!(recorded, vec![(String::from("node-new"), String::from("fraktor://demo"))]);
+}
+
+#[test]
+fn register_on_member_up_does_not_fire_after_shutdown() {
+  let system = create_noop_actor_system();
+  let event_stream = system.event_stream();
+  let authority = String::from("fraktor://demo");
+
+  let ext_id = stub_extension_id(ClusterExtensionConfig::new().with_advertised_address(&authority));
+  let ext_shared = system.extended().register_extension(&ext_id);
+  ext_shared.start_member().expect("start member");
+
+  let calls = ArcShared::new(SpinSyncMutex::new(Vec::<(String, String)>::new()));
+  let calls_for_callback = calls.clone();
+  let _subscription = ext_shared.register_on_member_up(move |node_id, authority| {
+    calls_for_callback.lock().push((String::from(node_id), String::from(authority)));
+  });
+
+  ext_shared.shutdown(true).expect("shutdown");
+  publish_member_status(&event_stream, "node-late", &authority, NodeStatus::Joining, NodeStatus::Up);
+
+  assert!(calls.lock().is_empty());
+}
+
+#[test]
+fn register_on_member_up_does_not_fire_after_topology_absent_removed() {
+  let system = create_noop_actor_system();
+  let event_stream = system.event_stream();
+  let authority = String::from("fraktor://demo");
+
+  let ext_id = stub_extension_id(ClusterExtensionConfig::new().with_advertised_address(&authority));
+  let ext_shared = system.extended().register_extension(&ext_id);
+  ext_shared.start_member().expect("start member");
+  publish_member_status(&event_stream, "node-self", &authority, NodeStatus::Joining, NodeStatus::Up);
+  ext_shared.on_topology(&build_update(2, Vec::new(), Vec::new(), vec![authority.clone()], Vec::new()));
+  publish_member_status(&event_stream, "node-self", &authority, NodeStatus::Exiting, NodeStatus::Removed);
+
+  let calls = ArcShared::new(SpinSyncMutex::new(Vec::<(String, String)>::new()));
+  let calls_for_callback = calls.clone();
+  let _subscription = ext_shared.register_on_member_up(move |node_id, authority| {
+    calls_for_callback.lock().push((String::from(node_id), String::from(authority)));
+  });
+
+  publish_member_status(&event_stream, "node-self", &authority, NodeStatus::Joining, NodeStatus::Up);
+
+  assert!(calls.lock().is_empty());
+}
+
+#[test]
+fn register_on_member_up_does_not_fire_for_identity_mismatched_up() {
+  let system = create_noop_actor_system();
+  let event_stream = system.event_stream();
+  let authority = String::from("fraktor://demo");
+
+  let ext_id = stub_extension_id(ClusterExtensionConfig::new().with_advertised_address(&authority));
+  let ext_shared = system.extended().register_extension(&ext_id);
+
+  publish_member_status(&event_stream, "node-new", &authority, NodeStatus::Joining, NodeStatus::Joining);
+
+  let calls = ArcShared::new(SpinSyncMutex::new(Vec::<(String, String)>::new()));
+  let calls_for_callback = calls.clone();
+  let _subscription = ext_shared.register_on_member_up(move |node_id, authority| {
+    calls_for_callback.lock().push((String::from(node_id), String::from(authority)));
+  });
+
+  publish_member_status(&event_stream, "node-old", &authority, NodeStatus::Joining, NodeStatus::Up);
+  assert!(calls.lock().is_empty());
+
+  publish_member_status(&event_stream, "node-new", &authority, NodeStatus::Joining, NodeStatus::Up);
+
+  let recorded = calls.lock().clone();
+  assert_eq!(recorded, vec![(String::from("node-new"), String::from("fraktor://demo"))]);
+}
+
+#[test]
+fn register_on_member_removed_fires_after_self_leaves_topology() {
+  let system = create_noop_actor_system();
+  let event_stream = system.event_stream();
+  let authority = String::from("fraktor://demo");
+
+  let ext_id = stub_extension_id(ClusterExtensionConfig::new().with_advertised_address(&authority));
+  let ext_shared = system.extended().register_extension(&ext_id);
+  ext_shared.start_member().expect("start member");
+  publish_member_status(&event_stream, "node-self", &authority, NodeStatus::Joining, NodeStatus::Up);
+
+  let calls = ArcShared::new(SpinSyncMutex::new(Vec::<(String, String)>::new()));
+  let calls_for_callback = calls.clone();
+  let _subscription = ext_shared.register_on_member_removed(move |node_id, authority| {
+    calls_for_callback.lock().push((String::from(node_id), String::from(authority)));
+  });
+
+  ext_shared.on_topology(&build_update(2, Vec::new(), Vec::new(), vec![authority.clone()], Vec::new()));
+  publish_member_status(&event_stream, "node-self", &authority, NodeStatus::Exiting, NodeStatus::Removed);
+
+  let recorded = calls.lock().clone();
+  assert_eq!(recorded, vec![(String::from("node-self"), String::from("fraktor://demo"))]);
+}
+
+#[test]
+fn register_on_member_removed_does_not_fire_for_identity_mismatched_removed() {
+  let system = create_noop_actor_system();
+  let event_stream = system.event_stream();
+  let authority = String::from("fraktor://demo");
+
+  let ext_id = stub_extension_id(ClusterExtensionConfig::new().with_advertised_address(&authority));
+  let ext_shared = system.extended().register_extension(&ext_id);
+
+  publish_member_status(&event_stream, "node-new", &authority, NodeStatus::Joining, NodeStatus::Up);
+
+  let calls = ArcShared::new(SpinSyncMutex::new(Vec::<(String, String)>::new()));
+  let calls_for_callback = calls.clone();
+  let _subscription = ext_shared.register_on_member_removed(move |node_id, authority| {
+    calls_for_callback.lock().push((String::from(node_id), String::from(authority)));
+  });
+
+  publish_member_status(&event_stream, "node-old", &authority, NodeStatus::Exiting, NodeStatus::Removed);
+  assert!(calls.lock().is_empty());
+
+  publish_member_status(&event_stream, "node-new", &authority, NodeStatus::Exiting, NodeStatus::Removed);
+
+  let recorded = calls.lock().clone();
+  assert_eq!(recorded, vec![(String::from("node-new"), String::from("fraktor://demo"))]);
+}
+
+fn run_failed_restart_retires_failed_start_identity_test(
+  start_fn: impl Fn(&ClusterExtension) -> Result<(), ClusterError>,
+) {
+  let system = create_noop_actor_system();
+  let event_stream = system.event_stream();
+  let authority = String::from("fraktor://demo");
+
+  let ext_id = ClusterExtensionId::new(
+    ClusterExtensionConfig::new().with_advertised_address(&authority),
+    Box::new(StartEmitThenFailOnceProvider::new(event_stream.clone(), authority.clone(), String::from("node-failed"))),
+    ArcShared::new(StubBlockList),
+    Box::new(NoopDowningProvider::new()),
+    Box::new(StubGossiper),
+    Box::new(StubPubSub),
+    Box::new(StubIdentity),
+  );
+  let ext_shared = system.extended().register_extension(&ext_id);
+
+  start_fn(&ext_shared).expect("start");
+  publish_member_status(&event_stream, "node-old", &authority, NodeStatus::Joining, NodeStatus::Up);
+  ext_shared.shutdown(true).expect("shutdown");
+  assert!(start_fn(&ext_shared).is_err());
+  start_fn(&ext_shared).expect("restart");
+
+  let calls = ArcShared::new(SpinSyncMutex::new(Vec::<(String, String)>::new()));
+  let calls_for_callback = calls.clone();
+  let _subscription = ext_shared.register_on_member_up(move |node_id, authority| {
+    calls_for_callback.lock().push((String::from(node_id), String::from(authority)));
+  });
+
+  publish_member_status(&event_stream, "node-failed", &authority, NodeStatus::Joining, NodeStatus::Up);
+  assert!(calls.lock().is_empty());
+
+  publish_member_status(&event_stream, "node-new", &authority, NodeStatus::Joining, NodeStatus::Up);
+
+  let recorded = calls.lock().clone();
+  assert_eq!(recorded, vec![(String::from("node-new"), String::from("fraktor://demo"))]);
+}
+
+#[test]
+fn register_on_member_up_ignores_failed_member_start_identity_after_retry() {
+  run_failed_restart_retires_failed_start_identity_test(|ext| ext.start_member());
+}
+
+#[test]
+fn register_on_member_up_ignores_failed_client_start_identity_after_retry() {
+  run_failed_restart_retires_failed_start_identity_test(|ext| ext.start_client());
 }
 
 #[test]
