@@ -18,13 +18,13 @@ use crate::{
   BlockListProvider, ClusterError, ClusterEvent, ClusterProviderError, ClusterProviderShared, ClusterTopology,
   MetricsError, StartupMode, TopologyUpdate,
   activation::{
-    ActivatedKind, IdentityLookup, IdentityLookupShared, IdentitySetupError, LookupError, PidCache, PidCacheEvent,
-    PlacementResolution,
+    ActivatedKind, IdentityLookup, IdentityLookupShared, IdentitySetupError, LookupError, PartitionIdentityLookup,
+    PidCache, PidCacheEvent, PlacementResolution,
   },
   cluster_provider::ClusterProvider,
   downing_provider::{DowningDecision, DowningInput, DowningProvider, NoopDowningProvider},
   failure_detector::{FailureDetectorConfig, FailureDetectorConfigError},
-  grain::{GrainKey, KindRegistry, TOPIC_ACTOR_KIND},
+  grain::{GrainKey, GrainReadiness, GrainUnreadyReason, KindRegistry, TOPIC_ACTOR_KIND},
   membership::{Gossiper, GossiperShared},
   pub_sub::{
     ClusterPubSubShared, PubSubError, PubSubSubscriber, PubSubTopic, PublishAck, PublishRequest,
@@ -491,6 +491,44 @@ fn build_core_with_config(config: &ClusterExtensionConfig) -> ClusterCore {
     kind_registry,
     identity_lookup,
   )
+}
+
+fn build_core_with_partition_lookup(config: &ClusterExtensionConfig) -> ClusterCore {
+  ClusterCore::new(
+    config,
+    wrap_provider(StubProvider),
+    ArcShared::new(StubBlockListProvider::new(Vec::new())),
+    EventStreamShared::default(),
+    wrap_downing_provider(NoopDowningProvider::new()),
+    wrap_gossiper(StubGossiper::new()),
+    wrap_pubsub(StubPubSub::new()),
+    KindRegistry::new(),
+    wrap_identity_lookup(PartitionIdentityLookup::with_defaults()),
+  )
+}
+
+#[test]
+fn grain_readiness_snapshot_reads_self_status_placement_and_kinds() {
+  let config = ClusterExtensionConfig::new().with_advertised_address("proto://node-a");
+  let mut core = build_core_with_partition_lookup(&config);
+
+  // 起動前: 自ノードは members に不在 → SelfNodeNotUp、placement は Stopped → NotReady
+  match core.grain_readiness_snapshot().readiness(&[]) {
+    | GrainReadiness::NotReady { reasons } => {
+      assert!(reasons.contains(&GrainUnreadyReason::SelfNodeNotUp { status: None }), "自ノード不在の理由が必要");
+      assert!(
+        reasons.iter().any(|reason| matches!(reason, GrainUnreadyReason::PlacementNotReady { .. })),
+        "placement 未起動の理由が必要"
+      );
+    },
+    | GrainReadiness::Ready => panic!("起動前は NotReady であるべき"),
+  }
+
+  // member 起動で自ノードが在籍、kind 登録で placement Member + kind 登録
+  core.start_member().expect("start member");
+  core.setup_member_kinds(vec![ActivatedKind::new("census")]).expect("setup kinds");
+
+  assert_eq!(core.grain_readiness_snapshot().readiness(&[String::from("census")]), GrainReadiness::Ready);
 }
 
 #[test]

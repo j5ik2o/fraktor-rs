@@ -17,10 +17,12 @@ use fraktor_utils_core_rs::{
 use crate::{
   BlockListProvider, ClusterError, ClusterEvent, ClusterExtension, ClusterExtensionConfig, ClusterExtensionId,
   ClusterProviderError, ClusterTopology, TopologyUpdate,
-  activation::{ActivatedKind, IdentityLookup, IdentitySetupError, LookupError, PlacementResolution},
+  activation::{
+    ActivatedKind, IdentityLookup, IdentitySetupError, LookupError, PartitionIdentityLookup, PlacementResolution,
+  },
   cluster_provider::{ClusterProvider, StaticClusterProvider},
   downing_provider::NoopDowningProvider,
-  grain::GrainKey,
+  grain::{GrainKey, GrainReadiness, GrainUnreadyReason},
   membership::{Gossiper, NodeStatus},
   pub_sub::{PubSubError, PubSubSubscriber, PubSubTopic, PublishAck, PublishRequest, cluster_pub_sub::ClusterPubSub},
 };
@@ -214,6 +216,50 @@ fn registers_extension_and_starts_member() {
   let ext_shared = system.extended().register_extension(&ext_id);
   let result = ext_shared.start_member();
   assert!(result.is_ok());
+}
+
+/// Helper to build `ClusterExtensionId` with a real partition identity lookup.
+fn partition_extension_id(config: ClusterExtensionConfig) -> ClusterExtensionId {
+  ClusterExtensionId::new(
+    config,
+    Box::new(StubProvider),
+    ArcShared::new(StubBlockList),
+    Box::new(NoopDowningProvider::new()),
+    Box::new(StubGossiper),
+    Box::new(StubPubSub),
+    Box::new(PartitionIdentityLookup::with_defaults()),
+  )
+}
+
+#[test]
+fn grain_readiness_snapshot_transitions_from_not_ready_to_ready() {
+  let system = create_noop_actor_system();
+  let ext_id = partition_extension_id(ClusterExtensionConfig::new().with_advertised_address("fraktor://demo"));
+  let ext_shared = system.extended().register_extension(&ext_id);
+
+  let expected = vec![String::from("grain-kind")];
+
+  // 起動前: 自ノード不在・placement 未起動・kind 未登録 → NotReady（理由が観測可能）
+  match ext_shared.grain_readiness_snapshot().readiness(&expected) {
+    | GrainReadiness::NotReady { reasons } => {
+      assert!(reasons.contains(&GrainUnreadyReason::SelfNodeNotUp { status: None }), "自ノード不在の理由が必要");
+      assert!(
+        reasons.iter().any(|reason| matches!(reason, GrainUnreadyReason::PlacementNotReady { .. })),
+        "placement 未起動の理由が必要"
+      );
+      assert!(
+        reasons.contains(&GrainUnreadyReason::KindNotRegistered { kind: String::from("grain-kind") }),
+        "kind 未登録の理由が必要"
+      );
+    },
+    | GrainReadiness::Ready => panic!("起動前は NotReady であるべき"),
+  }
+
+  // member 起動 + kind 登録で 3 条件を満たす
+  ext_shared.start_member().expect("start member");
+  ext_shared.setup_member_kinds(vec![ActivatedKind::new("grain-kind")]).expect("setup kinds");
+
+  assert_eq!(ext_shared.grain_readiness_snapshot().readiness(&expected), GrainReadiness::Ready);
 }
 
 #[test]

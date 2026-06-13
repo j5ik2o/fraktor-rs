@@ -21,7 +21,7 @@
   - _Boundary:_ IdentityLookup / PartitionIdentityLookup
   - _Depends:_ none
 
-- [ ] 2. 統合: 写し構築の公開アクセサを追加する
+- [x] 2. 統合: 写し構築の公開アクセサを追加する
   - core の既存状態の読み取り（自ノード record の status — 現状は在籍メンバーを Up と報告する忠実度をそのまま使う、port 経由の placement 状態、登録済み kind 名）だけで判定入力の写しを構築する集約クエリを core に追加し、extension に公開アクセサを追加する明示的な統合タスク（既存の状態遷移・挙動には触れない）
   - 実 system fixture で、起動前のアクセサ呼び出しが not ready を導く写し（原因が観測可能）を返し、member 起動 + kind 登録後は ready を導く写しを返すことを検証する sibling テストが green になる
   - _Requirements:_ 2.1, 2.2, 2.3, 4.1

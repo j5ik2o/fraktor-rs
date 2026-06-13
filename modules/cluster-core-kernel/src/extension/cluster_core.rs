@@ -30,7 +30,7 @@ use crate::{
   },
   downing_provider::{DowningDecision, DowningInput, DowningProvider},
   failure_detector::FailureDetectorConfig,
-  grain::{GrainKey, KindRegistry},
+  grain::{GrainKey, GrainReadinessSnapshot, KindRegistry},
   membership::{CurrentClusterState, GossiperShared, MembershipVersion, NodeRecord, NodeStatus},
   pub_sub::ClusterPubSubShared,
 };
@@ -203,6 +203,22 @@ impl ClusterCore {
     let leader = members.iter().map(|record| record.authority.clone()).min();
     let state = CurrentClusterState::new(members, Vec::new(), Vec::new(), leader, BTreeMap::new());
     (state, self.observed_at)
+  }
+
+  /// Builds a snapshot of the inputs for grain readiness derivation.
+  ///
+  /// Reads only existing state: the self node status taken from the current
+  /// cluster-state snapshot (absent when the self node is not a member), the
+  /// placement coordination state observed through the identity lookup port,
+  /// and the registered kind names. It does not mutate any runtime state.
+  #[must_use]
+  pub fn grain_readiness_snapshot(&self) -> GrainReadinessSnapshot {
+    let (state, _) = self.current_cluster_state_snapshot();
+    let self_address = self.startup_address();
+    let self_status = state.members.iter().find(|record| record.authority == self_address).map(|record| record.status);
+    let placement_state = self.identity_lookup.with_read(|lookup| lookup.placement_state());
+    let registered_kinds = self.kind_registry.all().into_iter().map(|kind| kind.name().to_string()).collect();
+    GrainReadinessSnapshot::new(self_status, placement_state, registered_kinds)
   }
 
   /// Installs a PID cache used for topology-driven invalidation (tests/core wiring).
