@@ -61,11 +61,31 @@ export function resolveForwardedArgs(args) {
   if (defaultTask === undefined) {
     throw new Error("--default-task requires a value");
   }
-  // --default-task は wrapper 専用フラグなので takt へ転送しない。
-  // 利用者が引数を渡さず `-t` が値なしで終わる場合だけ既定 task を補う
+  // --default-task は wrapper 専用フラグなので takt へ転送しない
   const rest = [...args.slice(0, index), ...args.slice(index + 2)];
-  const last = rest[rest.length - 1];
-  return last === "-t" || last === "--task" ? [...rest, defaultTask] : rest;
+  const taskArgIndex = rest.findIndex((arg) => arg === "-t" || arg === "--task");
+  if (taskArgIndex === -1) {
+    return rest;
+  }
+
+  const afterTask = rest.slice(taskArgIndex + 1);
+  const separatorIndex = afterTask.indexOf("--");
+  const optionZone = separatorIndex === -1 ? afterTask : afterTask.slice(0, separatorIndex);
+  const hasPayload =
+    separatorIndex === -1
+      ? afterTask.length > 0 && !afterTask[0].startsWith("-")
+      : afterTask.length > separatorIndex + 1;
+
+  // 利用者が task 本文を渡している、または help 要求のときは補わない
+  if (hasPayload || optionZone.some((arg) => arg === "--help" || arg === "-h")) {
+    return rest;
+  }
+
+  // takt オプションだけ（--provider mock 等）が並んでいても既定 task を使えるようにする:
+  // 区切りなしは -t の直後へ、`--` 区切りありは本文位置（区切り後）へ補う
+  return separatorIndex === -1
+    ? [...rest.slice(0, taskArgIndex + 1), defaultTask, ...afterTask]
+    : [...rest, defaultTask];
 }
 
 export function buildTaktArgs(workflowPath, forwardedArgs) {
