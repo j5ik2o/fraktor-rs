@@ -9,11 +9,24 @@ use alloc::{string::ToString, vec};
 
 use crate::{
   activation::{
-    ActivatedKind, IdentityLookup, LookupError, PartitionIdentityLookup, PartitionIdentityLookupConfig, PlacementEvent,
-    PlacementLocality, RendezvousHasher,
+    ActivatedKind, IdentityLookup, IdentitySetupError, LookupError, PartitionIdentityLookup,
+    PartitionIdentityLookupConfig, PlacementCoordinatorState, PlacementEvent, PlacementLocality, RendezvousHasher,
   },
   grain::GrainKey,
 };
+
+/// Test-local lookup that relies on the default `placement_state` implementation.
+struct DefaultPlacementLookup;
+
+impl IdentityLookup for DefaultPlacementLookup {
+  fn setup_member(&mut self, _kinds: &[ActivatedKind]) -> Result<(), IdentitySetupError> {
+    Ok(())
+  }
+
+  fn setup_client(&mut self, _kinds: &[ActivatedKind]) -> Result<(), IdentitySetupError> {
+    Ok(())
+  }
+}
 
 fn setup_member_mode(lookup: &mut PartitionIdentityLookup) {
   drop(lookup.setup_member(&[]));
@@ -600,4 +613,30 @@ fn test_drain_cache_events_clears_after_drain() {
   // 2回目: 空になっている
   let events2 = lookup.drain_cache_events();
   assert!(events2.is_empty());
+}
+
+// ============================================================================
+// placement_state のテスト
+// ============================================================================
+
+#[test]
+fn placement_state_reports_coordinator_stopped_before_setup() {
+  // setup 前は内部 coordinator が Stopped を報告する
+  let lookup = PartitionIdentityLookup::with_defaults();
+  assert_eq!(lookup.placement_state(), PlacementCoordinatorState::Stopped);
+}
+
+#[test]
+fn placement_state_reports_coordinator_member_after_setup_member() {
+  // member mode 起動後は内部 coordinator の Member 状態を返す
+  let mut lookup = PartitionIdentityLookup::with_defaults();
+  setup_member_mode(&mut lookup);
+  assert_eq!(lookup.placement_state(), PlacementCoordinatorState::Member);
+}
+
+#[test]
+fn default_placement_state_reports_not_ready() {
+  // override しない実装はデフォルト実装の NotReady を返す
+  let lookup = DefaultPlacementLookup;
+  assert_eq!(lookup.placement_state(), PlacementCoordinatorState::NotReady);
 }

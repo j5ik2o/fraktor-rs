@@ -14,7 +14,7 @@
   - _Requirements:_ 3.1, 3.2, 3.3, 4.2
   - _Boundary:_ ClusterCompatibilityKeyCatalog
   - _Depends:_ none
-- [ ] 1.3 (P) placement 状態の読み取りクエリを IdentityLookup port に追加する
+- [x] 1.3 (P) placement 状態の読み取りクエリを IdentityLookup port に追加する
   - port にデフォルト実装付きの placement 状態クエリ（既定で解決不能を返す）を追加し、placement coordinator を内包する実装だけが override して実状態を返す。既存の実装型は無変更で従来挙動を維持する
   - override が coordinator の状態を返すこと、デフォルト実装が解決不能を返すこと（テストローカル実装で確認）を検証する sibling テストが green になる
   - _Requirements:_ 1.1

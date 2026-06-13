@@ -9,7 +9,7 @@ use super::{
 use crate::{
   activation::{
     ActivatedKind, PlacementCommandResult, PlacementCoordinatorCore, PlacementCoordinatorError,
-    PlacementCoordinatorOutcome, PlacementEvent, PlacementResolution,
+    PlacementCoordinatorOutcome, PlacementCoordinatorState, PlacementEvent, PlacementResolution,
   },
   grain::GrainKey,
 };
@@ -146,5 +146,9 @@ impl IdentityLookup for PartitionIdentityLookup {
 
   fn drain_cache_events(&mut self) -> Vec<PidCacheEvent> {
     self.coordinator.drain_cache_events()
+  }
+
+  fn placement_state(&self) -> PlacementCoordinatorState {
+    self.coordinator.state()
   }
 }
