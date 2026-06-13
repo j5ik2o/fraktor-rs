@@ -49,7 +49,7 @@
 - [x] cluster-singleton-settings-contract -- Cluster Singleton の設定契約（classic/typed settings、setup、stuck 検知契約）を config validation / join compatibility に接続して定義する。Dependencies: cluster-active-compatibility-baseline
 - [x] cluster-grain-typed-entity-facade -- GrainKey / GrainRef の typed wrapper（EntityTypeKey / EntityRef 相当）と typed ActorSystem setup 統合を定義する。Dependencies: none
 - [x] cluster-sharding-extractor-contract -- ShardingEnvelope / ShardingMessageExtractor SPI と HashCode / Murmur2 標準実装群を定義する。Dependencies: cluster-grain-typed-entity-facade（2026-06-13 完了、PR #1990）
-- [ ] cluster-sharding-health-and-join-compat -- grain/placement の readiness check（std）と sharding join compatibility key（core/config）を定義する。Dependencies: cluster-active-compatibility-baseline
+- [x] cluster-sharding-health-and-join-compat -- grain/placement の readiness check（core 完結の純粋判定 + 公開アクセサ）と sharding join compatibility の除外キー整備（required key の追加は config 所有化とともに後続スペックへ委譲）を定義する。Dependencies: cluster-active-compatibility-baseline（2026-06-13 完了、PR #1993）
 - [ ] cluster-ddata-core-types -- ReplicatedData 基底 SPI、Key、SelfUniqueAddress、基本 CRDT（Flag / GCounter / PNCounter / PNCounterMap）、consistency levels、補助 protocol 型を新設 ddata モジュールに定義する。Dependencies: none
 
 ## Existing Spec Updates
