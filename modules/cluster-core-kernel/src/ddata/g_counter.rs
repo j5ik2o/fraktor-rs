@@ -66,7 +66,7 @@ impl GCounter {
 
 impl ReplicatedData for GCounter {
   fn merge(&self, other: &Self) -> Self {
-    Self { state: merge_state(&self.state, &other.state), delta: BTreeMap::new() }
+    Self { state: merge_state(&self.state, &other.state), delta: self.delta.clone() }
   }
 }
 

@@ -98,7 +98,7 @@ where
         .or_insert_with(|| counter.reset_delta());
     }
 
-    Self { entries, delta: BTreeMap::new() }
+    Self { entries, delta: self.delta.clone() }
   }
 }
 
@@ -174,7 +174,14 @@ where
   fn pruning_cleanup(&self, removed_node: &UniqueAddress) -> Self {
     let entries =
       self.entries.iter().map(|(key, counter)| (key.clone(), counter.pruning_cleanup(removed_node))).collect();
-    let delta = self.delta.iter().map(|(key, counter)| (key.clone(), counter.pruning_cleanup(removed_node))).collect();
+    let delta = self
+      .delta
+      .iter()
+      .filter_map(|(key, counter)| {
+        let counter = counter.pruning_cleanup(removed_node);
+        if counter.modified_by_nodes().is_empty() { None } else { Some((key.clone(), counter)) }
+      })
+      .collect();
 
     Self { entries, delta }
   }
