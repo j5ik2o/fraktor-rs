@@ -22,6 +22,10 @@ description = "Read-only root-cause investigator for blocked implementation, rev
 config_file = "agents/spark-worker.toml"
 description = "Ultra-fast worker for bounded mechanical edits with easy-to-review outcomes."
 
+[agents.spec-reviewer]
+config_file = "agents/spec-reviewer.toml"
+description = "Cross-spec consistency reviewer for detecting contradictions, boundary mismatches, and dependency-order problems."
+
 [[hooks.PostToolUse]]
 matcher = "^(apply_patch|Edit|Write)$"
 
