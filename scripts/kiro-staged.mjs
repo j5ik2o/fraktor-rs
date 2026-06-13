@@ -27,7 +27,26 @@ export function resolveWorkflowPath(root, workflowName) {
 }
 
 function stripTaskFlagForHelp(args) {
-  if (!args.includes("--help") && !args.includes("-h")) {
+  const isHelpFlag = (arg) => arg === "--help" || arg === "-h";
+  const taskArgIndex = args.findIndex((arg) => arg === "-t" || arg === "--task");
+
+  // help 判定は task 本文を除いた領域に限定する: -t より前と、`--` 区切り前のオプション部
+  // （区切りなしで -t 直後がオプションの場合は残り全体）。task 本文中の --help は help 扱いしない
+  let helpZone;
+  if (taskArgIndex === -1) {
+    helpZone = args;
+  } else {
+    const rest = args.slice(taskArgIndex + 1);
+    const separatorIndex = rest.indexOf("--");
+    if (separatorIndex !== -1) {
+      helpZone = [...args.slice(0, taskArgIndex), ...rest.slice(0, separatorIndex)];
+    } else if (rest[0]?.startsWith("-")) {
+      helpZone = [...args.slice(0, taskArgIndex), ...rest];
+    } else {
+      helpZone = args.slice(0, taskArgIndex);
+    }
+  }
+  if (!helpZone.some(isHelpFlag)) {
     return args;
   }
   return args.filter((arg) => arg !== "-t" && arg !== "--task");
@@ -69,8 +88,17 @@ export function collapseTaskPayload(args) {
     );
   }
 
-  const taskPayload = rest.join(" ");
-  return [...args.slice(0, taskArgIndex + 1), taskPayload];
+  // 区切りなしの場合、最初のオプションらしき引数以降は task 本文に結合せず、
+  // 直接 `takt -t <task> --provider mock` と同じ並びで task 値の後ろへ温存する
+  const firstOptionIndex = rest.findIndex((arg) => arg.startsWith("-"));
+  if (firstOptionIndex === -1) {
+    return [...args.slice(0, taskArgIndex + 1), rest.join(" ")];
+  }
+  return [
+    ...args.slice(0, taskArgIndex + 1),
+    rest.slice(0, firstOptionIndex).join(" "),
+    ...rest.slice(firstOptionIndex),
+  ];
 }
 
 export function main(argv = process.argv.slice(2)) {
