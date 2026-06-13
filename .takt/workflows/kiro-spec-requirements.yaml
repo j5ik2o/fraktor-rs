@@ -76,7 +76,7 @@ steps:
 
   - name: review-requirements
     edit: false
-    persona: reviewer
+    persona: requirements-reviewer
     policy:
       - kiro-artifact-operations
       - kiro-spec-lifecycle
