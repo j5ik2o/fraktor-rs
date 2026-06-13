@@ -58,6 +58,8 @@ extern crate alloc;
 pub mod activation;
 /// Cluster provider implementations and traits.
 pub mod cluster_provider;
+/// Distributed Data CRDT base types and protocol vocabulary.
+pub mod ddata;
 /// Downing strategy abstractions and default implementations.
 pub mod downing_provider;
 /// ActorSystem integration and cluster entrypoints.
