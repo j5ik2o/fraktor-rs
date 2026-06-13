@@ -79,6 +79,19 @@ fn delta_reset_and_zero_follow_full_state_contract() {
 }
 
 #[test]
+fn merge_delta_preserves_local_delta() {
+  let local = PNCounter::new().increment(&self_address(0), 7).expect("increment must fit");
+  let remote = PNCounter::new().decrement(&self_address(1), 2).expect("decrement must fit");
+  let remote_delta = remote.delta().expect("remote update must create delta");
+
+  let merged = local.merge_delta(&remote_delta);
+  let remaining_delta = merged.delta().expect("local delta must remain");
+
+  assert_eq!(merged.value(), Ok(5));
+  assert_eq!(remaining_delta.value(), Ok(7));
+}
+
+#[test]
 fn pruning_delegates_to_components() {
   let removed = self_address(0);
   let collapse_into = self_address(1);

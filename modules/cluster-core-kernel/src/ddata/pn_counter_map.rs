@@ -95,7 +95,7 @@ where
       entries
         .entry(key.clone())
         .and_modify(|current| *current = current.merge(counter))
-        .or_insert_with(|| counter.clone());
+        .or_insert_with(|| counter.reset_delta());
     }
 
     Self { entries, delta: BTreeMap::new() }
@@ -113,7 +113,16 @@ where
   }
 
   fn merge_delta(&self, delta: &Self::Delta) -> Self {
-    self.merge(delta)
+    let mut entries = self.entries.clone();
+
+    for (key, counter) in &delta.entries {
+      entries
+        .entry(key.clone())
+        .and_modify(|current| *current = current.merge_delta(counter))
+        .or_insert_with(|| counter.reset_delta());
+    }
+
+    Self { entries, delta: self.delta.clone() }
   }
 
   fn reset_delta(&self) -> Self {

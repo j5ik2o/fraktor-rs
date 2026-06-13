@@ -90,6 +90,32 @@ fn delta_reset_and_zero_follow_full_state_contract() {
 }
 
 #[test]
+fn merge_delta_preserves_local_delta() {
+  let local = PNCounterMap::new().increment(&self_address(0), 1, 7).expect("increment must fit");
+  let remote = PNCounterMap::new().decrement(&self_address(1), 2, 2).expect("decrement must fit");
+  let remote_delta = remote.delta().expect("remote update must create delta");
+
+  let merged = local.merge_delta(&remote_delta);
+  let remaining_delta = merged.delta().expect("local delta must remain");
+
+  assert_eq!(merged.get(&1), Ok(Some(7)));
+  assert_eq!(merged.get(&2), Ok(Some(-2)));
+  assert_eq!(remaining_delta.get(&1), Ok(Some(7)));
+  assert_eq!(remaining_delta.get(&2), Ok(None));
+}
+
+#[test]
+fn merge_resets_inserted_entry_nested_delta() {
+  let remote = PNCounterMap::new().increment(&self_address(0), 1, 7).expect("increment must fit");
+
+  let merged = PNCounterMap::new().merge(&remote);
+  let entry_delta = merged.entries.get(&1).and_then(DeltaReplicatedData::delta);
+
+  assert_eq!(merged.get(&1), Ok(Some(7)));
+  assert_eq!(entry_delta, None);
+}
+
+#[test]
 fn zero_update_does_not_create_absent_key() {
   let map = PNCounterMap::new().increment(&self_address(0), 1, 0).expect("increment must fit");
 

@@ -64,6 +64,19 @@ fn delta_reset_and_zero_follow_full_state_contract() {
 }
 
 #[test]
+fn merge_delta_preserves_local_delta() {
+  let local = GCounter::new().increment(&self_address(0), 3).expect("increment must fit");
+  let remote = GCounter::new().increment(&self_address(1), 5).expect("increment must fit");
+  let remote_delta = remote.delta().expect("remote increment must create delta");
+
+  let merged = local.merge_delta(&remote_delta);
+  let remaining_delta = merged.delta().expect("local delta must remain");
+
+  assert_eq!(merged.value(), Ok(8));
+  assert_eq!(remaining_delta.value(), Ok(3));
+}
+
+#[test]
 fn pruning_moves_removed_node_contribution() {
   let removed = self_address(0);
   let collapse_into = self_address(1);

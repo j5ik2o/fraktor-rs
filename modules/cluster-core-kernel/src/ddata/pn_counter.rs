@@ -86,7 +86,10 @@ impl DeltaReplicatedData for PNCounter {
   }
 
   fn merge_delta(&self, delta: &Self::Delta) -> Self {
-    self.merge(delta)
+    Self {
+      increments: self.increments.merge_delta(&delta.increments),
+      decrements: self.decrements.merge_delta(&delta.decrements),
+    }
   }
 
   fn reset_delta(&self) -> Self {

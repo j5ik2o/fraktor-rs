@@ -78,7 +78,7 @@ impl DeltaReplicatedData for GCounter {
   }
 
   fn merge_delta(&self, delta: &Self::Delta) -> Self {
-    self.merge(delta)
+    Self { state: merge_state(&self.state, &delta.state), delta: self.delta.clone() }
   }
 
   fn reset_delta(&self) -> Self {
