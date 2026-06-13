@@ -121,6 +121,12 @@ impl ClusterCore {
     self.mode
   }
 
+  /// Returns true when the current topology still contains the self authority.
+  #[must_use]
+  pub(crate) fn has_current_self_member(&self) -> bool {
+    self.current_members.iter().any(|authority| authority == &self.startup_state.address)
+  }
+
   /// Returns true if the given kind is registered.
   #[must_use]
   pub fn is_kind_registered(&self, kind: &str) -> bool {
@@ -216,6 +222,15 @@ impl ClusterCore {
     let (state, _) = self.current_cluster_state_snapshot();
     let self_address = self.startup_address();
     let self_status = state.members.iter().find(|record| record.authority == self_address).map(|record| record.status);
+    self.grain_readiness_snapshot_with_self_status(self_status)
+  }
+
+  /// Builds a readiness snapshot using the provided observed self-node status.
+  #[must_use]
+  pub(crate) fn grain_readiness_snapshot_with_self_status(
+    &self,
+    self_status: Option<NodeStatus>,
+  ) -> GrainReadinessSnapshot {
     let placement_state = self.identity_lookup.with_read(|lookup| lookup.placement_state());
     let registered_kinds = self.kind_registry.all().into_iter().map(|kind| kind.name().to_string()).collect();
     GrainReadinessSnapshot::new(self_status, placement_state, registered_kinds)
