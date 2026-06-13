@@ -14,6 +14,14 @@ description = "PR reviewer focused on correctness, security, and missing tests."
 config_file = "agents/worker.toml"
 description = "Implementation-focused agent for small targeted fixes."
 
+[agents.debugger]
+config_file = "agents/debugger.toml"
+description = "Read-only root-cause investigator for blocked implementation, review, and validation failures."
+
+[agents.spark-worker]
+config_file = "agents/spark-worker.toml"
+description = "Ultra-fast worker for bounded mechanical edits with easy-to-review outcomes."
+
 [[hooks.PostToolUse]]
 matcher = "^(apply_patch|Edit|Write)$"
 
