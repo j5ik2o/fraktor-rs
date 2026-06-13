@@ -1,0 +1,69 @@
+name: kiro-validate-design
+description: Kiro - design readiness を読み取り専用で検証する
+# 境界コミットメントとファイル構造計画を design artifact 変更なしで確認する。
+workflow_config:
+  provider_options:
+    codex:
+      network_access: true
+    opencode:
+      network_access: true
+max_steps: 5
+initial_step: collect-design-evidence
+
+instructions:
+  kiro-validate-design-readiness: ../facets/instructions/kiro-validate-design-readiness.md
+
+report_formats:
+  kiro-validation-result: ../facets/output-contracts/kiro-validation-result.md
+
+steps:
+  - name: collect-design-evidence
+    edit: false
+    persona: architecture-reviewer
+    policy: review
+    knowledge: architecture
+    required_permission_mode: readonly
+    instruction: kiro-validate-design-readiness
+    rules:
+      - condition: validation evidence collected
+        next: validate-design
+      - condition: required artifact missing or unreadable
+        next: ABORT
+
+  - name: validate-design
+    edit: false
+    persona: architecture-reviewer
+    policy: review
+    knowledge: architecture
+    required_permission_mode: readonly
+    instruction: kiro-validate-design-readiness
+    output_contracts:
+      report:
+        - name: kiro-design-validation-draft.md
+          format: kiro-validation-result
+    rules:
+      - condition: DECISION MANUAL_VERIFY_REQUIRED
+        next: report-design
+      - condition: DECISION GO
+        next: report-design
+      - condition: DECISION NO-GO
+        next: report-design
+
+  - name: report-design
+    edit: false
+    persona: architecture-reviewer
+    policy: review
+    knowledge: architecture
+    required_permission_mode: readonly
+    instruction: kiro-validate-design-readiness
+    output_contracts:
+      report:
+        - name: kiro-design-validation-result.md
+          format: kiro-validation-result
+    rules:
+      - condition: DECISION MANUAL_VERIFY_REQUIRED
+        next: ABORT
+      - condition: DECISION GO
+        next: COMPLETE
+      - condition: DECISION NO-GO
+        next: ABORT

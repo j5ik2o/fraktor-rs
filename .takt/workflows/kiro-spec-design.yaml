@@ -1,0 +1,179 @@
+name: kiro-spec-design
+description: Kiro - approved requirements から design.md と research.md を生成する
+workflow_config:
+  provider_options:
+    codex:
+      network_access: true
+    opencode:
+      network_access: true
+max_steps: 14
+initial_step: generate-design
+
+instructions:
+  kiro-spec-design: ../facets/instructions/kiro-spec-design.md
+  kiro-validate-design-readiness: ../facets/instructions/kiro-validate-design-readiness.md
+
+policies:
+  kiro-artifact-operations: ../facets/policies/kiro-artifact-operations.md
+  kiro-spec-lifecycle: ../facets/policies/kiro-spec-lifecycle.md
+  kiro-spec-generation: ../facets/policies/kiro-spec-generation.md
+
+report_formats:
+  kiro-spec-generation-result: ../facets/output-contracts/kiro-spec-generation-result.md
+  kiro-validation-result: ../facets/output-contracts/kiro-validation-result.md
+
+loop_monitors:
+  - cycle:
+      - ai-quality-gate-design
+      - review-design
+      - repair-design
+      - finalize-design
+    threshold: 2
+    judge:
+      persona: supervisor
+      instruction: kiro-spec-design
+      rules:
+        - condition: Healthy (review findings are converging)
+          next: ai-quality-gate-design
+        - condition: Unproductive (same finding repeats or no improvement)
+          next: ABORT
+
+steps:
+  - name: generate-design
+    edit: true
+    persona: planner
+    policy:
+      - kiro-artifact-operations
+      - kiro-spec-lifecycle
+      - kiro-spec-generation
+    knowledge:
+      - architecture
+    provider_options:
+      claude:
+        allowed_tools:
+          - Read
+          - Glob
+          - Grep
+          - Write
+          - Bash
+          - WebSearch
+          - WebFetch
+    required_permission_mode: edit
+    instruction: kiro-spec-design
+    output_contracts:
+      report:
+        - name: kiro-spec-design-result.md
+          format: kiro-spec-generation-result
+    rules:
+      - condition: validation.verdict PASS and phase design and draft_status READY_FOR_REVIEW and review_gate PENDING
+        next: ai-quality-gate-design
+      - condition: validation.verdict BLOCKED or requirements approval gate failed or requirements/design gap remains
+        next: ABORT
+      - condition: validation.verdict NEEDS_FIX and draft_status READY_FOR_REVIEW
+        next: ai-quality-gate-design
+
+  - name: ai-quality-gate-design
+    kind: workflow_call
+    call: ./kiro-spec-ai-quality-gate.yaml
+    args:
+      fix_instruction: kiro-ai-antipattern-fix-spec-generation
+      domain_knowledge:
+        - architecture
+    rules:
+      - condition: COMPLETE
+        next: review-design
+      - condition: need_replan
+        next: ABORT
+      - condition: ABORT
+        next: ABORT
+
+  - name: review-design
+    edit: false
+    persona: architecture-reviewer
+    policy:
+      - kiro-artifact-operations
+      - kiro-spec-lifecycle
+      - kiro-spec-generation
+    knowledge:
+      - architecture
+    required_permission_mode: readonly
+    instruction: kiro-validate-design-readiness
+    output_contracts:
+      report:
+        - name: kiro-spec-design-review.md
+          format: kiro-validation-result
+    rules:
+      - condition: DECISION GO and design review gate passed
+        next: finalize-design
+      - condition: DECISION NO-GO and ai_gate_scope_mismatch
+        next: ABORT
+      - condition: DECISION NO-GO and review_target_scope_mismatch
+        next: ABORT
+      - condition: DECISION NO-GO and missing_draft_artifact
+        next: ABORT
+      - condition: DECISION NO-GO and local repair possible
+        next: repair-design
+      - condition: DECISION NO-GO and requirements/design gap remains
+        next: ABORT
+      - condition: DECISION MANUAL_VERIFY_REQUIRED
+        next: ABORT
+
+  - name: repair-design
+    edit: true
+    persona: planner
+    policy:
+      - kiro-artifact-operations
+      - kiro-spec-lifecycle
+      - kiro-spec-generation
+    knowledge:
+      - architecture
+    required_permission_mode: edit
+    instruction: kiro-spec-design
+    output_contracts:
+      report:
+        - name: kiro-spec-design-repair-result.md
+          format: kiro-spec-generation-result
+    rules:
+      - condition: validation.verdict PASS and draft_status READY_FOR_REVIEW
+        next: ai-quality-gate-design
+      - condition: validation.verdict NEEDS_FIX and local repair attempted
+        next: ai-quality-gate-design
+      - condition: validation.verdict BLOCKED or requirements approval gate failed or requirements/design gap remains
+        next: ABORT
+
+  - name: finalize-design
+    edit: true
+    persona: planner
+    policy:
+      - kiro-artifact-operations
+      - kiro-spec-lifecycle
+      - kiro-spec-generation
+    knowledge:
+      - architecture
+    required_permission_mode: edit
+    instruction: kiro-spec-design
+    output_contracts:
+      report:
+        - name: kiro-spec-design-result.md
+          format: kiro-spec-generation-result
+    rules:
+      - condition: validation.verdict PASS and phase design and design.md written and research.md written and design-generated and approvals.requirements.approved true and approvals.design.generated true
+        next: COMPLETE
+      - condition: validation.verdict BLOCKED or requirements approval gate failed or requirements/design gap remains
+        next: ABORT
+      - condition: validation.verdict NEEDS_FIX
+        next: repair-design
+
+# validation/review 用の contract notes:
+# - requirements approval gate は design generation 前に requirements.md と spec.json を確認する。
+# - 通常 mode では未承認 requirements で停止する。-y または auto-approve の場合は、続行前に approvals.requirements.approved: true を明示的に設定する。
+# - discovery/research と discovery/research validation は design synthesis 前に requirements.md、existing design.md、optional research.md、steering context、関連する code patterns を読む。
+# - research.md は design phase の補助 artifact として書き、最終的な実装判断は design.md にも残す。
+# - generate/repair の draft report は draft_artifacts.design/research または design.md draft / research.md draft section に full draft を含める。review-design は finalize 前の design.md 不在を ARTIFACT_MISSING としない。
+# - design draft は required sections として 境界コミットメント、ファイル構造計画、要件トレーサビリティ を含める。
+# - design review gate は draft report を読み、requirement coverage、architecture readiness、boundary readiness、ファイル構造計画の具体性、要件トレーサビリティを確認する。
+# - ai-quality-gate-design と review-design は design draft だけを対象にする。unscoped git diff/current dirty worktree/unrelated workflow changes へフォールバックしない。
+# - requirements draft など別 phase、unscoped git diff、current dirty worktree、unrelated workflow/facet changes を対象にした AI gate evidence は ai_gate_scope_mismatch として ABORT し、repair-design に流さない。
+# - workflow は generate/repair -> ai-quality-gate-design -> review -> finalize を使い、finalize からの repair 戻りも監視対象に含め、repeat bound は loop_monitors.threshold だけに置く。
+# - real requirements/design gap が残る場合は BLOCKED または NEEDS_FIX を返し、design-generated へ進めない。
+# - 成功時は spec.json を phase: "design-generated"、approvals.requirements.approved: true、approvals.design.generated: true に更新する。

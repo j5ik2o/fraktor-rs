@@ -17,7 +17,6 @@ fi
 case "$ACCOUNT" in
 p) ACCOUNT=personal ;;
 c) ACCOUNT=corporate ;;
-z) ACCOUNT=zai ;;
 esac
 
 CLAUDE_WRAPPER="${SCRIPT_DIR}/run-claude-${ACCOUNT}.sh"
@@ -26,7 +25,7 @@ CODEX_WRAPPER="${SCRIPT_DIR}/run-codex-${ACCOUNT}.sh"
 if [[ ! -f "$CLAUDE_WRAPPER" && ! -f "$CODEX_WRAPPER" ]]; then
   echo "[ERROR] Unknown account: $ACCOUNT" >&2
   echo "[INFO] Available: $(ls "$SCRIPT_DIR"/run-claude-*.sh 2>/dev/null | sed 's/.*run-claude-//;s/\.sh//' | paste -sd', ')" >&2
-  echo "[INFO] Short aliases: p=personal, c=corporate, z=zai" >&2
+  echo "[INFO] Short aliases: p=personal, c=corporate" >&2
   exit 1
 fi
 
