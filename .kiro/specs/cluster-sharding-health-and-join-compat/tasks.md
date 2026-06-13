@@ -1,7 +1,7 @@
 # 実装計画
 
 - [ ] 1. コア: readiness 判定契約と互換キー目録を整備する
-- [ ] 1.1 (P) readiness 判定の型と判定規則を実装する
+- [x] 1.1 (P) readiness 判定の型と判定規則を実装する
   - 入力（自ノードの membership 状態・placement 調整状態・登録済み kind）の写しから、固定仕様（稼働 = Up / WeaklyUp、解決可能 = Member / Client、期待 kind の包含）で ready / not ready と原因種別を導出する純粋な判定を定義する
   - 欠けた条件はすべて原因として列挙し、期待 kind が空のときは kind 条件を課さない
   - 3条件成立で Ready、各条件欠如で対応する原因種別、複数欠如で複数原因、同一入力 → 同一結果を検証する sibling テストが green になる
