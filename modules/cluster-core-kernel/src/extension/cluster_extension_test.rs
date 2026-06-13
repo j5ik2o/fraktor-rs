@@ -783,6 +783,54 @@ fn grain_readiness_snapshot_accepts_up_after_removed_rejoin_from_topology_absent
 }
 
 #[test]
+fn grain_readiness_snapshot_keeps_removed_after_late_same_identity_up() {
+  let system = create_noop_actor_system();
+  let event_stream = system.event_stream();
+  let authority = String::from("fraktor://demo");
+
+  let ext_id = stub_extension_id(ClusterExtensionConfig::new().with_advertised_address(&authority));
+  let ext_shared = system.extended().register_extension(&ext_id);
+  let expected = vec![String::from("grain-kind")];
+
+  ext_shared.start_member().expect("start member");
+  ext_shared.setup_member_kinds(vec![ActivatedKind::new("grain-kind")]).expect("setup kinds");
+  publish_member_status(&event_stream, "node-self", &authority, NodeStatus::Joining, NodeStatus::Up);
+  publish_member_status(&event_stream, "node-self", &authority, NodeStatus::Exiting, NodeStatus::Removed);
+  publish_member_status(&event_stream, "node-self", &authority, NodeStatus::Joining, NodeStatus::Up);
+
+  match ext_shared.grain_readiness_snapshot().readiness(&expected) {
+    | GrainReadiness::NotReady { reasons } => {
+      assert!(reasons.contains(&GrainUnreadyReason::SelfNodeNotUp { status: Some(NodeStatus::Removed) }));
+    },
+    | GrainReadiness::Ready => panic!("late Up after Removed should not make readiness Ready"),
+  }
+}
+
+#[test]
+fn grain_readiness_snapshot_does_not_replace_removed_with_different_identity_up() {
+  let system = create_noop_actor_system();
+  let event_stream = system.event_stream();
+  let authority = String::from("fraktor://demo");
+
+  let ext_id = stub_extension_id(ClusterExtensionConfig::new().with_advertised_address(&authority));
+  let ext_shared = system.extended().register_extension(&ext_id);
+  let expected = vec![String::from("grain-kind")];
+
+  ext_shared.start_member().expect("start member");
+  ext_shared.setup_member_kinds(vec![ActivatedKind::new("grain-kind")]).expect("setup kinds");
+  publish_member_status(&event_stream, "node-self", &authority, NodeStatus::Joining, NodeStatus::Up);
+  publish_member_status(&event_stream, "node-self", &authority, NodeStatus::Exiting, NodeStatus::Removed);
+  publish_member_status(&event_stream, "node-old", &authority, NodeStatus::Joining, NodeStatus::Up);
+
+  match ext_shared.grain_readiness_snapshot().readiness(&expected) {
+    | GrainReadiness::NotReady { reasons } => {
+      assert!(reasons.contains(&GrainUnreadyReason::SelfNodeNotUp { status: Some(NodeStatus::Removed) }));
+    },
+    | GrainReadiness::Ready => panic!("different identity late Up after Removed should not make readiness Ready"),
+  }
+}
+
+#[test]
 fn grain_readiness_snapshot_ignores_old_up_before_fresh_rejoin_status() {
   let system = create_noop_actor_system();
   let event_stream = system.event_stream();
@@ -1698,6 +1746,30 @@ fn register_on_member_up_does_not_fire_after_topology_absent_removed() {
 }
 
 #[test]
+fn register_on_member_up_does_not_fire_for_late_up_after_removed() {
+  let system = create_noop_actor_system();
+  let event_stream = system.event_stream();
+  let authority = String::from("fraktor://demo");
+
+  let ext_id = stub_extension_id(ClusterExtensionConfig::new().with_advertised_address(&authority));
+  let ext_shared = system.extended().register_extension(&ext_id);
+  ext_shared.start_member().expect("start member");
+  publish_member_status(&event_stream, "node-self", &authority, NodeStatus::Joining, NodeStatus::Up);
+  publish_member_status(&event_stream, "node-self", &authority, NodeStatus::Exiting, NodeStatus::Removed);
+
+  let calls = ArcShared::new(SpinSyncMutex::new(Vec::<(String, String)>::new()));
+  let calls_for_callback = calls.clone();
+  let _subscription = ext_shared.register_on_member_up(move |node_id, authority| {
+    calls_for_callback.lock().push((String::from(node_id), String::from(authority)));
+  });
+
+  publish_member_status(&event_stream, "node-self", &authority, NodeStatus::Joining, NodeStatus::Up);
+  publish_member_status(&event_stream, "node-old", &authority, NodeStatus::Joining, NodeStatus::Up);
+
+  assert!(calls.lock().is_empty());
+}
+
+#[test]
 fn register_on_member_up_does_not_fire_for_identity_mismatched_up() {
   let system = create_noop_actor_system();
   let event_stream = system.event_stream();
@@ -1742,6 +1814,29 @@ fn register_on_member_removed_fires_after_self_leaves_topology() {
 
   ext_shared.on_topology(&build_update(2, Vec::new(), Vec::new(), vec![authority.clone()], Vec::new()));
   publish_member_status(&event_stream, "node-self", &authority, NodeStatus::Exiting, NodeStatus::Removed);
+
+  let recorded = calls.lock().clone();
+  assert_eq!(recorded, vec![(String::from("node-self"), String::from("fraktor://demo"))]);
+}
+
+#[test]
+fn register_on_member_removed_invokes_immediately_after_removed_then_topology_absent() {
+  let system = create_noop_actor_system();
+  let event_stream = system.event_stream();
+  let authority = String::from("fraktor://demo");
+
+  let ext_id = stub_extension_id(ClusterExtensionConfig::new().with_advertised_address(&authority));
+  let ext_shared = system.extended().register_extension(&ext_id);
+  ext_shared.start_member().expect("start member");
+  publish_member_status(&event_stream, "node-self", &authority, NodeStatus::Joining, NodeStatus::Up);
+  publish_member_status(&event_stream, "node-self", &authority, NodeStatus::Exiting, NodeStatus::Removed);
+  ext_shared.on_topology(&build_update(2, Vec::new(), Vec::new(), vec![authority], Vec::new()));
+
+  let calls = ArcShared::new(SpinSyncMutex::new(Vec::<(String, String)>::new()));
+  let calls_for_callback = calls.clone();
+  let _subscription = ext_shared.register_on_member_removed(move |node_id, authority| {
+    calls_for_callback.lock().push((String::from(node_id), String::from(authority)));
+  });
 
   let recorded = calls.lock().clone();
   assert_eq!(recorded, vec![(String::from("node-self"), String::from("fraktor://demo"))]);

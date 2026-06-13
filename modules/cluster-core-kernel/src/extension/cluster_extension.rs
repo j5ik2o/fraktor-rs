@@ -176,6 +176,10 @@ fn is_topology_absent_identity(
     .with_lock(|absent_identities| absent_identities.iter().any(|absent| identity_matches(absent, identity)))
 }
 
+const fn is_rejoin_transition(from: NodeStatus, to: NodeStatus) -> bool {
+  matches!((from, to), (NodeStatus::Removed | NodeStatus::Dead, NodeStatus::Joining))
+}
+
 fn can_accept_retired_self_status(
   identity: &SelfMemberIdentity,
   from: NodeStatus,
@@ -191,7 +195,7 @@ fn can_accept_retired_self_status(
   let is_starting_identity = starting_identity.with_lock(|starting_identity| {
     starting_identity.as_ref().is_some_and(|starting| identity_matches(starting, identity))
   });
-  if matches!((from, to), (NodeStatus::Removed | NodeStatus::Dead, NodeStatus::Joining)) {
+  if is_rejoin_transition(from, to) {
     return is_starting_identity;
   }
   is_starting_identity
@@ -264,8 +268,11 @@ fn clear_self_observation_if_absent(
     return;
   }
   let previous_identity = self_identity.with_lock(|identity| identity.take());
+  let previous_status = self_status.with_lock(|status| status.clone());
   starting_identity.with_lock(|identity| *identity = None);
-  self_status.with_lock(|status| *status = None);
+  if !previous_status.as_ref().is_some_and(|status| status.status == NodeStatus::Removed) {
+    self_status.with_lock(|status| *status = None);
+  }
   if let Some(identity) = previous_identity {
     remember_unique_identity(topology_absent_identities, identity);
   }
@@ -318,9 +325,8 @@ impl EventStreamSubscriber for SelfMemberStatusTrackerSubscriber {
       let is_terminated = self.terminated.with_lock(|terminated| *terminated);
       let identity = SelfMemberIdentity { node_id: node_id.clone(), authority: authority.clone() };
       let is_topology_absent = is_topology_absent_identity(&self.topology_absent_identities, &identity);
-      let can_rejoin_from_absent =
-        matches!((*from, *to), (NodeStatus::Removed | NodeStatus::Dead, NodeStatus::Joining));
-      if is_topology_absent && *to != NodeStatus::Removed && !can_rejoin_from_absent {
+      let can_rejoin = is_rejoin_transition(*from, *to);
+      if is_topology_absent && *to != NodeStatus::Removed && !can_rejoin {
         return;
       }
       let is_retired_identity = is_suppressed_retired_identity(&self.suppressed_retired_identities, &identity);
@@ -339,7 +345,6 @@ impl EventStreamSubscriber for SelfMemberStatusTrackerSubscriber {
         return;
       }
       let current_status = self.self_status.with_lock(|self_status| self_status.clone());
-      let mut keep_retired_identity = false;
       if let Some(current) = self.self_identity.with_lock(|self_identity| self_identity.clone())
         && (current.node_id != identity.node_id || current.authority != identity.authority)
       {
@@ -349,8 +354,16 @@ impl EventStreamSubscriber for SelfMemberStatusTrackerSubscriber {
             .as_ref()
             .is_some_and(|starting| identity_matches(starting, &current) && !is_retired_identity)
         });
-        let can_replace_removed_identity =
+        let incoming_is_starting_identity = self.starting_identity.with_lock(|starting_identity| {
+          starting_identity.as_ref().is_some_and(|starting| identity_matches(starting, &identity))
+        });
+        // Removed / 退役済みの self を別 identity で置換できるのは、終端を巻き戻さない Removed イベント、
+        // 正規の再参加遷移、開始対象 identity の 3 ケースに限る。古い incarnation の遅延 Up で
+        // observed status を非終端へ巻き戻さない。
+        let current_is_terminal =
           current_status.as_ref().is_some_and(|status| status.status == NodeStatus::Removed) || current_is_retired;
+        let can_replace_removed_identity =
+          current_is_terminal && (*to == NodeStatus::Removed || can_rejoin || incoming_is_starting_identity);
         if !can_replace_starting_identity && !can_replace_removed_identity {
           return;
         }
@@ -359,15 +372,13 @@ impl EventStreamSubscriber for SelfMemberStatusTrackerSubscriber {
         && identity_matches(&current, &identity)
         && current_status.as_ref().is_some_and(|status| status.status == NodeStatus::Removed)
         && *to != NodeStatus::Removed
-        && !matches!((*from, *to), (NodeStatus::Removed | NodeStatus::Dead, NodeStatus::Joining))
+        && !can_rejoin
       {
-        remember_retired_identity(&self.suppressed_retired_identities, identity.clone());
-        keep_retired_identity = true;
+        remember_retired_identity(&self.suppressed_retired_identities, identity);
+        return;
       }
       let status = SelfMemberStatus { node_id: node_id.clone(), authority: authority.clone(), status: *to };
-      if !keep_retired_identity {
-        retain_non_matching_identity(&self.suppressed_retired_identities, &identity);
-      }
+      retain_non_matching_identity(&self.suppressed_retired_identities, &identity);
       if !is_topology_absent || *to != NodeStatus::Removed {
         retain_non_matching_identity(&self.topology_absent_identities, &identity);
       }
@@ -417,9 +428,8 @@ where
         return;
       }
       let is_topology_absent = is_topology_absent_identity(&self.lifecycle.topology_absent_identities, &identity);
-      let can_rejoin_from_absent =
-        matches!((*from, *to), (NodeStatus::Removed | NodeStatus::Dead, NodeStatus::Joining));
-      if is_topology_absent && *to != NodeStatus::Removed && !can_rejoin_from_absent {
+      let can_rejoin = is_rejoin_transition(*from, *to);
+      if is_topology_absent && *to != NodeStatus::Removed && !can_rejoin {
         return;
       }
       let is_retired_identity =
@@ -438,7 +448,26 @@ where
       let current_status = self.lifecycle.self_status.with_lock(|self_status| self_status.clone());
       if let Some(current) = self.lifecycle.self_identity.with_lock(|self_identity| self_identity.clone())
         && !identity_matches(&current, &identity)
-        && !current_status.as_ref().is_some_and(|status| status.status == NodeStatus::Removed)
+      {
+        let current_is_removed = current_status.as_ref().is_some_and(|status| status.status == NodeStatus::Removed);
+        let current_is_retired =
+          is_suppressed_retired_identity(&self.lifecycle.suppressed_retired_identities, &current);
+        let incoming_is_starting_identity = self.lifecycle.starting_identity.with_lock(|starting_identity| {
+          starting_identity.as_ref().is_some_and(|starting| identity_matches(starting, &identity))
+        });
+        // alive な self は別 identity で置換しない。退役済み self を非 Removed の別 identity で
+        // 巻き戻すのは再参加遷移か開始対象 identity に限り、古い incarnation の遅延 Up では発火させない。
+        let retired_blocks_non_removed =
+          current_is_retired && *to != NodeStatus::Removed && !can_rejoin && !incoming_is_starting_identity;
+        if !current_is_removed || retired_blocks_non_removed {
+          return;
+        }
+      }
+      if let Some(current) = self.lifecycle.self_identity.with_lock(|self_identity| self_identity.clone())
+        && identity_matches(&current, &identity)
+        && current_status.as_ref().is_some_and(|status| status.status == NodeStatus::Removed)
+        && *to != NodeStatus::Removed
+        && !can_rejoin
       {
         return;
       }
