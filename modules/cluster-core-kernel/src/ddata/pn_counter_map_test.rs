@@ -7,7 +7,9 @@ use super::{
   super::{g_counter::GCounter, pn_counter::PNCounter},
   PNCounterMap,
 };
-use crate::ddata::{CounterArithmeticError, RemovedNodePruning, ReplicatedData, SelfUniqueAddress};
+use crate::ddata::{
+  CounterArithmeticError, DeltaReplicatedData, RemovedNodePruning, ReplicatedData, ReplicatedDelta, SelfUniqueAddress,
+};
 
 fn unique_address(index: usize) -> UniqueAddress {
   match index % 4 {
@@ -78,6 +80,16 @@ fn merge_unions_keys_and_merges_shared_counters() {
 }
 
 #[test]
+fn delta_reset_and_zero_follow_full_state_contract() {
+  let map = PNCounterMap::new().increment(&self_address(0), 1, 7).expect("increment must fit");
+  let delta = map.delta().expect("increment must create delta");
+
+  assert_eq!(PNCounterMap::new().merge_delta(&delta).get(&1), Ok(Some(7)));
+  assert_eq!(map.reset_delta().delta(), None);
+  assert_eq!(delta.zero(), PNCounterMap::new());
+}
+
+#[test]
 fn zero_update_does_not_create_absent_key() {
   let map = PNCounterMap::new().increment(&self_address(0), 1, 0).expect("increment must fit");
 
@@ -105,7 +117,7 @@ fn get_propagates_nested_counter_overflow() {
   let counter = PNCounter::from_parts(g_counter_with_slot(0, u128::MAX), GCounter::new());
   let mut entries = BTreeMap::new();
   entries.insert(1, counter);
-  let map = PNCounterMap { entries };
+  let map = PNCounterMap { entries, delta: BTreeMap::new() };
 
   assert_eq!(map.get(&1), Err(CounterArithmeticError::Overflow));
 }

@@ -8,12 +8,16 @@ use alloc::collections::{BTreeMap, BTreeSet};
 
 use fraktor_remote_core_rs::address::UniqueAddress;
 
-use super::{CounterArithmeticError, PNCounter, RemovedNodePruning, ReplicatedData, SelfUniqueAddress};
+use super::{
+  CounterArithmeticError, DeltaReplicatedData, PNCounter, RemovedNodePruning, ReplicatedData, ReplicatedDelta,
+  SelfUniqueAddress,
+};
 
 /// CRDT map whose values are positive-negative counters.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 pub struct PNCounterMap<K> {
   entries: BTreeMap<K, PNCounter>,
+  delta:   BTreeMap<K, PNCounter>,
 }
 
 impl<K> PNCounterMap<K>
@@ -23,7 +27,7 @@ where
   /// Creates an empty counter map.
   #[must_use]
   pub const fn new() -> Self {
-    Self { entries: BTreeMap::new() }
+    Self { entries: BTreeMap::new(), delta: BTreeMap::new() }
   }
 
   /// Returns a map with `n` added to the counter at `key`.
@@ -63,7 +67,7 @@ where
     n: u64,
     update: fn(&PNCounter, &SelfUniqueAddress, u64) -> Result<PNCounter, CounterArithmeticError>,
   ) -> Result<Self, CounterArithmeticError> {
-    if n == 0 && !self.entries.contains_key(&key) {
+    if n == 0 {
       return Ok(self.clone());
     }
 
@@ -71,9 +75,12 @@ where
     let next = update(&current, node, n)?;
 
     let mut entries = self.entries.clone();
-    entries.insert(key, next);
+    entries.insert(key.clone(), next.clone());
 
-    Ok(Self { entries })
+    let mut delta = self.delta.clone();
+    delta.insert(key, next.delta().unwrap_or_default());
+
+    Ok(Self { entries, delta })
   }
 }
 
@@ -91,7 +98,40 @@ where
         .or_insert_with(|| counter.clone());
     }
 
-    Self { entries }
+    Self { entries, delta: BTreeMap::new() }
+  }
+}
+
+impl<K> DeltaReplicatedData for PNCounterMap<K>
+where
+  K: Ord + Clone,
+{
+  type Delta = Self;
+
+  fn delta(&self) -> Option<Self::Delta> {
+    if self.delta.is_empty() { None } else { Some(Self { entries: self.delta.clone(), delta: BTreeMap::new() }) }
+  }
+
+  fn merge_delta(&self, delta: &Self::Delta) -> Self {
+    self.merge(delta)
+  }
+
+  fn reset_delta(&self) -> Self {
+    let entries = self.entries.iter().map(|(key, counter)| (key.clone(), counter.reset_delta())).collect();
+
+    Self { entries, delta: BTreeMap::new() }
+  }
+}
+
+impl<K> ReplicatedDelta for PNCounterMap<K>
+where
+  K: Ord + Clone,
+{
+  type Full = Self;
+
+  fn zero(&self) -> Self::Full {
+    let _ = self;
+    Self::new()
   }
 }
 
@@ -119,14 +159,15 @@ where
       entries.insert(key.clone(), counter.prune(removed_node, collapse_into)?);
     }
 
-    Ok(Self { entries })
+    Ok(Self { entries, delta: BTreeMap::new() })
   }
 
   fn pruning_cleanup(&self, removed_node: &UniqueAddress) -> Self {
     let entries =
       self.entries.iter().map(|(key, counter)| (key.clone(), counter.pruning_cleanup(removed_node))).collect();
+    let delta = self.delta.iter().map(|(key, counter)| (key.clone(), counter.pruning_cleanup(removed_node))).collect();
 
-    Self { entries }
+    Self { entries, delta }
   }
 }
 
@@ -138,3 +179,14 @@ where
     Self::new()
   }
 }
+
+impl<K> PartialEq for PNCounterMap<K>
+where
+  K: Ord,
+{
+  fn eq(&self, other: &Self) -> bool {
+    self.entries == other.entries
+  }
+}
+
+impl<K> Eq for PNCounterMap<K> where K: Ord {}

@@ -26,28 +26,24 @@ fn key_keeps_id() {
 }
 
 #[test]
-fn keys_with_same_id_are_equal_across_types() {
-  let flag = FlagKey::new("shared");
-  let counter = GCounterKey::new("shared");
-  let pn_counter = PNCounterKey::new("shared");
-  let pn_counter_map = PNCounterMapKey::<String>::new("shared");
+fn keys_with_same_id_are_equal_within_type() {
+  let left = FlagKey::new("shared");
+  let right = FlagKey::new("shared");
 
-  assert_eq!(flag, counter);
-  assert_eq!(counter, pn_counter);
-  assert_eq!(pn_counter, pn_counter_map);
+  assert_eq!(left, right);
 }
 
 #[test]
 fn key_hash_uses_id_only() {
-  let flag = FlagKey::new("shared");
-  let counter = GCounterKey::new("shared");
+  let left_key = FlagKey::new("shared");
+  let right_key = FlagKey::new("shared");
 
-  let mut left = StableHasher::default();
-  let mut right = StableHasher::default();
-  flag.hash(&mut left);
-  counter.hash(&mut right);
+  let mut left_hash = StableHasher::default();
+  let mut right_hash = StableHasher::default();
+  left_key.hash(&mut left_hash);
+  right_key.hash(&mut right_hash);
 
-  assert_eq!(left.finish(), right.finish());
+  assert_eq!(left_hash.finish(), right_hash.finish());
 }
 
 #[test]

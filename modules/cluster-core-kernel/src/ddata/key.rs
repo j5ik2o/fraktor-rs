@@ -39,8 +39,8 @@ impl<T> Clone for Key<T> {
   }
 }
 
-impl<T, U> PartialEq<Key<U>> for Key<T> {
-  fn eq(&self, other: &Key<U>) -> bool {
+impl<T> PartialEq for Key<T> {
+  fn eq(&self, other: &Self) -> bool {
     self.id == other.id
   }
 }
