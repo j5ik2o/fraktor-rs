@@ -133,15 +133,21 @@ export function collapseTaskPayload(args) {
   }
 
   // 区切りなしの場合、最初の takt オプションらしき引数以降は task 本文に結合せず、
-  // 直接 `takt -t <task> --provider mock` と同じ並びで task 値の後ろへ温存する
+  // 直接 `takt -t <task> --provider mock` と同じ並びで task 値の後ろへ温存する。
+  // ただし後置列に紛れた Kiro フラグ（-y / --auto）は takt に渡さず task 本文へ戻す
   const firstOptionIndex = rest.findIndex(isTaktOptionLike);
   if (firstOptionIndex === -1) {
     return [...args.slice(0, taskArgIndex + 1), rest.join(" ")];
   }
+  const trailing = rest.slice(firstOptionIndex);
+  const payloadParts = [
+    ...rest.slice(0, firstOptionIndex),
+    ...trailing.filter((arg) => KIRO_TASK_FLAGS.has(arg)),
+  ];
   return [
     ...args.slice(0, taskArgIndex + 1),
-    rest.slice(0, firstOptionIndex).join(" "),
-    ...rest.slice(firstOptionIndex),
+    payloadParts.join(" "),
+    ...trailing.filter((arg) => !KIRO_TASK_FLAGS.has(arg)),
   ];
 }
 
