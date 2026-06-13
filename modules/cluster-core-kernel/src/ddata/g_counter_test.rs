@@ -81,6 +81,17 @@ fn pruning_moves_removed_node_contribution() {
 }
 
 #[test]
+fn pruning_same_node_removes_without_reinserting() {
+  let removed = self_address(0);
+  let counter = GCounter::new().increment(&removed, 5).expect("increment must fit");
+
+  let pruned = counter.prune(removed.unique_address(), removed.unique_address()).expect("pruning must fit");
+
+  assert_eq!(pruned.value(), Ok(0));
+  assert!(!pruned.need_pruning_from(removed.unique_address()));
+}
+
+#[test]
 fn increment_detects_overflow() {
   let node = self_address(0);
   let mut state = BTreeMap::new();

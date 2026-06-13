@@ -4,7 +4,7 @@
 #[path = "read_consistency_test.rs"]
 mod tests;
 
-use core::time::Duration;
+use core::{num::NonZeroUsize, time::Duration};
 
 /// Read-side consistency level requested by a distributed-data read.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -14,7 +14,7 @@ pub enum ReadConsistency {
   /// Read from at least `n` replicas before `timeout`.
   From {
     /// Required number of replicas.
-    n:       usize,
+    n:       NonZeroUsize,
     /// Maximum time to wait.
     timeout: Duration,
   },
@@ -30,7 +30,7 @@ pub enum ReadConsistency {
     /// Maximum time to wait.
     timeout:    Duration,
     /// Additional replicas beyond majority.
-    additional: usize,
+    additional: NonZeroUsize,
     /// Minimum quorum cap.
     min_cap:    usize,
   },

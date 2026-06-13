@@ -97,8 +97,8 @@ impl DeltaReplicatedData for PNCounter {
 impl ReplicatedDelta for PNCounter {
   type Full = Self;
 
-  #[allow(clippy::unused_self)] // The trait models delta payloads; zero depends only on the full-state type.
   fn zero(&self) -> Self::Full {
+    let _ = self;
     Self::new()
   }
 }

@@ -19,7 +19,7 @@ impl ReplicaCount {
 
   /// Returns the replica count.
   #[must_use]
-  pub const fn get(self) -> usize {
+  pub const fn get(&self) -> usize {
     self.n
   }
 }
