@@ -114,15 +114,18 @@ impl RemovedNodePruning for GCounter {
     let mut state = self.state.clone();
     state.remove(removed_node);
 
+    let mut delta = self.delta.clone();
+    delta.remove(removed_node);
+
     if removed_node == collapse_into {
-      return Ok(Self { state, delta: BTreeMap::new() });
+      return Ok(Self { state, delta });
     }
 
     let current = state.get(collapse_into).copied().unwrap_or(0);
     let next = current.checked_add(removed_value).ok_or(CounterArithmeticError::Overflow)?;
     state.insert(collapse_into.clone(), next);
 
-    Ok(Self { state, delta: BTreeMap::new() })
+    Ok(Self { state, delta })
   }
 
   fn pruning_cleanup(&self, removed_node: &UniqueAddress) -> Self {

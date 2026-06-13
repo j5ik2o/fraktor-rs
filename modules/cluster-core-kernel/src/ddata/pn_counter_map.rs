@@ -168,7 +168,16 @@ where
       entries.insert(key.clone(), counter.prune(removed_node, collapse_into)?);
     }
 
-    Ok(Self { entries, delta: BTreeMap::new() })
+    let delta = self
+      .delta
+      .iter()
+      .filter_map(|(key, counter)| {
+        let counter = counter.pruning_cleanup(removed_node);
+        if counter.modified_by_nodes().is_empty() { None } else { Some((key.clone(), counter)) }
+      })
+      .collect();
+
+    Ok(Self { entries, delta })
   }
 
   fn pruning_cleanup(&self, removed_node: &UniqueAddress) -> Self {

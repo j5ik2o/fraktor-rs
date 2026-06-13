@@ -163,6 +163,27 @@ fn pruning_delegates_to_entries() {
 }
 
 #[test]
+fn prune_preserves_unrelated_local_delta() {
+  let removed = self_address(0);
+  let collapse_into = self_address(1);
+  let unrelated = self_address(2);
+  let map = PNCounterMap::new()
+    .increment(&removed, 1, 5)
+    .expect("increment must fit")
+    .reset_delta()
+    .increment(&unrelated, 2, 3)
+    .expect("increment must fit");
+
+  let pruned = map.prune(removed.unique_address(), collapse_into.unique_address()).expect("pruning must fit");
+  let remaining_delta = pruned.delta().expect("unrelated delta must remain");
+
+  assert_eq!(pruned.get(&1), Ok(Some(5)));
+  assert_eq!(pruned.get(&2), Ok(Some(3)));
+  assert_eq!(remaining_delta.get(&1), Ok(None));
+  assert_eq!(remaining_delta.get(&2), Ok(Some(3)));
+}
+
+#[test]
 fn get_propagates_nested_counter_overflow() {
   let counter = PNCounter::from_parts(g_counter_with_slot(0, u128::MAX), GCounter::new());
   let mut entries = BTreeMap::new();

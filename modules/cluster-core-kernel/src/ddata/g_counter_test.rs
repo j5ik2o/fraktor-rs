@@ -117,6 +117,25 @@ fn pruning_same_node_removes_without_reinserting() {
 }
 
 #[test]
+fn prune_preserves_unrelated_local_delta() {
+  let removed = self_address(0);
+  let collapse_into = self_address(1);
+  let unrelated = self_address(2);
+  let counter = GCounter::new()
+    .increment(&removed, 5)
+    .expect("increment must fit")
+    .reset_delta()
+    .increment(&unrelated, 3)
+    .expect("increment must fit");
+
+  let pruned = counter.prune(removed.unique_address(), collapse_into.unique_address()).expect("pruning must fit");
+  let remaining_delta = pruned.delta().expect("unrelated delta must remain");
+
+  assert_eq!(pruned.value(), Ok(8));
+  assert_eq!(remaining_delta.value(), Ok(3));
+}
+
+#[test]
 fn increment_detects_overflow() {
   let node = self_address(0);
   let mut state = BTreeMap::new();
