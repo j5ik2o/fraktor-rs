@@ -10,7 +10,7 @@ use fraktor_remote_core_rs::address::UniqueAddress;
 
 use super::{
   CounterArithmeticError, DeltaReplicatedData, PNCounter, RemovedNodePruning, ReplicatedData, ReplicatedDelta,
-  SelfUniqueAddress,
+  RequiresCausalDeliveryOfDeltas, SelfUniqueAddress,
 };
 
 /// CRDT map whose values are positive-negative counters.
@@ -144,6 +144,8 @@ where
   }
 }
 
+impl<K> RequiresCausalDeliveryOfDeltas for PNCounterMap<K> where K: Ord + Clone {}
+
 impl<K> RemovedNodePruning for PNCounterMap<K>
 where
   K: Ord + Clone,
@@ -164,18 +166,15 @@ where
 
   fn prune(&self, removed_node: &UniqueAddress, collapse_into: &UniqueAddress) -> Result<Self, Self::PruneError> {
     let mut entries = BTreeMap::new();
-    for (key, counter) in &self.entries {
-      entries.insert(key.clone(), counter.prune(removed_node, collapse_into)?);
-    }
+    let mut delta = BTreeMap::new();
 
-    let delta = self
-      .delta
-      .iter()
-      .filter_map(|(key, counter)| {
-        let counter = counter.pruning_cleanup(removed_node);
-        if counter.modified_by_nodes().is_empty() { None } else { Some((key.clone(), counter)) }
-      })
-      .collect();
+    for (key, counter) in &self.entries {
+      let counter = counter.prune(removed_node, collapse_into)?;
+      if let Some(counter_delta) = counter.delta() {
+        delta.insert(key.clone(), counter_delta);
+      }
+      entries.insert(key.clone(), counter);
+    }
 
     Ok(Self { entries, delta })
   }

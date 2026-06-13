@@ -132,7 +132,19 @@ fn prune_preserves_unrelated_local_delta() {
   let remaining_delta = pruned.delta().expect("unrelated delta must remain");
 
   assert_eq!(pruned.value(), Ok(8));
-  assert_eq!(remaining_delta.value(), Ok(3));
+  assert_eq!(remaining_delta.value(), Ok(8));
+}
+
+#[test]
+fn prune_records_collapse_contribution_in_delta() {
+  let removed = self_address(0);
+  let collapse_into = self_address(1);
+  let counter = GCounter::new().increment(&removed, 5).expect("increment must fit").reset_delta();
+
+  let pruned = counter.prune(removed.unique_address(), collapse_into.unique_address()).expect("pruning must fit");
+  let delta = pruned.delta().expect("collapse contribution must be replicated");
+
+  assert_eq!(GCounter::new().merge_delta(&delta).value(), Ok(5));
 }
 
 #[test]

@@ -124,6 +124,7 @@ impl RemovedNodePruning for GCounter {
     let current = state.get(collapse_into).copied().unwrap_or(0);
     let next = current.checked_add(removed_value).ok_or(CounterArithmeticError::Overflow)?;
     state.insert(collapse_into.clone(), next);
+    delta.insert(collapse_into.clone(), next);
 
     Ok(Self { state, delta })
   }

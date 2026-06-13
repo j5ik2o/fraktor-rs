@@ -8,7 +8,8 @@ use super::{
   PNCounterMap,
 };
 use crate::ddata::{
-  CounterArithmeticError, DeltaReplicatedData, RemovedNodePruning, ReplicatedData, ReplicatedDelta, SelfUniqueAddress,
+  CounterArithmeticError, DeltaReplicatedData, RemovedNodePruning, ReplicatedData, ReplicatedDelta,
+  RequiresCausalDeliveryOfDeltas, SelfUniqueAddress,
 };
 
 fn unique_address(index: usize) -> UniqueAddress {
@@ -43,6 +44,8 @@ fn g_counter_with_slot(index: usize, value: u128) -> GCounter {
   state.insert(unique_address(index), value);
   GCounter::from_parts(state, BTreeMap::new())
 }
+
+fn assert_requires_causal_delivery<T: RequiresCausalDeliveryOfDeltas>() {}
 
 #[test]
 fn increment_decrement_and_get_are_key_scoped() {
@@ -87,6 +90,11 @@ fn delta_reset_and_zero_follow_full_state_contract() {
   assert_eq!(PNCounterMap::new().merge_delta(&delta).get(&1), Ok(Some(7)));
   assert_eq!(map.reset_delta().delta(), None);
   assert_eq!(delta.zero(), PNCounterMap::new());
+}
+
+#[test]
+fn map_delta_requires_causal_delivery() {
+  assert_requires_causal_delivery::<PNCounterMap<u8>>();
 }
 
 #[test]
@@ -179,8 +187,20 @@ fn prune_preserves_unrelated_local_delta() {
 
   assert_eq!(pruned.get(&1), Ok(Some(5)));
   assert_eq!(pruned.get(&2), Ok(Some(3)));
-  assert_eq!(remaining_delta.get(&1), Ok(None));
+  assert_eq!(remaining_delta.get(&1), Ok(Some(5)));
   assert_eq!(remaining_delta.get(&2), Ok(Some(3)));
+}
+
+#[test]
+fn prune_records_entry_collapse_contribution_in_delta() {
+  let removed = self_address(0);
+  let collapse_into = self_address(1);
+  let map = PNCounterMap::new().increment(&removed, 1, 5).expect("increment must fit").reset_delta();
+
+  let pruned = map.prune(removed.unique_address(), collapse_into.unique_address()).expect("pruning must fit");
+  let delta = pruned.delta().expect("collapse contribution must be replicated");
+
+  assert_eq!(PNCounterMap::new().merge_delta(&delta).get(&1), Ok(Some(5)));
 }
 
 #[test]
