@@ -1,0 +1,100 @@
+# 実装計画
+
+- [x] 1. 基盤: ddata モジュールと CRDT 基底 SPI
+- [x] 1.1 ddata モジュールの新設と property test 依存の追加
+  - `cluster-core-kernel` に `ddata` モジュールを新設し、`lib.rs` から公開する。merge 法則検証のため proptest を開発用依存に加える
+  - `ddata` モジュールが公開された状態で `cargo build -p fraktor-cluster-core-kernel-rs` が通り、`cargo test` から proptest が利用可能になる
+  - _Requirements:_ 12
+  - _Boundary:_ ddata wiring
+  - _Depends:_ none
+- [x] 1.2 状態ベース収束 CRDT の merge 基底契約を定義
+  - 自分自身の型へ収束する merge 操作を備えた基底 trait を定義し、元の値を変更せず新しい値を返す契約とする
+  - 同じ型の2値を結合する merge が公開 trait として参照可能になり、コンパイルが通る
+  - _Requirements:_ 1
+  - _Boundary:_ ReplicatedData
+  - _Depends:_ 1.1
+- [x] 1.3 delta 伝播の基底契約を定義
+  - 蓄積 delta の取得・delta の全状態への統合・delta のリセット・空の全状態からの初期化、および因果順序配送要求を表すマーカ契約を定義する
+  - delta 取得／統合／リセット／zero の各契約とマーカが公開 trait として参照可能になり、`zero` は delta 型ではなく空の full state を返せる
+  - _Requirements:_ 2
+  - _Boundary:_ DeltaReplicatedData, ReplicatedDelta, RequiresCausalDeliveryOfDeltas
+  - _Depends:_ 1.2
+- [x] 1.4 ノード除去プルーニングの基底契約を定義
+  - 寄与ノード集合の報告・除去対象ノードの保持判定・寄与の畳み込み・残存エントリ除去を行う契約を定義し、畳み込み不能時の data-local エラーを表現できるようにする
+  - 4 つのプルーニング操作が公開 trait として参照可能になり、`prune` は成功時だけ畳み込み済み値を返す
+  - _Requirements:_ 3
+  - _Boundary:_ RemovedNodePruning
+  - _Depends:_ 1.2
+- [x] 1.5 カウンタ演算の境界エラーを定義
+  - カウンタ更新・値集計・プルーニング畳み込みが表現範囲を超えたことを表すエラー型を定義する
+  - wraparound や saturating ではなく `Overflow` として観測できるエラー型が公開される
+  - _Requirements:_ 5, 6, 7
+  - _Boundary:_ CounterArithmeticError
+  - _Depends:_ 1.1
+- [x] 1.6 自ノード識別の明示引数型を定義
+  - カウンタ更新時に自ノードを暗黙のグローバル状態ではなく明示引数で受け取るための識別子ラッパを定義する
+  - ノード一意識別子を往復できる識別子型が公開され、単体テストで保持・取得が検証される
+  - _Requirements:_ 8
+  - _Boundary:_ SelfUniqueAddress
+  - _Depends:_ 1.1
+
+- [x] 2. 基本 CRDT 型
+- [x] 2.1 (P) Flag CRDT を実装
+  - 初期無効・一方向の有効化・有効優先 merge を持つ真偽フラグを実装する。ノード状態を持たずプルーニング対象外とする
+  - 有効優先 merge が成立し、可換・結合・冪等の merge 法則が property test で green になる
+  - _Requirements:_ 4, 11
+  - _Boundary:_ Flag
+  - _Depends:_ 1.2
+- [x] 2.2 増加のみカウンタ GCounter を実装
+  - 自ノードスロットへの非負増分・全スロット合計・per-node 最大 merge を実装し、delta 伝播とノード除去プルーニング契約を満たす
+  - 負の増分が型で排除され、更新・値集計・プルーニング畳み込みの overflow は `CounterArithmeticError` として拒否される
+  - per-node 最大 merge・grow-only 不変条件・delta 統合・zero が空状態を返すこと、および最大値近傍で wraparound しないことが property test で green になる
+  - _Requirements:_ 5, 11
+  - _Boundary:_ GCounter
+  - _Depends:_ 1.3, 1.4, 1.5, 1.6
+- [x] 2.3 増減カウンタ PNCounter を実装
+  - 増加成分と減少成分を独立に保持する増減カウンタを実装し、値は増加合計から減少合計を引いた値とする。merge は両成分を独立に結合し、delta とプルーニングを内部成分へ委譲する
+  - 増減更新と値取得は成分合計や差分が表現範囲を超える場合に `CounterArithmeticError` を返す
+  - 増減の往復・独立 merge・delta 統合・zero が空状態を返すこと、および差分値の範囲外を拒否することが property test で green になる
+  - _Requirements:_ 6, 11
+  - _Boundary:_ PNCounter
+  - _Depends:_ 2.2
+- [x] 2.4 キー単位増減カウンタ群 PNCounterMap を実装
+  - キーごとの増減カウンタ群を実装し、merge はキー集合の和と同一キーの増減カウンタ merge を行う。プルーニングは各エントリへ委譲する。observed-remove は提供せずキー集合は grow-only とする
+  - キー単位の更新・取得と grow-only union merge が property test で green になり、配下カウンタの overflow は `CounterArithmeticError` として返る
+  - 公開 API に conflict-free 削除（`remove` 系）メソッドが存在しないことを確認できる
+  - _Requirements:_ 7, 11
+  - _Boundary:_ PNCounterMap
+  - _Depends:_ 2.3
+
+- [x] 3. Key 階層と語彙型
+- [x] 3.1 型付き Key 階層を定義
+  - 文字列 id と対象 CRDT 型の型タグを保持し、id のみで等価判定する型付き Key と、各基本 CRDT に対応する具象 Key を定義する
+  - 同一 id・異なる型タグの Key が等価と判定され、Flag / GCounter / PNCounter / PNCounterMap 用の具象 Key（PNCounterMap 用はキー型をパラメータに取る）がすべて公開される
+  - _Requirements:_ 8
+  - _Boundary:_ Key
+  - _Depends:_ 2.1, 2.2, 2.3, 2.4
+- [x] 3.2 (P) read/write 整合性レベル語彙を定義
+  - Local / From(n)・To(n) / Majority / MajorityPlus / All の read・write 整合性レベルを、タイムアウト・追加ノード数・最小定足数下限を保持する純粋な値型として定義する
+  - read・write 各 5 variant が構築でき、パラメータ保持が単体テストで検証される
+  - _Requirements:_ 9
+  - _Boundary:_ ReadConsistency, WriteConsistency
+  - _Depends:_ 1.1
+- [x] 3.3 (P) 補助 protocol 語彙を定義
+  - レプリカ数問い合わせ・自ノードを含むレプリカ数・購読者通知の即時フラッシュを表す純粋な語彙型を定義する
+  - 3 つの補助 protocol 型が公開され、レプリカ数の保持が単体テストで検証される
+  - _Requirements:_ 10
+  - _Boundary:_ GetReplicaCount, ReplicaCount, FlushChanges
+  - _Depends:_ 1.1
+
+- [x] 4. 統合検証
+- [x] 4.1 no_std ビルドと構造 lint の通過を確認
+  - ddata 追加後に no_std ビルドと dylint（type-per-file / mod-file / ambiguous-suffix / cfg-std-forbid 等）および merge 法則・overflow 境界 property test がすべて通ることを確認する
+  - `./scripts/ci-check.sh` の no-std・dylint・unit-test 対象範囲が ddata を含めて green になる
+  - _Requirements:_ 11, 12
+  - _Boundary:_ ddata
+  - _Depends:_ 3.1, 3.2, 3.3
+
+## Implementation Notes
+<!-- 実装中に得られた横断的知見をここに1行ずつ追記する -->
+- 2026-06-13: `ddata` は `alloc::collections::BTreeMap/BTreeSet` と `fraktor_remote_core_rs::address::UniqueAddress` のみで状態を保持し、merge 法則は sibling property tests で検証した。

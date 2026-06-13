@@ -30,3 +30,4 @@ workspace = true
 fraktor-actor-adaptor-std-rs = { workspace = true, features = ["test-support"] }
 fraktor-utils-core-rs = { workspace = true, features = ["debug-locks"] }
 critical-section = { workspace = true, features = ["std"] }
+proptest = "1.5"
