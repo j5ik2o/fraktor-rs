@@ -32,7 +32,6 @@ report_formats:
   kiro-review-verdict: ../facets/output-contracts/kiro-review-verdict.md
   kiro-debug-decision: ../facets/output-contracts/kiro-debug-decision.md
   kiro-completion-verification: ../facets/output-contracts/kiro-completion-verification.md
-  kiro-ai-antipattern-fix-result: ../facets/output-contracts/kiro-ai-antipattern-fix-result.md
   kiro-validation-result: ../facets/output-contracts/kiro-validation-result.md
 
 loop_monitors:
