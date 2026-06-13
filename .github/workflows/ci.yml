@@ -203,7 +203,7 @@ jobs:
       - name: Checkout source
         uses: actions/checkout@v6
       - name: Run TAKT review wrapper helper tests
-        run: node --test --test-reporter=spec .github/scripts/*.test.mjs
+        run: node --test --test-reporter=spec .github/scripts/*.test.mjs scripts/*.test.mjs
 
   # ビルドと単体テスト
   #
