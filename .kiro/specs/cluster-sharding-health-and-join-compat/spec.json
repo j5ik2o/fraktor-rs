@@ -1,0 +1,22 @@
+{
+  "feature_name": "cluster-sharding-health-and-join-compat",
+  "created_at": "2026-06-12T22:04:06Z",
+  "updated_at": "2026-06-12T22:55:00Z",
+  "language": "ja",
+  "phase": "tasks-generated",
+  "approvals": {
+    "requirements": {
+      "generated": true,
+      "approved": true
+    },
+    "design": {
+      "generated": true,
+      "approved": true
+    },
+    "tasks": {
+      "generated": true,
+      "approved": true
+    }
+  },
+  "ready_for_implementation": true
+}
