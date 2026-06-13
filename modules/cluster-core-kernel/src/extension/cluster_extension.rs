@@ -349,11 +349,15 @@ impl EventStreamSubscriber for SelfMemberStatusTrackerSubscriber {
         && (current.node_id != identity.node_id || current.authority != identity.authority)
       {
         let current_is_retired = is_suppressed_retired_identity(&self.suppressed_retired_identities, &current);
-        let can_replace_starting_identity = self.starting_identity.with_lock(|starting_identity| {
-          starting_identity
-            .as_ref()
-            .is_some_and(|starting| identity_matches(starting, &current) && !is_retired_identity)
-        });
+        // 開始対象 identity の置換は start window 中に限る。完了後に starting_identity == current の間へ
+        // 別 identity の遅延イベントが届いても self_member_identity を上書きさせない。
+        let in_start_window = self.start_in_progress.with_lock(|start_in_progress| *start_in_progress);
+        let can_replace_starting_identity = in_start_window
+          && self.starting_identity.with_lock(|starting_identity| {
+            starting_identity
+              .as_ref()
+              .is_some_and(|starting| identity_matches(starting, &current) && !is_retired_identity)
+          });
         let incoming_is_starting_identity = self.starting_identity.with_lock(|starting_identity| {
           starting_identity.as_ref().is_some_and(|starting| identity_matches(starting, &identity))
         });

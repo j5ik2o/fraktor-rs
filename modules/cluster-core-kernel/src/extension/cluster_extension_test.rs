@@ -1195,6 +1195,41 @@ fn grain_readiness_snapshot_accepts_same_node_id_rejoin_during_restart_start_win
 }
 
 #[test]
+fn grain_readiness_snapshot_ignores_foreign_identity_up_after_restart_start_window() {
+  let system = create_noop_actor_system();
+  let event_stream = system.event_stream();
+  let authority = String::from("fraktor://demo");
+  let ext_id = ClusterExtensionId::new(
+    ClusterExtensionConfig::new().with_advertised_address(&authority),
+    Box::new(RestartEmitsSameIdentityJoiningProvider::new(
+      event_stream.clone(),
+      authority.clone(),
+      String::from("node-self"),
+    )),
+    ArcShared::new(StubBlockList),
+    Box::new(NoopDowningProvider::new()),
+    Box::new(StubGossiper),
+    Box::new(StubPubSub),
+    Box::new(PartitionIdentityLookup::with_defaults()),
+  );
+  let ext_shared = system.extended().register_extension(&ext_id);
+  let expected = vec![String::from("grain-kind")];
+
+  ext_shared.start_member().expect("start member");
+  ext_shared.setup_member_kinds(vec![ActivatedKind::new("grain-kind")]).expect("setup kinds");
+  ext_shared.shutdown(true).expect("shutdown");
+  ext_shared.start_member().expect("restart member");
+
+  // restart-with-same-identity は starting_identity == current（node-self/Joining）の状態を残す。
+  // start window 完了後に別 identity の遅延 Up が届いても observed self を上書きしてはならない。
+  publish_member_status(&event_stream, "node-foreign", &authority, NodeStatus::Joining, NodeStatus::Up);
+
+  assert_eq!(ext_shared.grain_readiness_snapshot().readiness(&expected), GrainReadiness::NotReady {
+    reasons: vec![GrainUnreadyReason::SelfNodeNotUp { status: Some(NodeStatus::Joining) }],
+  });
+}
+
+#[test]
 fn grain_readiness_snapshot_accepts_same_node_id_up_during_restart_start_window() {
   let system = create_noop_actor_system();
   let event_stream = system.event_stream();
