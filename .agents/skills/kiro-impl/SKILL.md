@@ -1,15 +1,16 @@
 ---
 name: kiro-impl
-description: Implement approved tasks using TDD with subagent dispatch. Runs all pending tasks autonomously or selected tasks manually.
+description: Implement approved tasks using parent-led TDD with targeted Codex sub-agents for review, debugging, exploration, and small isolated worker tasks.
 ---
 
 
 # kiro-impl Skill
 
 <background_information>
-You operate in two modes:
-- **Autonomous mode** (no task numbers): Dispatch a fresh sub-agent per task, with independent review after each
-- **Manual mode** (task numbers provided): Execute selected tasks directly in the main context
+You operate with parent-led implementation by default:
+- The parent Codex agent owns task selection, normal implementation, task-state updates, commits, and final judgment.
+- Fresh sub-agents are quality and context-isolation tools: review, debugging, broad exploration, and clearly isolated worker tasks.
+- Worker dispatch is optional and bounded. It is not the default execution engine for ordinary implementation.
 
 - **Success Criteria**:
   - All tests written before implementation code
@@ -38,6 +39,20 @@ The following research areas are independent and can be executed in parallel:
 
 After all parallel research completes, synthesize implementation brief before starting.
 
+### Codex Sub-Agent Strategy
+
+Use Codex sub-agents to avoid context rot, not to outsource every implementation step:
+
+- **Parent Codex agent**: task queue, normal implementation, tasks.md updates, selective commits, final validation, and final judgment.
+- **`reviewer`**: fresh-context task-local review before marking any task complete.
+- **`debugger`**: fresh-context root-cause analysis when tests, review, or validation are blocked. The debugger returns a fix plan; the parent decides whether to edit.
+- **`explorer`**: broad read-only investigation that can run in parallel with parent work.
+- **`worker`**: small, clearly isolated implementation tasks with disjoint write scope.
+- **`spark-worker`**: optional ultra-fast path for bounded mechanical work only: import fixes, simple renames, tiny docs/template cleanups, or obvious validation-error repairs.
+- **`spec-reviewer`**: do not use in the normal implementation loop. Use it only when the blocker appears to be cross-spec inconsistency, invalid task decomposition, dependency-order failure, or upstream/downstream contract mismatch.
+
+Do not use Spark for final review, cross-spec review, architecture decisions, complex Rust changes, or any task where semantic correctness matters more than speed.
+
 ### Preflight
 
 **Validate approvals**:
@@ -57,8 +72,9 @@ After all parallel research completes, synthesize implementation brief before st
 
 **Parse arguments**:
 - Extract feature name from `$1`
-- If task numbers provided in `$2` (e.g., "1.1" or "1,2,3"): **manual mode**
-- If no task numbers: **autonomous mode** (all pending tasks)
+- If task numbers are provided in `$2` (e.g., "1.1" or "1,2,3"): selected tasks only
+- If no task numbers are provided: all pending tasks
+- Use parent-led implementation by default. Consider worker dispatch only for tasks that satisfy the isolation rules below.
 
 **Build task queue**:
 - Read tasks.md, identify actionable sub-tasks (X.Y numbering like 1.1, 2.3)
@@ -70,13 +86,15 @@ After all parallel research completes, synthesize implementation brief before st
 
 ## Step 3: Execute Implementation
 
-### Autonomous Mode (sub-agent dispatch)
+### Worker Dispatch Mode (optional)
+
+Use this mode only when the task is small, well-scoped, and has a disjoint write scope. For ordinary serial work, use Parent-Led Mode below.
 
 **Iteration discipline**: Process exactly ONE sub-task (e.g., 1.1) per iteration. Do NOT batch multiple sub-tasks into a single sub-agent dispatch. Each iteration follows the full cycle: dispatch implementer → review → commit → re-read tasks.md → next.
 
 **Context management**: At the start of each iteration, re-read `tasks.md` to determine the next actionable sub-task. Do NOT rely on accumulated memory of previous iterations. After completing each iteration, retain only a one-line summary (e.g., "1.1: READY_FOR_REVIEW, 3 files changed") and discard the full status report and reviewer details.
 
-If multi-agent capability is available, for each task (one at a time):
+If a task qualifies for worker dispatch:
 
 **a) Dispatch implementer**:
 - Read `templates/implementer-prompt.md` from this skill's directory
@@ -88,7 +106,8 @@ If multi-agent capability is available, for each task (one at a time):
   - Whether the task is behavioral (Feature Flag Protocol) or non-behavioral
   - **Previous learnings**: Include any `## Implementation Notes` entries from tasks.md that are relevant to this task's boundary or dependencies (e.g., "better-sqlite3 requires separate rebuild for Electron"). This prevents the same mistakes from recurring.
 - The implementer sub-agent will read the spec files and build its own Task Brief (acceptance criteria, completion definition, design constraints, verification method) before implementation
-- Spawn a fresh sub-agent with this prompt
+- Spawn a fresh `worker` sub-agent with this prompt
+- Use `spark-worker` instead of `worker` only for bounded mechanical tasks where a wrong change is easy for the parent and reviewer to detect
 
 **b) Handle implementer status**:
 - Parse implementer status only from the exact `## Status Report` block and `- STATUS:` field.
@@ -106,7 +125,7 @@ If multi-agent capability is available, for each task (one at a time):
 - The reviewer must apply the `kiro-review` protocol to this task-local review.
 - Preserve the existing task-specific context: task text, spec refs, `_Boundary:_` scope, validation commands, implementer report, and the actual `git diff` as the primary source of truth.
 - The reviewer sub-agent will run `git diff` itself to read the actual code changes and verify against the spec
-- Spawn a fresh sub-agent with this prompt
+- Spawn a fresh `reviewer` sub-agent with this prompt
 
 **d) Handle reviewer verdict**:
 - Parse reviewer verdict only from the exact `## Review Verdict` block and `- VERDICT:` field.
@@ -137,7 +156,7 @@ The debug subagent runs in a **fresh context** — it receives only the error in
 - The debugger must apply the `kiro-debug` protocol to this failure investigation.
 - Preserve rich failure context: error output, reviewer findings, current `git diff`, task/spec refs, and any relevant Implementation Notes.
 - When available, the debugger should inspect runtime/config state and use web or official documentation research to validate root-cause hypotheses before proposing a fix plan.
-- Spawn a fresh sub-agent with this prompt
+- Spawn a fresh `debugger` sub-agent with this prompt
 
 **Handle debug report**:
 - Parse `NEXT_ACTION` from the debug report's exact structured field.
@@ -149,13 +168,13 @@ The debug subagent runs in a **fresh context** — it receives only the error in
 - **Max 2 debug rounds per task**. Each round: fresh debug subagent → fresh implementer. If still failing after 2 rounds, the task is blocked.
 - Record debug findings in `## Implementation Notes` (this helps subsequent tasks avoid the same issue)
 
-**`(P)` markers**: Tasks marked `(P)` in tasks.md indicate they have no inter-dependencies and could theoretically run in parallel. However, kiro-impl processes them sequentially (one at a time) to avoid git conflicts and simplify review. The `(P)` marker is informational for task planning, not an execution directive.
+**`(P)` markers**: Tasks marked `(P)` in tasks.md indicate they have no inter-dependencies and could theoretically run in parallel. They are eligibility signals for worker dispatch, not automatic dispatch instructions. Only dispatch `(P)` tasks in parallel when their write scopes are disjoint and repo validation does not serialize the same resources.
 
-**Fallback**: If multi-agent is not available, fall back to manual mode execution for all tasks.
+**Fallback**: If multi-agent is not available, use Parent-Led Mode for all tasks and perform the review inline with the `kiro-review` protocol.
 
-### Manual Mode (main context)
+### Parent-Led Mode (default)
 
-For each selected task:
+For each selected or pending task:
 
 **1. Build Task Brief**:
 Before writing any code, read the relevant sections of requirements.md and design.md for this task and clarify:
@@ -169,12 +188,12 @@ Before writing any code, read the relevant sections of requirements.md and desig
 - **GREEN**: Implement simplest solution to make test pass, following the design constraints.
 - **REFACTOR**: Improve code structure, remove duplication. All tests must still pass.
 - **VERIFY**: All tests pass (new and existing), no regressions. Confirm verification method passes.
-- **REVIEW**: Apply `kiro-review` before marking the task complete. If the host supports fresh sub-agents in manual mode, use a fresh reviewer; otherwise perform the review in the main context using the `kiro-review` protocol. Do NOT continue until the verdict is parseably `APPROVED`.
+- **REVIEW**: Apply `kiro-review` before marking the task complete. If the host supports fresh sub-agents, use the `reviewer` custom agent; otherwise perform the review in the main context using the `kiro-review` protocol. Do NOT continue until the verdict is parseably `APPROVED`.
 - **MARK COMPLETE**: Only after review returns `APPROVED`, apply `kiro-verify-completion`, then update the checkbox from `- [ ]` to `- [x]` in tasks.md.
 
 ## Step 4: Final Validation
 
-**Autonomous mode**:
+**Full-feature run**:
 - After all tasks complete, run `$kiro-validate-impl $1` as a GO/NO-GO gate
 - If validation returns GO → before reporting feature success, apply `kiro-verify-completion` to the feature-level claim using the validation result and fresh supporting evidence
 - If validation returns NO-GO:
@@ -182,7 +201,7 @@ Before writing any code, read the relevant sections of requirements.md and desig
   - Cap remediation at 3 rounds; if still NO-GO, stop and report remaining findings
 - If validation returns MANUAL_VERIFY_REQUIRED → stop and report the missing verification step
 
-**Manual mode**:
+**Partial run**:
 - Suggest running `$kiro-validate-impl $1` but do not auto-execute
 
 ## Feature Flag Protocol
@@ -208,9 +227,9 @@ For tasks that add or change behavior, enforce RED → GREEN with a feature flag
 
 ## Output Description
 
-**Autonomous mode**: For each task, report: task ID, implementer status, reviewer verdict, files changed, commit hash. After all tasks: final validation result.
+**Worker dispatch mode**: For each dispatched task, report: task ID, implementer status, reviewer verdict, files changed, commit hash. After all tasks: final validation result.
 
-**Manual mode**: Tasks executed with test results. Status of completed/remaining tasks.
+**Parent-led mode**: For each task, report: task ID, test results, reviewer verdict, files changed, commit hash. After all tasks: final validation result (full-feature run) or remaining-task status (partial run).
 
 **Format**: Concise, in the language specified in spec.json.
 
