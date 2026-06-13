@@ -8,7 +8,7 @@
   - _Requirements:_ 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7, 4.3, 4.4
   - _Boundary:_ GrainReadinessSnapshot / GrainReadiness / GrainUnreadyReason
   - _Depends:_ none
-- [ ] 1.2 (P) grain / placement 領域の除外キーを目録へ登録する
+- [x] 1.2 (P) grain / placement 領域の除外キーを目録へ登録する
   - identity lookup の実装選択とローカルチューニング値を表す除外キー2件を、既存 excluded key の文体を踏襲した理由文とともに登録し、将来拡張の選定基準（ノード間で一致しないと配送・配置の正しさが壊れる値のみ）を目録の rustdoc に記載する
   - 除外キー2件が excluded_keys() に理由付きで含まれ、required / conditional の評価対象に含まれないことを検証する目録テストが green になり、既存の join 互換テストが無変更で green になる
   - _Requirements:_ 3.1, 3.2, 3.3, 4.2

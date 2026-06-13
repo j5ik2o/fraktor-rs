@@ -11,6 +11,9 @@ const SENSITIVE_PROVIDER_FACTORY_REASON: &str =
   "sensitive local factory implementation is not compared during join compatibility";
 const UNOWNED_FAILURE_DETECTOR_CHOICE_REASON: &str =
   "failure detector implementation choice is not compared until cluster config owns detector selection";
+const SHARDING_IDENTITY_LOOKUP_CHOICE_REASON: &str = "sharding identity lookup implementation choice is factory-injected and not owned by config, so it is not compared during join compatibility";
+const SHARDING_IDENTITY_LOOKUP_TUNING_REASON: &str =
+  "sharding identity lookup tuning values are local-only and need not match across nodes during join compatibility";
 
 static REQUIRED_KEYS: [ClusterCompatibilityKey; 4] = [
   ClusterCompatibilityKeyCatalog::PUBSUB,
@@ -21,13 +24,20 @@ static REQUIRED_KEYS: [ClusterCompatibilityKey; 4] = [
 
 static CONDITIONAL_KEYS: [ClusterCompatibilityKey; 1] = [ClusterCompatibilityKeyCatalog::SPLIT_BRAIN_RESOLVER_CONFIG];
 
-static EXCLUDED_KEYS: [ClusterCompatibilityKey; 3] = [
+static EXCLUDED_KEYS: [ClusterCompatibilityKey; 5] = [
   ClusterCompatibilityKeyCatalog::ADVERTISED_ADDRESS,
   ClusterCompatibilityKeyCatalog::DOWNING_PROVIDER_FACTORY,
   ClusterCompatibilityKeyCatalog::FAILURE_DETECTOR_CHOICE,
+  ClusterCompatibilityKeyCatalog::SHARDING_IDENTITY_LOOKUP_CHOICE,
+  ClusterCompatibilityKeyCatalog::SHARDING_IDENTITY_LOOKUP_TUNING,
 ];
 
 /// Catalog of stable cluster join compatibility keys.
+///
+/// Grain/placement (sharding) settings are currently excluded from comparison:
+/// identity lookup selection is factory-injected and the remaining tunables are
+/// local-only. A future sharding key should be promoted to required only when a
+/// mismatch would break grain delivery or placement correctness across nodes.
 pub struct ClusterCompatibilityKeyCatalog;
 
 impl ClusterCompatibilityKeyCatalog {
@@ -46,6 +56,17 @@ impl ClusterCompatibilityKeyCatalog {
     ClusterCompatibilityKey::excluded("cluster.failure-detector.choice", UNOWNED_FAILURE_DETECTOR_CHOICE_REASON);
   /// Pub/sub configuration compatibility key.
   pub const PUBSUB: ClusterCompatibilityKey = ClusterCompatibilityKey::required("cluster.pubsub");
+  /// Sharding identity lookup implementation choice key excluded because it is factory-injected and
+  /// not owned by config.
+  pub const SHARDING_IDENTITY_LOOKUP_CHOICE: ClusterCompatibilityKey = ClusterCompatibilityKey::excluded(
+    "cluster.sharding.identity-lookup.choice",
+    SHARDING_IDENTITY_LOOKUP_CHOICE_REASON,
+  );
+  /// Sharding identity lookup tuning key excluded because the values are local-only.
+  pub const SHARDING_IDENTITY_LOOKUP_TUNING: ClusterCompatibilityKey = ClusterCompatibilityKey::excluded(
+    "cluster.sharding.identity-lookup.tuning",
+    SHARDING_IDENTITY_LOOKUP_TUNING_REASON,
+  );
   /// Singleton configuration compatibility key.
   pub const SINGLETON: ClusterCompatibilityKey = ClusterCompatibilityKey::required("cluster.singleton");
   /// Split Brain Resolver config compatibility key.
