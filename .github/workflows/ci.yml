@@ -58,10 +58,11 @@ concurrency:
   cancel-in-progress: true
 jobs:
   changes:
-    name: Detect Rust source changes
+    name: Detect source changes
     runs-on: ${{ github.event_name == 'workflow_dispatch' && inputs.runner == 'self-hosted' && 'self-hosted' || 'ubuntu-latest' }}
     outputs:
       run_code_checks: ${{ steps.filter.outputs.run_code_checks }}
+      run_node_tests: ${{ steps.filter.outputs.run_node_tests }}
     steps:
       - name: Checkout source
         uses: actions/checkout@v6
@@ -75,9 +76,14 @@ jobs:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
-          if [[ "${EVENT_NAME}" == "schedule" || "${EVENT_NAME}" == "workflow_dispatch" ]]; then
+          emit_all() {
             echo "run_code_checks=true" >> "${GITHUB_OUTPUT}"
+            echo "run_node_tests=true" >> "${GITHUB_OUTPUT}"
             exit 0
+          }
+
+          if [[ "${EVENT_NAME}" == "schedule" || "${EVENT_NAME}" == "workflow_dispatch" ]]; then
+            emit_all
           fi
 
           if [[ "${EVENT_NAME}" == "pull_request" ]]; then
@@ -89,19 +95,16 @@ jobs:
           fi
 
           if [[ -z "${base}" ]]; then
-            echo "run_code_checks=true" >> "${GITHUB_OUTPUT}"
-            exit 0
+            emit_all
           fi
 
           if [[ "${base}" =~ ^0{40}$ ]]; then
-            echo "run_code_checks=true" >> "${GITHUB_OUTPUT}"
-            exit 0
+            emit_all
           fi
 
           changed_entries="$(git diff --name-status -M "${base}" "${head}")"
           if [[ -z "${changed_entries}" ]]; then
-            echo "run_code_checks=true" >> "${GITHUB_OUTPUT}"
-            exit 0
+            emit_all
           fi
 
           is_rust_check_path() {
@@ -117,7 +120,20 @@ jobs:
             esac
           }
 
+          is_node_test_path() {
+            local path="$1"
+            case "${path}" in
+              scripts/*.mjs | .github/scripts/*.mjs | .github/workflows/ci.yml)
+                return 0
+                ;;
+              *)
+                return 1
+                ;;
+            esac
+          }
+
           run_code_checks=false
+          run_node_tests=false
           while IFS=$'\t' read -r status path_a path_b; do
             paths=("${path_a}")
             case "${status}" in
@@ -129,12 +145,19 @@ jobs:
             for path in "${paths[@]}"; do
               if is_rust_check_path "${path}"; then
                 run_code_checks=true
-                break 2
+              fi
+              if is_node_test_path "${path}"; then
+                run_node_tests=true
               fi
             done
+
+            if [[ "${run_code_checks}" == "true" && "${run_node_tests}" == "true" ]]; then
+              break
+            fi
           done <<< "${changed_entries}"
 
           echo "run_code_checks=${run_code_checks}" >> "${GITHUB_OUTPUT}"
+          echo "run_node_tests=${run_node_tests}" >> "${GITHUB_OUTPUT}"
 
   # Format check (fastest, prerequisite for other jobs)
   format:
@@ -197,13 +220,12 @@ jobs:
     runs-on: ${{ github.event_name == 'workflow_dispatch' && inputs.runner == 'self-hosted' && 'self-hosted' || 'ubuntu-latest' }}
     needs:
       - changes
-      - format
-    if: ${{ needs.changes.outputs.run_code_checks == 'true' }}
+    if: ${{ needs.changes.outputs.run_code_checks == 'true' || needs.changes.outputs.run_node_tests == 'true' }}
     steps:
       - name: Checkout source
         uses: actions/checkout@v6
       - name: Run TAKT review wrapper helper tests
-        run: node --test --test-reporter=spec .github/scripts/*.test.mjs
+        run: node --test --test-reporter=spec .github/scripts/*.test.mjs scripts/*.test.mjs
 
   # ビルドと単体テスト
   #
@@ -530,9 +552,11 @@ jobs:
       - name: All checks passed
         env:
           RUN_CODE_CHECKS: ${{ needs.changes.outputs.run_code_checks }}
+          RUN_NODE_TESTS: ${{ needs.changes.outputs.run_node_tests }}
           EVENT_NAME: ${{ github.event_name }}
         run: |
           run_code_checks="${RUN_CODE_CHECKS}"
+          run_node_tests="${RUN_NODE_TESTS}"
           if [[ "${{ needs.changes.result }}" != "success" ]]; then
             echo "changes failed"
             exit 1
@@ -550,6 +574,13 @@ jobs:
               ;;
           esac
 
+          # Node テストジョブは run_code_checks か run_node_tests のどちらかで起動する
+          if [[ "${run_code_checks}" == "true" || "${run_node_tests}" == "true" ]]; then
+            expected_node_test_result="success"
+          else
+            expected_node_test_result="skipped"
+          fi
+
           require_result() {
             local name="$1"
             local actual="$2"
@@ -562,7 +593,7 @@ jobs:
 
           require_result "format" "${{ needs.format.result }}" "${expected_code_job_result}"
           require_result "lint" "${{ needs.lint.result }}" "${expected_code_job_result}"
-          require_result "takt-review-wrapper-tests" "${{ needs['takt-review-wrapper-tests'].result }}" "${expected_code_job_result}"
+          require_result "takt-review-wrapper-tests" "${{ needs['takt-review-wrapper-tests'].result }}" "${expected_node_test_result}"
           require_result "test" "${{ needs.test.result }}" "${expected_code_job_result}"
           require_result "integration-e2e" "${{ needs['integration-e2e'].result }}" "${expected_code_job_result}"
           require_result "coverage" "${{ needs.coverage.result }}" "${expected_code_job_result}"
