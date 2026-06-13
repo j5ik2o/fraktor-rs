@@ -4,7 +4,7 @@ use alloc::{string::String, vec::Vec};
 
 use super::{identity_setup_error::IdentitySetupError, lookup_error::LookupError, pid_cache_event::PidCacheEvent};
 use crate::{
-  activation::{ActivatedKind, PlacementEvent, PlacementResolution},
+  activation::{ActivatedKind, PlacementCoordinatorState, PlacementEvent, PlacementResolution},
   grain::GrainKey,
 };
 
@@ -100,5 +100,14 @@ pub trait IdentityLookup: Send + Sync {
   /// Drains pending PID cache events.
   fn drain_cache_events(&mut self) -> Vec<PidCacheEvent> {
     Vec::new()
+  }
+
+  /// Returns the current placement coordination state.
+  ///
+  /// The default implementation reports [`PlacementCoordinatorState::NotReady`],
+  /// matching the default `resolve` behavior. Implementations backed by a
+  /// placement coordinator override this to report the coordinator state.
+  fn placement_state(&self) -> PlacementCoordinatorState {
+    PlacementCoordinatorState::NotReady
   }
 }

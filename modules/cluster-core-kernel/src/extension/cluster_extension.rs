@@ -18,7 +18,7 @@ use fraktor_utils_core_rs::sync::{DefaultMutex, SharedAccess, SharedLock};
 use crate::{
   ClusterCore, ClusterError, ClusterEvent, ClusterMetricsSnapshot, MetricsError, TopologyUpdate,
   activation::{ActivatedKind, IdentitySetupError},
-  grain::{GrainMetrics, GrainMetricsShared, GrainMetricsSnapshot},
+  grain::{GrainMetrics, GrainMetricsShared, GrainMetricsSnapshot, GrainReadinessSnapshot},
   membership::NodeStatus,
   pub_sub::ClusterPubSubShared,
 };
@@ -418,6 +418,16 @@ impl ClusterExtension {
   #[must_use]
   pub fn virtual_actor_count(&self) -> i64 {
     self.core.with_lock(|core| core.virtual_actor_count())
+  }
+
+  /// Builds a snapshot of the inputs for grain readiness derivation.
+  ///
+  /// The snapshot reflects the runtime state at the time of the call.
+  /// Continuous monitoring is the caller's responsibility. Probe endpoint
+  /// wiring (HTTP servers etc.) is out of scope and owned by the caller.
+  #[must_use]
+  pub fn grain_readiness_snapshot(&self) -> GrainReadinessSnapshot {
+    self.core.with_lock(|core| core.grain_readiness_snapshot())
   }
 
   /// Returns blocked members cache.
