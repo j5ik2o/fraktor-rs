@@ -1,6 +1,6 @@
 # 実装計画
 
-- [ ] 1. コア: readiness 判定契約と互換キー目録を整備する
+- [x] 1. コア: readiness 判定契約と互換キー目録を整備する
 - [x] 1.1 (P) readiness 判定の型と判定規則を実装する
   - 入力（自ノードの membership 状態・placement 調整状態・登録済み kind）の写しから、固定仕様（稼働 = Up / WeaklyUp、解決可能 = Member / Client、期待 kind の包含）で ready / not ready と原因種別を導出する純粋な判定を定義する
   - 欠けた条件はすべて原因として列挙し、期待 kind が空のときは kind 条件を課さない
@@ -28,7 +28,7 @@
   - _Boundary:_ ClusterCore / ClusterExtension（統合）
   - _Depends:_ 1.1, 1.3
 
-- [ ] 3. 検証: 非回帰と範囲限定を確認する
+- [x] 3. 検証: 非回帰と範囲限定を確認する
   - 既存テスト（join 互換・membership・placement・grain）が無変更で green になることを確認する（4.1, 4.2）
   - 判定3型が alloc / core のみに依存し、no_std チェックが通過することを確認する（4.3）
   - ホスト層（adaptor-std）に差分がないこと、placement / activation の挙動・既存 join 評価結果に変更がないことを差分で確認する（4.1, 4.2）
@@ -36,3 +36,9 @@
   - _Requirements:_ 4.1, 4.2, 4.3
   - _Boundary:_ 全体検証
   - _Depends:_ 2
+
+## Implementation Notes
+
+- 自ノード status は `ClusterCore::current_cluster_state_snapshot()` 経由で取得。現状は在籍メンバーを `NodeStatus::Up` と報告する忠実度のため、判定は「在籍 = 稼働」を反映する。忠実度向上時は判定が自動追従する（設計どおり）。
+- `cluster-core-kernel` は `no-std` host-core クロスチェックの対象外。判定3型の no_std 完結は crate の `#![deny(cfg_std_forbid)]` + `cfg-std-forbid-lint`（編集ごとの hook で機械的に強制）で担保した。
+- 編集後 hook が `ci-check.sh ai fmt dylint clippy` を全 workspace で実行するため、clippy `missing_const_for_fn` / `unused_imports` / `dead_code` が中間状態で検出される。型と配線を1コミット単位で整合させること。
