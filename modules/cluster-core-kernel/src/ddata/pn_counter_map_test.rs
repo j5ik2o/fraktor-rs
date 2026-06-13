@@ -195,6 +195,15 @@ fn get_propagates_nested_counter_overflow() {
 
 proptest! {
   #[test]
+  fn merge_delta_matches_full_state_merge(base_ops in op_strategy(), delta_ops in op_strategy()) {
+    let base = map_from_ops(&base_ops);
+    let full_with_delta = map_from_ops(&delta_ops);
+    let delta = full_with_delta.delta().unwrap_or_else(PNCounterMap::new);
+
+    prop_assert_eq!(base.merge_delta(&delta), base.merge(&full_with_delta));
+  }
+
+  #[test]
   fn merge_is_commutative(left_ops in op_strategy(), right_ops in op_strategy()) {
     let left = map_from_ops(&left_ops);
     let right = map_from_ops(&right_ops);
