@@ -26,6 +26,14 @@ export function resolveWorkflowPath(root, workflowName) {
   return workflowCandidates.find((path) => existsSync(path));
 }
 
+// Kiro skill の auto-approve フラグは takt の CLI オプションではなく task 本文の一部として
+// 渡す（例: `npm run kiro:spec:design -- my-feature -y`）。takt に渡すと unknown option になる
+const KIRO_TASK_FLAGS = new Set(["-y", "--auto"]);
+
+function isTaktOptionLike(arg) {
+  return arg.startsWith("-") && !KIRO_TASK_FLAGS.has(arg);
+}
+
 function stripTaskFlagForHelp(args) {
   const isHelpFlag = (arg) => arg === "--help" || arg === "-h";
   const taskArgIndex = args.findIndex((arg) => arg === "-t" || arg === "--task");
@@ -40,7 +48,7 @@ function stripTaskFlagForHelp(args) {
     const separatorIndex = rest.indexOf("--");
     if (separatorIndex !== -1) {
       helpZone = [...args.slice(0, taskArgIndex), ...rest.slice(0, separatorIndex)];
-    } else if (rest[0]?.startsWith("-")) {
+    } else if (rest[0] !== undefined && isTaktOptionLike(rest[0])) {
       helpZone = [...args.slice(0, taskArgIndex), ...rest];
     } else {
       helpZone = args.slice(0, taskArgIndex);
@@ -73,7 +81,7 @@ export function resolveForwardedArgs(args) {
   const optionZone = separatorIndex === -1 ? afterTask : afterTask.slice(0, separatorIndex);
   const hasPayload =
     separatorIndex === -1
-      ? afterTask.length > 0 && !afterTask[0].startsWith("-")
+      ? afterTask.length > 0 && !isTaktOptionLike(afterTask[0])
       : afterTask.length > separatorIndex + 1;
 
   // 利用者が task 本文を渡している、または help 要求のときは補わない
@@ -117,16 +125,16 @@ export function collapseTaskPayload(args) {
 
   // 区切りなしでオプションらしき引数が先頭に来ている場合は、task 本文へ
   // 飲み込まず明示的に使い方エラーにする（--provider 等の値の区切りが曖昧なため）
-  if (rest[0]?.startsWith("-")) {
+  if (rest[0] !== undefined && isTaktOptionLike(rest[0])) {
     throw new Error(
       "Takt options must be separated from the task text: " +
         'npm run kiro:<command> -- [takt options...] -- "task text"',
     );
   }
 
-  // 区切りなしの場合、最初のオプションらしき引数以降は task 本文に結合せず、
+  // 区切りなしの場合、最初の takt オプションらしき引数以降は task 本文に結合せず、
   // 直接 `takt -t <task> --provider mock` と同じ並びで task 値の後ろへ温存する
-  const firstOptionIndex = rest.findIndex((arg) => arg.startsWith("-"));
+  const firstOptionIndex = rest.findIndex(isTaktOptionLike);
   if (firstOptionIndex === -1) {
     return [...args.slice(0, taskArgIndex + 1), rest.join(" ")];
   }
