@@ -63,6 +63,26 @@ fn increment_decrement_and_get_are_key_scoped() {
 }
 
 #[test]
+fn entries_surface_reports_visible_counter_values() {
+  let map = PNCounterMap::new()
+    .increment(&self_address(0), 1, 7)
+    .expect("increment must fit")
+    .decrement(&self_address(1), 1, 2)
+    .expect("decrement must fit")
+    .increment(&self_address(2), 2, 11)
+    .expect("increment must fit");
+
+  let mut expected = BTreeMap::new();
+  expected.insert(1, 5);
+  expected.insert(2, 11);
+
+  assert_eq!(map.entries(), Ok(expected));
+  assert!(map.contains_key(&1));
+  assert_eq!(map.len(), 2);
+  assert!(!map.is_empty());
+}
+
+#[test]
 fn merge_unions_keys_and_merges_shared_counters() {
   let left = PNCounterMap::new()
     .increment(&self_address(0), 1, 7)
@@ -80,6 +100,56 @@ fn merge_unions_keys_and_merges_shared_counters() {
   assert_eq!(merged.get(&1), Ok(Some(5)));
   assert_eq!(merged.get(&2), Ok(Some(3)));
   assert_eq!(merged.get(&3), Ok(Some(4)));
+}
+
+#[test]
+fn remove_drops_observed_key_after_full_state_merge() {
+  let left = PNCounterMap::new()
+    .increment(&self_address(0), 1, 1)
+    .expect("increment must fit")
+    .increment(&self_address(0), 2, 3)
+    .expect("increment must fit")
+    .increment(&self_address(0), 3, 2)
+    .expect("increment must fit");
+  let right = PNCounterMap::new().increment(&self_address(1), 3, 5).expect("increment must fit");
+  let merged = left.merge(&right);
+
+  let removed = merged.remove(&2);
+  let merged_after_remove = merged.merge(&removed);
+
+  let mut expected = BTreeMap::new();
+  expected.insert(1, 1);
+  expected.insert(3, 7);
+
+  assert_eq!(merged_after_remove.entries(), Ok(expected));
+  assert_eq!(merged_after_remove.get(&2), Ok(None));
+}
+
+#[test]
+fn remove_keeps_concurrent_full_state_update() {
+  let left = PNCounterMap::new()
+    .increment(&self_address(0), 1, 1)
+    .expect("increment must fit")
+    .increment(&self_address(0), 2, 3)
+    .expect("increment must fit")
+    .increment(&self_address(0), 3, 2)
+    .expect("increment must fit");
+  let right = PNCounterMap::new().increment(&self_address(1), 3, 5).expect("increment must fit");
+  let merged = left.merge(&right);
+
+  let removed = merged.remove(&2);
+  let concurrent = merged.increment(&self_address(1), 2, 10).expect("increment must fit");
+
+  assert_eq!(removed.merge(&concurrent).get(&2), Ok(Some(13)));
+}
+
+#[test]
+fn remove_then_recreate_ignores_stale_observed_value() {
+  let original = PNCounterMap::new().increment(&self_address(0), 1, 5).expect("increment must fit");
+  let recreated = original.remove(&1).increment(&self_address(0), 1, 1).expect("increment must fit");
+
+  assert_eq!(recreated.get(&1), Ok(Some(1)));
+  assert_eq!(recreated.merge(&original).get(&1), Ok(Some(1)));
 }
 
 #[test]
@@ -110,6 +180,43 @@ fn merge_delta_preserves_local_delta() {
   assert_eq!(merged.get(&2), Ok(Some(-2)));
   assert_eq!(remaining_delta.get(&1), Ok(Some(7)));
   assert_eq!(remaining_delta.get(&2), Ok(None));
+}
+
+#[test]
+fn remove_delta_drops_observed_key() {
+  let left = PNCounterMap::new()
+    .increment(&self_address(0), 1, 1)
+    .expect("increment must fit")
+    .increment(&self_address(0), 2, 3)
+    .expect("increment must fit")
+    .increment(&self_address(0), 3, 2)
+    .expect("increment must fit");
+  let right = PNCounterMap::new().increment(&self_address(1), 3, 5).expect("increment must fit");
+  let merged = left.merge(&right);
+
+  let removed = merged.reset_delta().remove(&2);
+  let remove_delta = removed.delta().expect("remove must create delta");
+
+  assert_eq!(merged.merge_delta(&remove_delta).get(&2), Ok(None));
+}
+
+#[test]
+fn remove_delta_keeps_concurrent_update_delta() {
+  let left = PNCounterMap::new()
+    .increment(&self_address(0), 1, 1)
+    .expect("increment must fit")
+    .increment(&self_address(0), 2, 3)
+    .expect("increment must fit")
+    .increment(&self_address(0), 3, 2)
+    .expect("increment must fit");
+  let right = PNCounterMap::new().increment(&self_address(1), 3, 5).expect("increment must fit");
+  let merged = left.merge(&right);
+
+  let removed = merged.reset_delta().remove(&2);
+  let concurrent = merged.reset_delta().increment(&self_address(1), 2, 10).expect("increment must fit");
+  let concurrent_delta = concurrent.delta().expect("concurrent update must create delta");
+
+  assert_eq!(removed.merge_delta(&concurrent_delta).get(&2), Ok(Some(13)));
 }
 
 #[test]
@@ -208,9 +315,17 @@ fn get_propagates_nested_counter_overflow() {
   let counter = PNCounter::from_parts(g_counter_with_slot(0, u128::MAX), GCounter::new());
   let mut entries = BTreeMap::new();
   entries.insert(1, counter);
-  let map = PNCounterMap { entries, delta: BTreeMap::new() };
+  let map = PNCounterMap {
+    entries,
+    dots: BTreeMap::new(),
+    removed_dots: BTreeMap::new(),
+    delta: BTreeMap::new(),
+    delta_dots: BTreeMap::new(),
+    delta_removed_dots: BTreeMap::new(),
+  };
 
   assert_eq!(map.get(&1), Err(CounterArithmeticError::Overflow));
+  assert_eq!(map.entries(), Err(CounterArithmeticError::Overflow));
 }
 
 proptest! {
