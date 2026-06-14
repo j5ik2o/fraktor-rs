@@ -14,6 +14,9 @@ use super::{
 };
 
 /// CRDT map whose values are positive-negative counters.
+///
+/// Equality is based on the visible counter entries only; causal dot metadata is internal
+/// convergence state.
 #[derive(Debug, Clone)]
 pub struct PNCounterMap<K> {
   entries:            BTreeMap<K, PNCounter>,
