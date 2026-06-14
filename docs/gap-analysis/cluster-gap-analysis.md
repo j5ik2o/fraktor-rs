@@ -325,7 +325,7 @@ ClusterClient 系（deprecated）、`@InternalApi` 型、JMX / HOCON / JFR / Jav
 
 ## まとめ
 
-cluster は membership / gossip / heartbeat / reachability / downing decision model / typed Cluster facade / Grain runtime / PubSub / discovery provider / message serializer contract という基礎契約は強く、カテゴリ 1, 2, 4, 5, 7, 10 は 73〜93% のカバレッジに達している。全体カバレッジは 99/151 (66%) で、未実装の大半は Cluster Singleton（30%）、Distributed Data / CRDT（26%）、Pekko sharding public API 形態（48%）の 3 領域に集中している。
+cluster は membership / gossip / heartbeat / reachability / downing decision model / typed Cluster facade / Grain runtime / PubSub / discovery provider / message serializer contract という基礎契約は強く、カテゴリ 1, 2, 4, 5, 7, 10 は 82〜100% のカバレッジに達している。全体カバレッジは 99/151 (66%) で、未実装の大半は Cluster Singleton（30%）、Distributed Data / CRDT（26%）、Pekko sharding public API 形態（48%）の 3 領域に集中している。
 
 低コストで parity を前進できるのは、Phase 1 の `CrossDcFailureDetectorSettings`、routee 更新の std 配線、typed `ClusterSingletonManagerSettings` wrapper、mediator 全体 `Count`、Pekko 形態の `EntityTypeKey[M]` / typed `EntityRef[M]` API、`JoinConfigCompatCheckSharding`、および Phase 2 の `prepareForFullClusterShutdown` command path（kernel + typed を 1 change で閉じられる）である。Phase 1 のうち singleton / sharding setup や health check は依存 / 束ね先の基盤と同時に扱う。
 
