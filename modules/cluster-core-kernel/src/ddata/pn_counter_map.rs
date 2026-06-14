@@ -19,6 +19,7 @@ use super::{
 /// that state affects future merges.
 #[derive(Debug, Clone)]
 pub struct PNCounterMap<K> {
+  // Invariant: every visible entry has a matching dot map; merge derives candidates from dots.
   entries:            BTreeMap<K, PNCounter>,
   dots:               BTreeMap<K, BTreeMap<UniqueAddress, u64>>,
   removed_dots:       BTreeMap<K, BTreeMap<UniqueAddress, u64>>,
@@ -372,7 +373,10 @@ where
     let removed_dots = self
       .removed_dots
       .iter()
-      .map(|(key, key_dots)| (key.clone(), pruning_cleanup_dots(key_dots, removed_node)))
+      .filter_map(|(key, key_dots)| {
+        let key_dots = pruning_cleanup_dots(key_dots, removed_node);
+        if key_dots.is_empty() { None } else { Some((key.clone(), key_dots)) }
+      })
       .collect();
     let delta = self
       .delta
@@ -433,6 +437,9 @@ fn merge_entries<K>(
 ) -> (BTreeMap<K, PNCounter>, BTreeMap<K, BTreeMap<UniqueAddress, u64>>)
 where
   K: Ord + Clone, {
+  debug_assert!(left_entries.keys().all(|key| left_dots.contains_key(key)));
+  debug_assert!(right_entries.keys().all(|key| right_dots.contains_key(key)));
+
   let mut keys = BTreeSet::new();
   keys.extend(left_dots.keys().cloned());
   keys.extend(right_dots.keys().cloned());

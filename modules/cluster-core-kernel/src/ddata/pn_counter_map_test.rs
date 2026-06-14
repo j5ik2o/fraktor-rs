@@ -25,18 +25,42 @@ fn self_address(index: usize) -> SelfUniqueAddress {
   SelfUniqueAddress::new(unique_address(index))
 }
 
-fn map_from_ops(ops: &[(usize, u8, bool, u64)]) -> PNCounterMap<u8> {
+#[derive(Debug, Clone)]
+enum MapOp {
+  Increment { index: usize, key: u8, amount: u64 },
+  Decrement { index: usize, key: u8, amount: u64 },
+  Remove { key: u8 },
+}
+
+fn map_from_ops(ops: &[MapOp]) -> PNCounterMap<u8> {
   let mut map = PNCounterMap::new();
-  for (index, key, increment, amount) in ops {
-    let node = self_address(*index);
-    map = if *increment { map.increment(&node, *key, *amount) } else { map.decrement(&node, *key, *amount) }
-      .expect("small generated increments must fit");
+  for op in ops {
+    map = match op {
+      | MapOp::Increment { index, key, amount } => {
+        map.increment(&self_address(*index), *key, *amount).expect("small generated increments must fit")
+      },
+      | MapOp::Decrement { index, key, amount } => {
+        map.decrement(&self_address(*index), *key, *amount).expect("small generated decrements must fit")
+      },
+      | MapOp::Remove { key } => map.remove(key),
+    };
   }
   map
 }
 
-fn op_strategy() -> impl Strategy<Value = Vec<(usize, u8, bool, u64)>> {
-  prop::collection::vec((0_usize..4, 0_u8..4, any::<bool>(), 0_u64..20), 0..24)
+fn op_strategy_for_nodes(nodes: impl Strategy<Value = usize> + Clone + 'static) -> impl Strategy<Value = Vec<MapOp>> {
+  prop::collection::vec(
+    prop_oneof![
+      (nodes.clone(), 0_u8..4, 0_u64..20).prop_map(|(index, key, amount)| MapOp::Increment { index, key, amount }),
+      (nodes, 0_u8..4, 0_u64..20).prop_map(|(index, key, amount)| MapOp::Decrement { index, key, amount }),
+      (0_u8..4).prop_map(|key| MapOp::Remove { key }),
+    ],
+    0..24,
+  )
+}
+
+fn op_strategy() -> impl Strategy<Value = Vec<MapOp>> {
+  op_strategy_for_nodes(0_usize..4)
 }
 
 fn g_counter_with_slot(index: usize, value: u128) -> GCounter {
@@ -300,6 +324,17 @@ fn pruning_cleanup_drops_emptied_delta_entries() {
 }
 
 #[test]
+fn pruning_cleanup_drops_emptied_removed_dots_entries() {
+  let removed = self_address(0);
+  let map = PNCounterMap::new().increment(&removed, 1, 7).expect("increment must fit").remove(&1);
+
+  let cleaned = map.pruning_cleanup(removed.unique_address());
+
+  assert!(cleaned.removed_dots.is_empty());
+  assert_eq!(cleaned, PNCounterMap::new());
+}
+
+#[test]
 fn pruning_delegates_to_entries() {
   let removed = self_address(0);
   let collapse_into = self_address(1);
@@ -382,7 +417,10 @@ fn get_propagates_nested_counter_overflow() {
 
 proptest! {
   #[test]
-  fn merge_delta_matches_full_state_merge(base_ops in op_strategy(), delta_ops in op_strategy()) {
+  fn merge_delta_matches_full_state_merge(
+    base_ops in op_strategy_for_nodes(0_usize..2),
+    delta_ops in op_strategy_for_nodes(2_usize..4),
+  ) {
     let base = map_from_ops(&base_ops);
     let full_with_delta = map_from_ops(&delta_ops);
     let delta = full_with_delta.delta().unwrap_or_else(PNCounterMap::new);
@@ -391,7 +429,7 @@ proptest! {
   }
 
   #[test]
-  fn merge_is_commutative(left_ops in op_strategy(), right_ops in op_strategy()) {
+  fn merge_is_commutative(left_ops in op_strategy_for_nodes(0_usize..2), right_ops in op_strategy_for_nodes(2_usize..4)) {
     let left = map_from_ops(&left_ops);
     let right = map_from_ops(&right_ops);
 
@@ -399,7 +437,11 @@ proptest! {
   }
 
   #[test]
-  fn merge_is_associative(left_ops in op_strategy(), middle_ops in op_strategy(), right_ops in op_strategy()) {
+  fn merge_is_associative(
+    left_ops in op_strategy_for_nodes(0_usize..1),
+    middle_ops in op_strategy_for_nodes(1_usize..2),
+    right_ops in op_strategy_for_nodes(2_usize..3),
+  ) {
     let left = map_from_ops(&left_ops);
     let middle = map_from_ops(&middle_ops);
     let right = map_from_ops(&right_ops);
