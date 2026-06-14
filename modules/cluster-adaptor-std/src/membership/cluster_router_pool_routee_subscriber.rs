@@ -23,7 +23,14 @@ pub struct ClusterRouterPoolRouteeSubscriber {
   router:           SharedLock<ClusterRouterPool>,
   self_authority:   String,
   members:          Vec<NodeRecord>,
-  status_overrides: Vec<(String, NodeStatus)>,
+  status_overrides: Vec<StatusOverride>,
+}
+
+#[derive(Clone)]
+struct StatusOverride {
+  node_id:   String,
+  authority: String,
+  status:    NodeStatus,
 }
 
 impl ClusterRouterPoolRouteeSubscriber {
@@ -52,12 +59,19 @@ impl ClusterRouterPoolRouteeSubscriber {
   }
 
   fn replace_member_authorities(&mut self, authorities: &[String], version: MembershipVersion) {
+    let existing_members = self.members.clone();
     self.members = authorities
       .iter()
       .cloned()
       .map(|authority| {
-        let node_id = authority.clone();
-        NodeRecord::new(node_id, authority, NodeStatus::Up, version, String::new(), Vec::new())
+        if let Some(existing) = existing_members.iter().find(|member| member.authority == authority) {
+          let mut member = existing.clone();
+          member.version = version;
+          member
+        } else {
+          let node_id = authority.clone();
+          NodeRecord::new(node_id, authority, NodeStatus::Up, version, String::new(), Vec::new())
+        }
       })
       .collect();
     self.retain_status_overrides_for_current_members();
@@ -66,8 +80,10 @@ impl ClusterRouterPoolRouteeSubscriber {
   }
 
   fn apply_member_status(&mut self, node_id: &str, authority: &str, to: NodeStatus) {
-    self.record_status_override(authority, to);
-    if let Some(member) = self.members.iter_mut().find(|member| member.authority == authority) {
+    self.record_status_override(node_id, authority, to);
+    if let Some(member) =
+      self.members.iter_mut().find(|member| member.node_id == node_id && member.authority == authority)
+    {
       member.status = to;
     } else {
       self.members.push(NodeRecord::new(
@@ -84,29 +100,43 @@ impl ClusterRouterPoolRouteeSubscriber {
 
   fn apply_status_overrides(&mut self) {
     for member in &mut self.members {
-      if let Some((_, status)) = self.status_overrides.iter().find(|(authority, _)| authority == &member.authority) {
-        member.status = *status;
+      if let Some(override_status) = self.status_overrides.iter().find(|override_status| {
+        override_status.node_id == member.node_id && override_status.authority == member.authority
+      }) {
+        member.status = override_status.status;
       }
     }
   }
 
   fn retain_status_overrides_for_current_members(&mut self) {
     let members = &self.members;
-    self.status_overrides.retain(|(authority, _)| members.iter().any(|member| &member.authority == authority));
+    self.status_overrides.retain(|override_status| {
+      members
+        .iter()
+        .any(|member| member.node_id == override_status.node_id && member.authority == override_status.authority)
+    });
   }
 
-  fn record_status_override(&mut self, authority: &str, status: NodeStatus) {
+  fn record_status_override(&mut self, node_id: &str, authority: &str, status: NodeStatus) {
     if status == NodeStatus::Up {
-      self.status_overrides.retain(|(recorded_authority, _)| recorded_authority != authority);
+      self
+        .status_overrides
+        .retain(|override_status| override_status.node_id != node_id || override_status.authority != authority);
       return;
     }
-    if let Some((_, recorded_status)) =
-      self.status_overrides.iter_mut().find(|(recorded_authority, _)| recorded_authority == authority)
+    if let Some(override_status) = self
+      .status_overrides
+      .iter_mut()
+      .find(|override_status| override_status.node_id == node_id && override_status.authority == authority)
     {
-      *recorded_status = status;
+      override_status.status = status;
       return;
     }
-    self.status_overrides.push((String::from(authority), status));
+    self.status_overrides.push(StatusOverride {
+      node_id: String::from(node_id),
+      authority: String::from(authority),
+      status,
+    });
   }
 
   fn update_router(&self) {

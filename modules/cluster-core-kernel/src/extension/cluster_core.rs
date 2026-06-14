@@ -37,27 +37,28 @@ use crate::{
 
 /// Aggregates configuration and shared dependencies for cluster runtime flows.
 pub struct ClusterCore {
-  provider:                ClusterProviderShared,
-  block_list_provider:     ArcShared<dyn BlockListProvider>,
-  event_stream:            EventStreamShared,
-  downing_provider:        SharedLock<Box<dyn DowningProvider>>,
-  gossiper:                GossiperShared,
-  pub_sub:                 ClusterPubSubShared,
+  provider: ClusterProviderShared,
+  block_list_provider: ArcShared<dyn BlockListProvider>,
+  event_stream: EventStreamShared,
+  downing_provider: SharedLock<Box<dyn DowningProvider>>,
+  gossiper: GossiperShared,
+  pub_sub: ClusterPubSubShared,
   failure_detector_config: FailureDetectorConfig,
-  startup_state:           ClusterStartupState,
-  metrics_enabled:         bool,
-  kind_registry:           KindRegistry,
-  identity_lookup:         IdentityLookupShared,
-  virtual_actor_count:     i64,
-  mode:                    Option<StartupMode>,
-  metrics:                 Option<ClusterMetrics>,
-  blocked_members:         Vec<String>,
-  member_count:            usize,
-  pid_cache:               Option<PidCache>,
-  last_topology_hash:      Option<u64>,
-  current_members:         Vec<String>,
-  observed_at:             TimerInstant,
-  preparing_for_shutdown:  bool,
+  startup_state: ClusterStartupState,
+  metrics_enabled: bool,
+  kind_registry: KindRegistry,
+  identity_lookup: IdentityLookupShared,
+  virtual_actor_count: i64,
+  mode: Option<StartupMode>,
+  metrics: Option<ClusterMetrics>,
+  blocked_members: Vec<String>,
+  member_count: usize,
+  pid_cache: Option<PidCache>,
+  last_topology_hash: Option<u64>,
+  current_members: Vec<String>,
+  observed_at: TimerInstant,
+  preparing_for_shutdown: bool,
+  shutdown_prepared_members: BTreeSet<String>,
 }
 
 impl ClusterCore {
@@ -102,6 +103,7 @@ impl ClusterCore {
       current_members: Vec::new(),
       observed_at: TimerInstant::zero(Duration::from_secs(1)),
       preparing_for_shutdown: false,
+      shutdown_prepared_members: BTreeSet::new(),
     }
   }
 
@@ -302,6 +304,7 @@ impl ClusterCore {
         self.current_members = Vec::from([address.clone()]);
         self.observed_at = TimerInstant::zero(Duration::from_secs(1));
         self.preparing_for_shutdown = false;
+        self.shutdown_prepared_members.clear();
         self.update_metrics(self.member_count, self.virtual_actor_count);
         self.publish_cluster_event(ClusterEvent::Startup { address, mode: StartupMode::Member });
         Ok(())
@@ -360,6 +363,7 @@ impl ClusterCore {
         self.current_members = Vec::from([address.clone()]);
         self.observed_at = TimerInstant::zero(Duration::from_secs(1));
         self.preparing_for_shutdown = false;
+        self.shutdown_prepared_members.clear();
         self.update_metrics(self.member_count, self.virtual_actor_count);
         self.publish_cluster_event(ClusterEvent::Startup { address, mode: StartupMode::Client });
         Ok(())
@@ -407,6 +411,7 @@ impl ClusterCore {
         self.observed_at = TimerInstant::zero(Duration::from_secs(1));
         self.last_topology_hash = None;
         self.preparing_for_shutdown = false;
+        self.shutdown_prepared_members.clear();
         self.mode = None;
         self.publish_cluster_event(ClusterEvent::Shutdown { address, mode });
         Ok(())
@@ -480,25 +485,31 @@ impl ClusterCore {
         "full-cluster shutdown preparation requires member mode",
       )));
     }
-    if self.preparing_for_shutdown {
+    self.preparing_for_shutdown = true;
+    let observed_at = self.observed_at;
+    let members_to_prepare = self
+      .current_members
+      .iter()
+      .filter(|authority| !self.shutdown_prepared_members.contains(*authority))
+      .cloned()
+      .collect::<Vec<_>>();
+    if members_to_prepare.is_empty() {
       return Ok(Vec::new());
     }
-    let (state, observed_at) = self.current_cluster_state_snapshot();
-    self.preparing_for_shutdown = true;
+
     let mut events = Vec::new();
-    for member in state.members.iter().filter(|member| member.status == NodeStatus::Up) {
+    let (prepared_state, _) = self.current_cluster_state_snapshot();
+    events.push(ClusterEvent::CurrentClusterState { state: prepared_state, observed_at });
+    for authority in members_to_prepare {
+      self.shutdown_prepared_members.insert(authority.clone());
       events.push(ClusterEvent::MemberStatusChanged {
-        node_id: member.node_id.clone(),
-        authority: member.authority.clone(),
+        node_id: authority.clone(),
+        authority: authority.clone(),
         from: NodeStatus::Up,
         to: NodeStatus::PreparingForShutdown,
         observed_at,
       });
-      events.push(ClusterEvent::MemberPreparingForShutdown {
-        node_id: member.node_id.clone(),
-        authority: member.authority.clone(),
-        observed_at,
-      });
+      events.push(ClusterEvent::MemberPreparingForShutdown { node_id: authority.clone(), authority, observed_at });
     }
     Ok(events)
   }
@@ -572,6 +583,10 @@ impl ClusterCore {
     self.update_metrics(self.member_count, self.virtual_actor_count);
     self.current_members = update.members.clone();
     self.observed_at = update.observed_at;
+    if self.preparing_for_shutdown {
+      let members = &self.current_members;
+      self.shutdown_prepared_members.retain(|authority| members.contains(authority));
+    }
 
     if let Some(cache) = self.pid_cache.as_mut() {
       for authority in update.left.iter().chain(update.dead.iter()) {

@@ -467,9 +467,15 @@ fn prepare_for_full_cluster_shutdown_publishes_preparing_events_once() {
   api.prepare_for_full_cluster_shutdown().expect("prepare shutdown");
 
   let events = recorder.events();
-  assert_eq!(events.len(), 4);
+  assert_eq!(events.len(), 5);
   assert!(matches!(
     &events[0],
+    ClusterEvent::CurrentClusterState { state, observed_at }
+      if observed_at.ticks() == 11
+        && state.members.iter().all(|member| member.status == NodeStatus::PreparingForShutdown)
+  ));
+  assert!(matches!(
+    &events[1],
     ClusterEvent::MemberStatusChanged {
       authority,
       from: NodeStatus::Up,
@@ -479,12 +485,12 @@ fn prepare_for_full_cluster_shutdown_publishes_preparing_events_once() {
     } if authority == "node1:8080" && observed_at.ticks() == 11
   ));
   assert!(matches!(
-    &events[1],
+    &events[2],
     ClusterEvent::MemberPreparingForShutdown { authority, observed_at, .. }
       if authority == "node1:8080" && observed_at.ticks() == 11
   ));
   assert!(matches!(
-    &events[2],
+    &events[3],
     ClusterEvent::MemberStatusChanged {
       authority,
       from: NodeStatus::Up,
@@ -494,7 +500,7 @@ fn prepare_for_full_cluster_shutdown_publishes_preparing_events_once() {
     } if authority == "node2:8080" && observed_at.ticks() == 11
   ));
   assert!(matches!(
-    &events[3],
+    &events[4],
     ClusterEvent::MemberPreparingForShutdown { authority, observed_at, .. }
       if authority == "node2:8080" && observed_at.ticks() == 11
   ));
@@ -505,6 +511,81 @@ fn prepare_for_full_cluster_shutdown_publishes_preparing_events_once() {
   api.prepare_for_full_cluster_shutdown().expect("prepare shutdown is idempotent");
 
   assert!(recorder.events().is_empty());
+}
+
+#[test]
+fn prepare_for_full_cluster_shutdown_notifies_current_state_subscribers() {
+  let (system, extension) = build_system_with_extension(|| Box::new(StaticIdentityLookup::new("node1:8080")));
+  extension.start_member().expect("start member");
+  extension.on_topology(&build_topology_update(11, vec![String::from("node2:8080")], Vec::new()));
+
+  let api = ClusterApi::try_from_system(&system).expect("cluster api");
+  let recorder = RecordingClusterEvents::new();
+  let subscriber = test_subscriber_handle(recorder.clone());
+  let _subscription = api.subscribe_no_replay(&subscriber, &[ClusterEventType::CurrentClusterState]);
+
+  api.prepare_for_full_cluster_shutdown().expect("prepare shutdown");
+
+  let events = recorder.events();
+  assert_eq!(events.len(), 1);
+  assert!(matches!(
+    &events[0],
+    ClusterEvent::CurrentClusterState { state, observed_at }
+      if observed_at.ticks() == 11
+        && state.members.iter().all(|member| member.status == NodeStatus::PreparingForShutdown)
+  ));
+}
+
+#[test]
+fn prepare_for_full_cluster_shutdown_notifies_new_members_on_rerun() {
+  let (system, extension) = build_system_with_extension(|| Box::new(StaticIdentityLookup::new("node1:8080")));
+  extension.start_member().expect("start member");
+  extension.on_topology(&build_topology_update(11, vec![String::from("node2:8080")], Vec::new()));
+
+  let recorder = RecordingClusterEvents::new();
+  let subscriber = test_subscriber_handle(recorder.clone());
+  let _subscription = system.event_stream().subscribe_no_replay(&subscriber);
+  let api = ClusterApi::try_from_system(&system).expect("cluster api");
+
+  api.prepare_for_full_cluster_shutdown().expect("prepare shutdown");
+  recorder.clear();
+  let update = TopologyUpdate::new(
+    ClusterTopology::new(12, vec![String::from("node3:8080")], Vec::new(), Vec::new()),
+    vec![String::from("node1:8080"), String::from("node2:8080"), String::from("node3:8080")],
+    vec![String::from("node3:8080")],
+    Vec::new(),
+    Vec::new(),
+    Vec::new(),
+    TimerInstant::from_ticks(12, Duration::from_secs(1)),
+  );
+  extension.on_topology(&update);
+  recorder.clear();
+
+  api.prepare_for_full_cluster_shutdown().expect("prepare shutdown again");
+
+  let events = recorder.events();
+  assert_eq!(events.len(), 3);
+  assert!(matches!(
+    &events[0],
+    ClusterEvent::CurrentClusterState { state, observed_at }
+      if observed_at.ticks() == 12
+        && state.members.iter().all(|member| member.status == NodeStatus::PreparingForShutdown)
+  ));
+  assert!(matches!(
+    &events[1],
+    ClusterEvent::MemberStatusChanged {
+      authority,
+      from: NodeStatus::Up,
+      to: NodeStatus::PreparingForShutdown,
+      observed_at,
+      ..
+    } if authority == "node3:8080" && observed_at.ticks() == 12
+  ));
+  assert!(matches!(
+    &events[2],
+    ClusterEvent::MemberPreparingForShutdown { authority, observed_at, .. }
+      if authority == "node3:8080" && observed_at.ticks() == 12
+  ));
 }
 
 #[test]
