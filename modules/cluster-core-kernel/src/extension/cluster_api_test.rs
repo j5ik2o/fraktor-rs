@@ -27,7 +27,7 @@ use fraktor_utils_core_rs::{
 };
 
 use crate::{
-  ClusterApi, ClusterApiError, ClusterEvent, ClusterEventType, ClusterExtension, ClusterExtensionConfig,
+  ClusterApi, ClusterApiError, ClusterError, ClusterEvent, ClusterEventType, ClusterExtension, ClusterExtensionConfig,
   ClusterProviderError, ClusterRequestError, ClusterResolveError, ClusterSubscriptionInitialStateMode, ClusterTopology,
   MetricsError, TopologyUpdate,
   activation::{
@@ -454,6 +454,93 @@ fn current_state_returns_current_cluster_state_snapshot() {
 }
 
 #[test]
+fn prepare_for_full_cluster_shutdown_publishes_preparing_events_once() {
+  let (system, extension) = build_system_with_extension(|| Box::new(StaticIdentityLookup::new("node1:8080")));
+  extension.start_member().expect("start member");
+  extension.on_topology(&build_topology_update(11, vec![String::from("node2:8080")], Vec::new()));
+
+  let recorder = RecordingClusterEvents::new();
+  let subscriber = test_subscriber_handle(recorder.clone());
+  let _subscription = system.event_stream().subscribe_no_replay(&subscriber);
+  let api = ClusterApi::try_from_system(&system).expect("cluster api");
+
+  api.prepare_for_full_cluster_shutdown().expect("prepare shutdown");
+
+  let events = recorder.events();
+  assert_eq!(events.len(), 4);
+  assert!(matches!(
+    &events[0],
+    ClusterEvent::MemberStatusChanged {
+      authority,
+      from: NodeStatus::Up,
+      to: NodeStatus::PreparingForShutdown,
+      observed_at,
+      ..
+    } if authority == "node1:8080" && observed_at.ticks() == 11
+  ));
+  assert!(matches!(
+    &events[1],
+    ClusterEvent::MemberPreparingForShutdown { authority, observed_at, .. }
+      if authority == "node1:8080" && observed_at.ticks() == 11
+  ));
+  assert!(matches!(
+    &events[2],
+    ClusterEvent::MemberStatusChanged {
+      authority,
+      from: NodeStatus::Up,
+      to: NodeStatus::PreparingForShutdown,
+      observed_at,
+      ..
+    } if authority == "node2:8080" && observed_at.ticks() == 11
+  ));
+  assert!(matches!(
+    &events[3],
+    ClusterEvent::MemberPreparingForShutdown { authority, observed_at, .. }
+      if authority == "node2:8080" && observed_at.ticks() == 11
+  ));
+  let state = api.current_state();
+  assert!(state.members.iter().all(|member| member.status == NodeStatus::PreparingForShutdown));
+
+  recorder.clear();
+  api.prepare_for_full_cluster_shutdown().expect("prepare shutdown is idempotent");
+
+  assert!(recorder.events().is_empty());
+}
+
+#[test]
+fn prepare_for_full_cluster_shutdown_allows_subscribers_to_read_current_state() {
+  let (system, extension) = build_system_with_extension(|| Box::new(StaticIdentityLookup::new("node1:8080")));
+  extension.start_member().expect("start member");
+  extension.on_topology(&build_topology_update(11, vec![String::from("node2:8080")], Vec::new()));
+
+  let api = ClusterApi::try_from_system(&system).expect("cluster api");
+  let state_reader = CurrentStateDuringShutdownSubscriber::new(api.clone());
+  let subscriber = test_subscriber_handle(state_reader.clone());
+  let _subscription = system.event_stream().subscribe_no_replay(&subscriber);
+
+  api.prepare_for_full_cluster_shutdown().expect("prepare shutdown");
+
+  let statuses = state_reader.statuses();
+  assert_eq!(statuses.len(), 2);
+  assert!(statuses.iter().all(|snapshot| snapshot.iter().all(|status| *status == NodeStatus::PreparingForShutdown)));
+}
+
+#[test]
+fn prepare_for_full_cluster_shutdown_rejects_client_mode() {
+  let (system, extension) = build_system_with_extension(|| Box::new(StaticIdentityLookup::new("node1:8080")));
+  extension.start_client().expect("start client");
+
+  let api = ClusterApi::try_from_system(&system).expect("cluster api");
+  let err = api.prepare_for_full_cluster_shutdown().expect_err("client mode rejected");
+
+  assert!(matches!(
+    err,
+    ClusterError::Provider(ClusterProviderError::ShutdownFailed(reason))
+      if reason == "full-cluster shutdown preparation requires member mode"
+  ));
+}
+
+#[test]
 fn subscribe_no_replay_skips_buffered_cluster_events() {
   let (system, extension) = build_system_with_extension(|| Box::new(StaticIdentityLookup::new("node1:8080")));
   extension.start_member().expect("start member");
@@ -708,6 +795,34 @@ impl EventStreamSubscriber for RecordingClusterEvents {
       && let Some(cluster_event) = payload.payload().downcast_ref::<ClusterEvent>()
     {
       self.events.lock().push(cluster_event.clone());
+    }
+  }
+}
+
+#[derive(Clone)]
+struct CurrentStateDuringShutdownSubscriber {
+  api:      ClusterApi,
+  statuses: ArcShared<SpinSyncMutex<Vec<Vec<NodeStatus>>>>,
+}
+
+impl CurrentStateDuringShutdownSubscriber {
+  fn new(api: ClusterApi) -> Self {
+    Self { api, statuses: ArcShared::new(SpinSyncMutex::new(Vec::new())) }
+  }
+
+  fn statuses(&self) -> Vec<Vec<NodeStatus>> {
+    self.statuses.lock().clone()
+  }
+}
+
+impl EventStreamSubscriber for CurrentStateDuringShutdownSubscriber {
+  fn on_event(&mut self, event: &EventStreamEvent) {
+    if let EventStreamEvent::Extension { name, payload } = event
+      && name == "cluster"
+      && let Some(ClusterEvent::MemberPreparingForShutdown { .. }) = payload.payload().downcast_ref::<ClusterEvent>()
+    {
+      let statuses = self.api.current_state().members.into_iter().map(|member| member.status).collect();
+      self.statuses.lock().push(statuses);
     }
   }
 }

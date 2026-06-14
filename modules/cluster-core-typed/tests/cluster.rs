@@ -64,6 +64,13 @@ fn cluster_command_delegates_membership_operations_to_kernel_cluster_api() {
     .expect("join seed nodes");
   ClusterCommand::Leave { address: String::from("node2:8080") }.apply_to(&cluster).expect("leave");
   ClusterCommand::Down { address: String::from("node5:8080") }.apply_to(&cluster).expect("down");
+  let shutdown_events = ArcShared::new(SpinSyncMutex::new(Vec::<ClusterEvent>::new()));
+  let _subscription = cluster.subscribe(
+    &typed_cluster_event_ref(shutdown_events.clone()),
+    ClusterSubscriptionInitialStateMode::AsEvents,
+    &[ClusterEventType::MemberPreparingForShutdown],
+  );
+  ClusterCommand::PrepareForFullClusterShutdown.apply_to(&cluster).expect("prepare shutdown");
 
   assert_eq!(joined.lock().clone(), vec![
     String::from("node2:8080"),
@@ -72,6 +79,12 @@ fn cluster_command_delegates_membership_operations_to_kernel_cluster_api() {
   ]);
   assert_eq!(left.lock().clone(), vec![String::from("node2:8080")]);
   assert_eq!(downed.lock().clone(), vec![String::from("node5:8080")]);
+  let captured_shutdown_events = shutdown_events.lock().clone();
+  assert_eq!(captured_shutdown_events.len(), 1);
+  assert!(matches!(
+    captured_shutdown_events.first(),
+    Some(ClusterEvent::MemberPreparingForShutdown { authority, .. }) if authority == "node1:8080"
+  ));
 }
 
 #[test]

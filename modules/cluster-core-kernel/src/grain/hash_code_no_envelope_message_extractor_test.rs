@@ -51,15 +51,15 @@ fn unwrap_message_is_identity() {
 
 #[test]
 fn shard_id_matches_hash_code_extractor_for_same_entity_id() {
-  // HashCode 標準実装（共有 FNV-1a）と同一の shard 規則であることを実装間比較で検証する。
+  // HashCode 標準実装（共有 Pekko hashCode）と同一の shard 規則であることを実装間比較で検証する。
   let no_envelope = account_extractor(10);
   let with_envelope = HashCodeMessageExtractor::<u32>::new(10).expect("extractor");
 
   for entity_id in ["counter-1", "device-42", "acct-1"] {
     assert_eq!(no_envelope.shard_id(entity_id), with_envelope.shard_id(entity_id), "entity_id={entity_id}");
   }
-  // 既知ベクタによる固定（fnv1a32("counter-1") = 2782268641, % 10 = 1）
-  assert_eq!(no_envelope.shard_id("counter-1"), "1");
+  // 既知ベクタによる固定（"counter-1".hashCode = 1352256672, % 10 = 2）
+  assert_eq!(no_envelope.shard_id("counter-1"), "2");
 }
 
 #[test]

@@ -17,7 +17,7 @@ use super::{
   MediatorDeliveryMode, MediatorQuery, MediatorQueryResult, PubSubEnvelope, PubSubError, PubSubNoSubscriberBehavior,
   PubSubPathSemantics, PubSubRoutingMode, PubSubSubscriber, PubSubTopic, SendPathInput, SendToAllPathInput,
   TopicRegistryApplyOutcome, TopicRegistryBucket, TopicRegistryBucketView, TopicRegistryDelta,
-  TopicRegistryDeltaCollector, TopicRegistryEntryKind, TopicRegistryStatus,
+  TopicRegistryDeltaCollector, TopicRegistryEntryKey, TopicRegistryEntryKind, TopicRegistryStatus,
 };
 
 /// Registry-backed mediator state for pub-sub commands.
@@ -249,6 +249,7 @@ impl DistributedPubSubMediatorState {
 
   fn query_result(&self, query: MediatorQuery, active_owners: &[UniqueAddress]) -> MediatorQueryResult {
     match query {
+      | MediatorQuery::Count => MediatorQueryResult::Count { count: self.active_registration_count(active_owners) },
       | MediatorQuery::CurrentTopics => {
         MediatorQueryResult::CurrentTopics { topics: self.current_topics(active_owners) }
       },
@@ -269,6 +270,28 @@ impl DistributedPubSubMediatorState {
       }
     }
     topics.into_iter().collect()
+  }
+
+  fn active_registration_count(&self, active_owners: &[UniqueAddress]) -> usize {
+    let mut registrations = BTreeSet::new();
+    for view in self.delivery_views(active_owners) {
+      for entry in view.entries() {
+        match entry.kind() {
+          | TopicRegistryEntryKind::Path { path, target } => {
+            registrations.insert(TopicRegistryEntryKey::Path { path: path.clone(), target: target.clone() });
+          },
+          | TopicRegistryEntryKind::TopicSubscription { topic, group, subscriber } => {
+            registrations.insert(TopicRegistryEntryKey::TopicSubscription {
+              topic:      topic.clone(),
+              group:      group.clone(),
+              subscriber: subscriber.clone(),
+            });
+          },
+          | TopicRegistryEntryKind::Removed { .. } => {},
+        }
+      }
+    }
+    registrations.len()
   }
 
   fn topic_subscribers(&self, topic: &PubSubTopic, active_owners: &[UniqueAddress]) -> Vec<PubSubSubscriber> {

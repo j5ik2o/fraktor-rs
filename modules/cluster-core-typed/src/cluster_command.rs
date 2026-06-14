@@ -29,6 +29,8 @@ pub enum ClusterCommand {
     /// Member authority.
     address: String,
   },
+  /// Initiate full-cluster shutdown preparation.
+  PrepareForFullClusterShutdown,
 }
 
 impl ClusterCommand {
@@ -48,6 +50,7 @@ impl ClusterCommand {
       },
       | Self::Leave { address } => cluster.leave(address),
       | Self::Down { address } => cluster.down(address),
+      | Self::PrepareForFullClusterShutdown => cluster.prepare_for_full_cluster_shutdown(),
     }
   }
 }

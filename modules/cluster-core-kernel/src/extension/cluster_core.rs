@@ -57,6 +57,7 @@ pub struct ClusterCore {
   last_topology_hash:      Option<u64>,
   current_members:         Vec<String>,
   observed_at:             TimerInstant,
+  preparing_for_shutdown:  bool,
 }
 
 impl ClusterCore {
@@ -100,6 +101,7 @@ impl ClusterCore {
       last_topology_hash: None,
       current_members: Vec::new(),
       observed_at: TimerInstant::zero(Duration::from_secs(1)),
+      preparing_for_shutdown: false,
     }
   }
 
@@ -197,13 +199,14 @@ impl ClusterCore {
   #[must_use]
   pub fn current_cluster_state_snapshot(&self) -> (CurrentClusterState, TimerInstant) {
     let version = MembershipVersion::new(self.last_topology_hash.unwrap_or(0));
+    let status = if self.preparing_for_shutdown { NodeStatus::PreparingForShutdown } else { NodeStatus::Up };
     let members = self
       .current_members
       .iter()
       .cloned()
       .map(|authority| {
         let node_id = authority.clone();
-        NodeRecord::new(node_id, authority, NodeStatus::Up, version, String::new(), Vec::new())
+        NodeRecord::new(node_id, authority, status, version, String::new(), Vec::new())
       })
       .collect::<Vec<_>>();
     let leader = members.iter().map(|record| record.authority.clone()).min();
@@ -298,6 +301,7 @@ impl ClusterCore {
         self.member_count = 1;
         self.current_members = Vec::from([address.clone()]);
         self.observed_at = TimerInstant::zero(Duration::from_secs(1));
+        self.preparing_for_shutdown = false;
         self.update_metrics(self.member_count, self.virtual_actor_count);
         self.publish_cluster_event(ClusterEvent::Startup { address, mode: StartupMode::Member });
         Ok(())
@@ -355,6 +359,7 @@ impl ClusterCore {
         self.member_count = 1;
         self.current_members = Vec::from([address.clone()]);
         self.observed_at = TimerInstant::zero(Duration::from_secs(1));
+        self.preparing_for_shutdown = false;
         self.update_metrics(self.member_count, self.virtual_actor_count);
         self.publish_cluster_event(ClusterEvent::Startup { address, mode: StartupMode::Client });
         Ok(())
@@ -401,6 +406,7 @@ impl ClusterCore {
         self.current_members.clear();
         self.observed_at = TimerInstant::zero(Duration::from_secs(1));
         self.last_topology_hash = None;
+        self.preparing_for_shutdown = false;
         self.mode = None;
         self.publish_cluster_event(ClusterEvent::Shutdown { address, mode });
         Ok(())
@@ -461,6 +467,40 @@ impl ClusterCore {
       return Err(ClusterError::from(ClusterProviderError::leave("cluster is not started")));
     }
     self.provider.with_write(|provider| provider.leave(authority)).map_err(ClusterError::from)
+  }
+
+  /// Starts full-cluster shutdown preparation.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error if the cluster has not been started.
+  pub fn prepare_for_full_cluster_shutdown(&mut self) -> Result<Vec<ClusterEvent>, ClusterError> {
+    if self.mode != Some(StartupMode::Member) {
+      return Err(ClusterError::from(ClusterProviderError::shutdown(
+        "full-cluster shutdown preparation requires member mode",
+      )));
+    }
+    if self.preparing_for_shutdown {
+      return Ok(Vec::new());
+    }
+    let (state, observed_at) = self.current_cluster_state_snapshot();
+    self.preparing_for_shutdown = true;
+    let mut events = Vec::new();
+    for member in state.members.iter().filter(|member| member.status == NodeStatus::Up) {
+      events.push(ClusterEvent::MemberStatusChanged {
+        node_id: member.node_id.clone(),
+        authority: member.authority.clone(),
+        from: NodeStatus::Up,
+        to: NodeStatus::PreparingForShutdown,
+        observed_at,
+      });
+      events.push(ClusterEvent::MemberPreparingForShutdown {
+        node_id: member.node_id.clone(),
+        authority: member.authority.clone(),
+        observed_at,
+      });
+    }
+    Ok(events)
   }
 
   fn publish_cluster_event(&self, event: ClusterEvent) {

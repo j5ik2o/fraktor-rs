@@ -1,12 +1,11 @@
 //! Hash-based standard extractor for messages without an envelope.
 
-use alloc::{
-  boxed::Box,
-  string::{String, ToString},
-};
+use alloc::{boxed::Box, string::String};
 use core::fmt::{self, Formatter, Result as FmtResult};
 
-use super::{ShardingExtractorConfigError, ShardingMessageExtractor, hash_code_message_extractor::fnv1a_32};
+use super::{
+  ShardingExtractorConfigError, ShardingMessageExtractor, hash_code_message_extractor::pekko_hash_code_shard_id,
+};
 
 #[cfg(test)]
 #[path = "hash_code_no_envelope_message_extractor_test.rs"]
@@ -19,11 +18,9 @@ type ExtractEntityIdFn<M> = Box<dyn Fn(&M) -> Option<String> + Send + Sync>;
 ///
 /// Mirrors Pekko's `HashCodeNoEnvelopeMessageExtractor[M]`. The entity id is
 /// derived by the function given at construction (returning `None` when it
-/// cannot be derived), and the shard id uses the same fixed FNV-1a 32bit rule
-/// as [`HashCodeMessageExtractor`](super::HashCodeMessageExtractor), so the
-/// same entity id always maps to the same shard id across both extractors.
-/// `unwrap_message` is the identity. The derivation is pure and identical
-/// across hosts and node topologies.
+/// cannot be derived), and the shard id uses the same Pekko-compatible
+/// `String.hashCode` rule as [`HashCodeMessageExtractor`](super::HashCodeMessageExtractor).
+/// `unwrap_message` is the identity.
 pub struct HashCodeNoEnvelopeMessageExtractor<M> {
   number_of_shards:  u32,
   extract_entity_id: ExtractEntityIdFn<M>,
@@ -62,7 +59,7 @@ impl<M> ShardingMessageExtractor<M, M> for HashCodeNoEnvelopeMessageExtractor<M>
   }
 
   fn shard_id(&self, entity_id: &str) -> String {
-    (fnv1a_32(entity_id) % self.number_of_shards).to_string()
+    pekko_hash_code_shard_id(entity_id, self.number_of_shards)
   }
 
   fn unwrap_message(&self, message: M) -> M {

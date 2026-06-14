@@ -387,6 +387,77 @@ fn subscriber_count_deduplicates_same_subscriber_across_buckets() {
 }
 
 #[test]
+fn count_returns_total_active_subscriber_registrations() {
+  let local = owner("node-a", 1);
+  let remote = owner("node-b", 2);
+  let inactive = owner("node-c", 3);
+  let news = PubSubTopic::new("news");
+  let metrics = PubSubTopic::new("metrics");
+  let local_subscriber = subscriber("same-target");
+  let remote_subscriber = subscriber("remote-target");
+  let active = vec![local.clone(), remote.clone()];
+  let mut state = DistributedPubSubMediatorState::new(config(PubSubNoSubscriberBehavior::Drop), local.clone());
+
+  state
+    .apply_command(
+      MediatorCommand::try_subscribe(news.clone(), None, local_subscriber.clone()).expect("subscribe"),
+      10,
+      &active,
+    )
+    .expect("news subscribed");
+  state
+    .apply_command(
+      MediatorCommand::try_subscribe(metrics.clone(), None, local_subscriber.clone()).expect("subscribe"),
+      11,
+      &active,
+    )
+    .expect("metrics subscribed");
+
+  let mut remote_bucket = TopicRegistryBucket::new(remote);
+  remote_bucket.put_subscription(news, None, local_subscriber);
+  remote_bucket.put_subscription(metrics, Some(String::from("blue")), remote_subscriber);
+  state.upsert_remote_bucket(remote_bucket);
+
+  let mut inactive_bucket = TopicRegistryBucket::new(inactive);
+  inactive_bucket.put_subscription(PubSubTopic::new("ignored"), None, subscriber("inactive"));
+  state.upsert_remote_bucket(inactive_bucket);
+
+  let count = state.apply_command(MediatorCommand::count(), 12, &active).expect("count");
+
+  assert_eq!(count, MediatorCommandOutcome::Query(MediatorQueryResult::Count { count: 3 }));
+}
+
+#[test]
+fn count_includes_active_path_registrations() {
+  let local = owner("node-a", 1);
+  let remote = owner("node-b", 2);
+  let inactive = owner("node-c", 3);
+  let path = MediatorPathKey::parse("fraktor://sys/user/service").expect("path");
+  let mut state = DistributedPubSubMediatorState::new(config(PubSubNoSubscriberBehavior::Drop), local.clone());
+  let active = vec![local.clone(), remote.clone()];
+
+  state
+    .apply_command(
+      MediatorCommand::try_put("fraktor://sys/user/service", subscriber("local-path-target")).expect("put"),
+      10,
+      &active,
+    )
+    .expect("put");
+
+  let mut remote_bucket = TopicRegistryBucket::new(remote);
+  remote_bucket.put_path(path.clone(), subscriber("remote-path-target"));
+  state.upsert_remote_bucket(remote_bucket);
+
+  let mut inactive_bucket = TopicRegistryBucket::new(inactive);
+  inactive_bucket.put_path(path, subscriber("inactive-path-target"));
+  state.upsert_remote_bucket(inactive_bucket);
+
+  let count = state.apply_command(MediatorCommand::count(), 11, &active).expect("count");
+
+  assert_eq!(count, MediatorCommandOutcome::Query(MediatorQueryResult::Count { count: 2 }));
+}
+
+#[test]
 fn publish_and_send_use_separate_registry_namespaces() {
   let local = owner("node-a", 1);
   let mut state = DistributedPubSubMediatorState::new(config(PubSubNoSubscriberBehavior::Drop), local.clone());

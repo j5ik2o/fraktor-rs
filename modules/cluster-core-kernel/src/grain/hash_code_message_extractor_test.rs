@@ -34,19 +34,20 @@ fn shard_id_is_deterministic_for_same_input() {
 }
 
 #[test]
-fn shard_id_matches_known_fnv1a_vectors() {
-  // FNV-1a 32bit の既知ベクタでハッシュ仕様を固定する。
-  // 期待値の根拠: offset basis 0x811C9DC5 / prime 0x01000193 による手計算
-  // （fnv1a32("counter-1") = 0xA5D60CE1 = 2782268641, fnv1a32("device-42") = 0xE9174B68 = 3910617960,
-  //   fnv1a32("") = 0x811C9DC5 = 2166136261 = offset basis）。
-  // shard 数に u32::MAX を使うとハッシュ値がそのまま shard id
-  // になるため、ハッシュ仕様自体を固定できる。
+fn shard_id_matches_known_pekko_hash_code_vectors() {
+  // Pekko は Scala/JVM の String.hashCode を使うため、UTF-16 code unit
+  // による 31 倍加算と math.abs(hash) % numberOfShards の結果を固定する。
   let identity_shards = HashCodeMessageExtractor::<u32>::new(u32::MAX).expect("extractor");
-  assert_eq!(identity_shards.shard_id("counter-1"), "2782268641");
-  assert_eq!(identity_shards.shard_id("device-42"), "3910617960");
-  assert_eq!(identity_shards.shard_id(""), "2166136261");
+  assert_eq!(identity_shards.shard_id("counter-1"), "1352256672");
+  assert_eq!(identity_shards.shard_id("device-42"), "25160021");
+  assert_eq!(identity_shards.shard_id("acct-1"), "1423448841");
+  assert_eq!(identity_shards.shard_id(""), "0");
 
   let ten_shards = HashCodeMessageExtractor::<u32>::new(10).expect("extractor");
-  assert_eq!(ten_shards.shard_id("counter-1"), "1");
-  assert_eq!(ten_shards.shard_id("device-42"), "0");
+  assert_eq!(ten_shards.shard_id("counter-1"), "2");
+  assert_eq!(ten_shards.shard_id("device-42"), "1");
+  assert_eq!(ten_shards.shard_id("acct-1"), "1");
+  assert_eq!(ten_shards.shard_id("Aa"), "2");
+  assert_eq!(ten_shards.shard_id("BB"), "2");
+  assert_eq!(ten_shards.shard_id("polygenelubricants"), "-8");
 }

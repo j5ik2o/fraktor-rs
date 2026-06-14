@@ -130,6 +130,9 @@ fn command_constructors_keep_protocol_fields() {
 
 #[test]
 fn query_commands_keep_requested_shape() {
+  let total = MediatorCommand::count();
+  assert!(matches!(total, MediatorCommand::Query(MediatorQuery::Count)));
+
   let command = MediatorCommand::subscriber_count(PubSubTopic::new("news")).expect("query");
 
   match command {
@@ -151,6 +154,9 @@ fn acknowledgement_preserves_subscription_operation_fields() {
 
 #[test]
 fn query_result_preserves_snapshot_fields() {
+  let total = MediatorQueryResult::Count { count: 2 };
+  assert!(matches!(total, MediatorQueryResult::Count { count: 2 }));
+
   let result = MediatorQueryResult::CurrentTopics { topics: vec![PubSubTopic::new("news")] };
 
   assert!(matches!(result, MediatorQueryResult::CurrentTopics { .. }));
