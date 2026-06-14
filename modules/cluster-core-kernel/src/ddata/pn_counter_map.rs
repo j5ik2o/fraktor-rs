@@ -128,14 +128,11 @@ where
     let mut delta_removed_dots = self.delta_removed_dots.clone();
     merge_dot_map_entry(&mut delta_removed_dots, key.clone(), &observed_dots);
 
-    Self {
-      entries,
-      dots,
-      removed_dots,
-      delta: self.delta.clone(),
-      delta_dots: self.delta_dots.clone(),
-      delta_removed_dots,
-    }
+    let mut delta = self.delta.clone();
+    let mut delta_dots = self.delta_dots.clone();
+    apply_removed_dots(&mut delta, &mut delta_dots, key, &observed_dots);
+
+    Self { entries, dots, removed_dots, delta, delta_dots, delta_removed_dots }
   }
 
   fn update_key(
@@ -226,10 +223,13 @@ where
     let mut entries = self.entries.clone();
     let mut dots = self.dots.clone();
     let mut removed_dots = self.removed_dots.clone();
+    let mut local_delta = self.delta.clone();
+    let mut local_delta_dots = self.delta_dots.clone();
 
     for (key, removed_key_dots) in &delta.removed_dots {
       merge_dot_map_entry(&mut removed_dots, key.clone(), removed_key_dots);
       apply_removed_dots(&mut entries, &mut dots, key, removed_key_dots);
+      apply_removed_dots(&mut local_delta, &mut local_delta_dots, key, removed_key_dots);
     }
 
     for (key, counter) in &delta.entries {
@@ -256,8 +256,8 @@ where
       entries,
       dots,
       removed_dots,
-      delta: self.delta.clone(),
-      delta_dots: self.delta_dots.clone(),
+      delta: local_delta,
+      delta_dots: local_delta_dots,
       delta_removed_dots: self.delta_removed_dots.clone(),
     }
   }
@@ -322,11 +322,11 @@ where
     let mut removed_dots = BTreeMap::new();
     let mut delta = BTreeMap::new();
     let mut delta_dots = BTreeMap::new();
-    let mut delta_removed_dots: BTreeMap<K, BTreeMap<UniqueAddress, u64>> = self
+    let delta_removed_dots: BTreeMap<K, BTreeMap<UniqueAddress, u64>> = self
       .delta_removed_dots
       .iter()
       .filter_map(|(key, key_dots)| {
-        let key_dots = prune_dots(key_dots, removed_node, collapse_into);
+        let key_dots = pruning_cleanup_dots(key_dots, removed_node);
         if key_dots.is_empty() { None } else { Some((key.clone(), key_dots)) }
       })
       .collect();
@@ -349,11 +349,10 @@ where
     }
 
     for (key, key_dots) in &self.removed_dots {
-      let pruned_dots = prune_dots(key_dots, removed_node, collapse_into);
-      if pruned_dots != *key_dots {
-        merge_dot_map_entry(&mut delta_removed_dots, key.clone(), &pruned_dots);
+      let pruned_dots = pruning_cleanup_dots(key_dots, removed_node);
+      if !pruned_dots.is_empty() {
+        removed_dots.insert(key.clone(), pruned_dots);
       }
-      removed_dots.insert(key.clone(), pruned_dots);
     }
 
     Ok(Self { entries, dots, removed_dots, delta, delta_dots, delta_removed_dots })

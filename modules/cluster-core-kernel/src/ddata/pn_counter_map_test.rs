@@ -239,6 +239,17 @@ fn remove_delta_drops_observed_key() {
 }
 
 #[test]
+fn remove_drops_covered_pending_add_delta() {
+  let added = PNCounterMap::new().increment(&self_address(0), 1, 5).expect("increment must fit");
+  let removed = added.remove(&1);
+  let remove_delta = removed.delta().expect("remove must create delta");
+
+  assert_eq!(remove_delta.get(&1), Ok(None));
+  assert_eq!(PNCounterMap::new().merge(&remove_delta).get(&1), Ok(None));
+  assert_eq!(added.merge_delta(&remove_delta).get(&1), Ok(None));
+}
+
+#[test]
 fn remove_delta_keeps_concurrent_update_delta() {
   let left = PNCounterMap::new()
     .increment(&self_address(0), 1, 1)
@@ -255,6 +266,17 @@ fn remove_delta_keeps_concurrent_update_delta() {
   let concurrent_delta = concurrent.delta().expect("concurrent update must create delta");
 
   assert_eq!(removed.merge_delta(&concurrent_delta).get(&2), Ok(Some(10)));
+}
+
+#[test]
+fn remote_remove_drops_covered_local_delta() {
+  let local = PNCounterMap::new().increment(&self_address(0), 1, 5).expect("increment must fit");
+  let remove_delta = local.reset_delta().remove(&1).delta().expect("remove must create delta");
+
+  let merged = local.merge_delta(&remove_delta);
+
+  assert_eq!(merged.get(&1), Ok(None));
+  assert_eq!(merged.delta(), None);
 }
 
 #[test]
@@ -395,6 +417,20 @@ fn prune_preserves_pending_remove_delta() {
   let delta = pruned.delta().expect("pending remove must remain in delta");
 
   assert_eq!(original.merge_delta(&delta).get(&1), Ok(None));
+}
+
+#[test]
+fn prune_does_not_retarget_removed_dot_tombstones() {
+  let removed = self_address(0);
+  let collapse_into = self_address(2);
+  let removed_entry = PNCounterMap::new().increment(&removed, 1, 5).expect("increment must fit");
+  let tombstone = removed_entry.remove(&1);
+
+  let pruned = tombstone.prune(removed.unique_address(), collapse_into.unique_address()).expect("pruning must fit");
+  let concurrent = PNCounterMap::new().increment(&collapse_into, 1, 7).expect("increment must fit");
+
+  assert!(!pruned.need_pruning_from(removed.unique_address()));
+  assert_eq!(pruned.merge(&concurrent).get(&1), Ok(Some(7)));
 }
 
 #[test]
