@@ -1,6 +1,6 @@
 # 実装計画
 
-- [ ] 1. cluster message serialization の core contract を追加する
+- [x] 1. cluster message serialization の core contract を追加する
 - [x] 1.1 payload kind と manifest preservation rule を定義する
   - gossip と pubsub を stable payload kind として表し、unknown raw tag を既知 kind に丸めない。
   - actor-core manifest を opaque に保持し、payload kind tag と二重管理しないことを検証する。
@@ -16,7 +16,7 @@
   - _Requirements: 1.1, 1.3, 1.4, 3.2_
   - _Boundary: ClusterSerializedMessage_
 
-- [ ] 2. actor-core serialization との接続点を実装する
+- [x] 2. actor-core serialization との接続点を実装する
 - [x] 2.1 `SerializationExtension` を使う cluster bridge を追加する
   - cluster payload kind、`SerializationCallScope`、typed payload を受け取り、actor-core serialization の結果を `ClusterSerializedMessage` として返す。
   - wire bridge caller は `SerializationCallScope::Remote` を渡し、manifest-required scope を Local 扱いで迂回しない。
@@ -25,7 +25,7 @@
   - _Requirements: 1.1, 1.2, 1.3, 4.3, 5.5_
   - _Boundary: ActorSerializationBridge_
 
-- [ ] 3. std/wire frame と codec を追加する
+- [x] 3. std/wire frame と codec を追加する
 - [x] 3.1 versioned cluster wire frame を定義する
   - version、payload kind tag、serializer id、manifest、payload length、payload bytes を含む v1 frame を追加する。
   - frame は endpoint、association、retry state を持たない。
@@ -40,7 +40,7 @@
   - _Requirements: 3.3, 4.1, 4.2, 4.4, 5.4_
   - _Boundary: ClusterWireCodec, ClusterWireDecodeFailure_
 
-- [ ] 4. upstream gossip/pubsub payload と境界検証を接続する
+- [x] 4. upstream gossip/pubsub payload と境界検証を接続する
 - [x] 4.1 (P) gossip payload の serialization bridge smoke test を追加する
   - upstream gossip payload contract 由来の値を payload kind `Gossip` として serialized message に包む。
   - bridge は gossip merge、seen digest、heartbeat evidence、reachability update を実行しないことを検証する。
@@ -57,7 +57,7 @@
   - _Boundary: ScopeGuard, ActorSerializationBridge_
   - _Depends: 1.2, 2.1, 3.2_
 
-- [ ] 5. integration evidence と gap analysis を更新する
+- [x] 5. integration evidence と gap analysis を更新する
 - [x] 5.1 serializer contract follow-up の evidence を更新し、targeted checks を実行する
   - `docs/gap-analysis/cluster-gap-analysis.md` の cluster message serializer contract 項目だけを implementation evidence で更新する。
   - protobuf / Pekko binary compatibility は scope 外として残し、別 follow-up に吸収しない。

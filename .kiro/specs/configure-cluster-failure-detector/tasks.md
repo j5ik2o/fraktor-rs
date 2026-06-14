@@ -1,6 +1,6 @@
 # 実装タスク
 
-- [ ] 1. Failure Detector Configuration (故障検出器設定) の基盤を作る
+- [x] 1. Failure Detector Configuration (故障検出器設定) の基盤を作る
 - [x] 1.1 `FailureDetectorConfigError` で Cluster Configuration Validation (クラスタ設定検証) の失敗理由を表現する
   - phi threshold、max sample size、min standard deviation、first heartbeat estimate の不成立を、それぞれ区別できる error として扱う。
   - error は Join Compatibility (参加互換性) の不一致理由ではなく、設定値そのものの validation failure として使える状態にする。
@@ -25,7 +25,7 @@
   - _Boundary: FailureDetectorConfig_
   - _Depends: 1.1, 1.2_
 
-- [ ] 2. Cluster Configuration (クラスタ設定) と Join Compatibility (参加互換性) へ接続する
+- [x] 2. Cluster Configuration (クラスタ設定) と Join Compatibility (参加互換性) へ接続する
 - [x] 2.1 (P) `ClusterCompatibilityKeyCatalog` に `cluster.failure-detector` を追加する
   - Failure Detector Configuration (故障検出器設定) 用の required key を追加する。
   - `cluster.failure-detector.choice` は excluded key のまま維持し、required / conditional に入れない。
@@ -52,7 +52,7 @@
   - _Boundary: ClusterExtensionConfig, ClusterCompatibilityKeyCatalog_
   - _Depends: 1.3, 2.1, 2.2_
 
-- [ ] 3. install / start 境界で Cluster Configuration Validation (クラスタ設定検証) を実行する
+- [x] 3. install / start 境界で Cluster Configuration Validation (クラスタ設定検証) を実行する
 - [x] 3.1 `ClusterError` が Cluster Configuration Validation (クラスタ設定検証) を表せるようにする
   - start member / client で返す validation failure を cluster lifecycle error として扱えるようにする。
   - error は Join Compatibility (参加互換性) failure と区別できる形にする。
@@ -79,7 +79,7 @@
   - _Boundary: ClusterExtensionInstaller_
   - _Depends: 2.2_
 
-- [ ] 4. std 環境で Availability Evidence (可用性観測証拠) の観測へ接続する
+- [x] 4. std 環境で Availability Evidence (可用性観測証拠) の観測へ接続する
 - [x] 4.1 (P) `FailureDetectorConfig` から Phi Accrual detector を生成する bridge を追加する
   - std 側で `FailureDetectorConfig` の値を `PhiAccrualFailureDetector` の constructor へ渡す。
   - Duration を millis に変換し、public な Cluster Configuration (クラスタ設定) 上の duration 意味を維持する。
@@ -97,7 +97,7 @@
   - _Boundary: ConfiguredPhiAccrualDetectorFactory, MembershipCoordinator integration_
   - _Depends: 3.2, 4.1_
 
-- [ ] 5. gap analysis と scope guard を更新する
+- [x] 5. gap analysis と scope guard を更新する
 - [x] 5.1 cluster gap analysis の該当項目を完了扱いへ更新する
   - Failure Detector Configuration (故障検出器設定) の contract、validation、Join Compatibility (参加互換性)、std bridge が揃ったことを反映する。
   - Split Brain Resolver execution actor、provider down execution loop、lease coordination backend はこの成果として書かない。
@@ -107,7 +107,7 @@
   - _Boundary: gap analysis docs_
   - _Depends: 2.3, 3.2, 3.3, 4.2_
 
-- [ ] 6. feature 全体を検証する
+- [x] 6. feature 全体を検証する
 - [x] 6.1 対象 crate の単体・統合テストを通す
   - cluster-core の Failure Detector Configuration (故障検出器設定)、Join Compatibility (参加互換性)、install / start validation のテストを実行する。
   - cluster-adaptor-std の std bridge と既存 detector registry 接続のテストを実行する。

@@ -8,7 +8,7 @@
   - _Boundary:_ TypedAskResponse/TypedAskFuture 公開コンストラクタ
   - _Depends:_ none
 
-- [ ] 2. コア: typed 宣言点と typed 参照
+- [x] 2. コア: typed 宣言点と typed 参照
 - [x] 2.1 (P) grain 種別の typed 宣言点を実装する
   - kind とメッセージ型の対応を一箇所で宣言し、entity id を与えて typed 識別を導出できるようにする
   - 識別の検証は kernel の検証規則へ委譲し、不正な kind / entity id は既存のエラー契約（ClusterIdentityError）で拒否される
@@ -37,7 +37,7 @@
   - _Boundary:_ Cluster facade 拡張
   - _Depends:_ 2.1, 2.2
 
-- [ ] 4. 検証
+- [x] 4. 検証
 - [x] 4.1 取得経路と呼び出し往復の統合テストを追加する
   - 拡張導入済みシステムで宣言点 → 取得 → request 往復が typed 応答を返すことを検証する
   - 拡張未導入システムで取得が ClusterApiError::ExtensionNotInstalled で拒否されることを検証する
