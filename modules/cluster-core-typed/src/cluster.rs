@@ -380,6 +380,10 @@ impl Cluster {
     self.inner.down(authority)
   }
 
+  pub(crate) fn prepare_for_full_cluster_shutdown(&self) -> Result<(), ClusterError> {
+    self.inner.prepare_for_full_cluster_shutdown()
+  }
+
   /// Builds a typed grain reference for the given typed identity.
   ///
   /// This is the fraktor equivalent of Pekko's `ClusterSharding#entityRefFor`.

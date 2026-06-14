@@ -9,26 +9,31 @@ use super::{ShardingEnvelope, ShardingExtractorConfigError, ShardingMessageExtra
 #[path = "hash_code_message_extractor_test.rs"]
 mod tests;
 
-/// FNV-1a 32bit hash shared by the hash-code standard extractors.
+/// JVM `String.hashCode` compatible hash shared by the hash-code standard extractors.
 ///
-/// Fixed specification: offset basis `0x811C9DC5`, prime `0x01000193`,
-/// applied to the UTF-8 bytes of the input.
-pub(super) fn fnv1a_32(value: &str) -> u32 {
-  let mut hash: u32 = 0x811C_9DC5;
-  for byte in value.as_bytes() {
-    hash ^= u32::from(*byte);
-    hash = hash.wrapping_mul(0x0100_0193);
+/// The hash is computed over UTF-16 code units with wrapping 32bit signed
+/// arithmetic, matching Java and Scala `String.hashCode`.
+pub(super) fn pekko_hash_code(value: &str) -> i32 {
+  let mut hash = 0_i32;
+  for code_unit in value.encode_utf16() {
+    hash = hash.wrapping_mul(31).wrapping_add(i32::from(code_unit));
   }
   hash
 }
 
+/// Pekko-compatible shard id for the given entity id and shard count.
+pub(super) fn pekko_hash_code_shard_id(entity_id: &str, number_of_shards: u32) -> String {
+  let hash = pekko_hash_code(entity_id);
+  let positive_hash = if hash == i32::MIN { i32::MIN } else { hash.abs() };
+  let shard = i64::from(positive_hash) % i64::from(number_of_shards);
+  shard.to_string()
+}
+
 /// Standard extractor deriving the shard id from the envelope entity id.
 ///
-/// Mirrors Pekko's `HashCodeMessageExtractor[M]`. The hash function is fixed
-/// to FNV-1a 32bit (offset basis `0x811C9DC5`, prime `0x01000193`) over the
-/// UTF-8 bytes of the entity id, and the shard id is
-/// `(hash % number_of_shards)` rendered as a decimal string. The derivation
-/// is pure and identical across hosts and node topologies.
+/// Mirrors Pekko's `HashCodeMessageExtractor[M]`. The shard id is derived by
+/// `math.abs(entityId.hashCode) % numberOfShards`, rendered as a decimal
+/// string, including the JVM `Int.MinValue` edge case.
 #[derive(Debug, Clone)]
 pub struct HashCodeMessageExtractor<M> {
   number_of_shards: u32,
@@ -56,7 +61,7 @@ impl<M> ShardingMessageExtractor<ShardingEnvelope<M>, M> for HashCodeMessageExtr
   }
 
   fn shard_id(&self, entity_id: &str) -> String {
-    (fnv1a_32(entity_id) % self.number_of_shards).to_string()
+    pekko_hash_code_shard_id(entity_id, self.number_of_shards)
   }
 
   fn unwrap_message(&self, message: ShardingEnvelope<M>) -> M {

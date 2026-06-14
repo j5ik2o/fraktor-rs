@@ -730,6 +730,19 @@ impl ClusterExtension {
     self.core.with_lock(|core| core.leave(authority))
   }
 
+  /// Starts full-cluster shutdown preparation.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error when the cluster is not started.
+  pub fn prepare_for_full_cluster_shutdown(&self) -> Result<(), ClusterError> {
+    let events = self.core.with_lock(|core| core.prepare_for_full_cluster_shutdown())?;
+    for event in events {
+      self.publish_cluster_event(event);
+    }
+    Ok(())
+  }
+
   /// Registers kinds for member mode.
   ///
   /// # Errors
@@ -783,6 +796,12 @@ impl ClusterExtension {
         self.event_stream.publish(&extension_event);
       },
     }
+  }
+
+  fn publish_cluster_event(&self, event: ClusterEvent) {
+    let payload = AnyMessage::new(event);
+    let extension_event = EventStreamEvent::Extension { name: String::from(CLUSTER_EVENT_STREAM_NAME), payload };
+    self.event_stream.publish(&extension_event);
   }
 
   /// Registers a callback invoked when a member reaches `Up` status.

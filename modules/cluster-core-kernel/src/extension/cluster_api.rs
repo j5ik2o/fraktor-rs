@@ -171,6 +171,15 @@ impl ClusterApi {
     self.extension.leave(authority)
   }
 
+  /// Starts full-cluster shutdown preparation.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error when the cluster is not started.
+  pub fn prepare_for_full_cluster_shutdown(&self) -> Result<(), ClusterError> {
+    self.extension.prepare_for_full_cluster_shutdown()
+  }
+
   /// Returns the remote canonical path for an actor reference.
   ///
   /// # Errors

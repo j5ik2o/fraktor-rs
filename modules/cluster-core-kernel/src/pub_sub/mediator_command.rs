@@ -157,6 +157,12 @@ impl MediatorCommand {
     Self::Query(MediatorQuery::CurrentTopics)
   }
 
+  /// Creates a total subscriber-count query command.
+  #[must_use]
+  pub const fn count() -> Self {
+    Self::Query(MediatorQuery::Count)
+  }
+
   /// Creates a validated subscriber-count query command.
   ///
   /// # Errors
