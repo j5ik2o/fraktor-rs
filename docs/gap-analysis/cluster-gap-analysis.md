@@ -257,55 +257,54 @@ n/a へ移動: `ClusterClient` / `ClusterClientReceptionist` / `ClusterClientSet
 
 この節は「今の要求で実装すべきか」ではなく、「Pekko parity ギャップをどの順で埋めるか」を示す。YAGNI は適用せず、カテゴリ別ギャップに列挙済みの全項目を Phase 1〜3 に再配置する。着手時期の判断は roadmap / OpenSpec 側が行う。
 
-### Phase 1: trivial / easy（既存設計の範囲で API surface を埋められるもの）
+ただし、優先度は難易度だけでは決めない。`trivial` / `easy` であっても、設定型、薄い wrapper、setup hook、join compatibility key だけを単独で追加すると未結線の公開面が増える。これらは所有する runtime / validation / extension の本体ロジックに同梱し、単独 PR の優先度にはしない。
+
+優先度の判定軸:
+
+1. 既存 runtime / state に結線され、単独 PR で挙動をテストできるものを先にする。
+2. config / wrapper / setup / compatibility key は、対象ロジックの change に従属させる。
+3. 新しい runtime 基盤を要するものは、表層 API が小さくても Phase 3 に置く。
+
+### Phase 1: 結線・実動作を閉じる小粒変更（単独 PR 可）
 
 2026-06-11: cluster-membership-event-surface スペックで `Member.ordering` 公開契約、`ClusterLogMarker`（構造化 tracing field 契約）、`MemberPreparingForShutdown` / `MemberReadyForShutdown` event variant、`DataCenterReachabilityEvent` の 4 項目が実装完了し、本リストから除去した。
 
-| 項目 | 実装先層 | 根拠カテゴリ | 依存 / 束ね先 |
-|------|----------|--------------|----------------|
-| `CrossDcFailureDetectorSettings` / Multi-DC 設定 namespace | core/config | カテゴリ1 | なし |
-| membership-driven routee add/remove の std 配線 | std | カテゴリ4 | なし |
-| typed `ClusterSingletonManagerSettings` wrapper | core/config | カテゴリ6 | なし |
-| `ClusterSingletonSetup` | core/typed + std | カテゴリ6 | Phase 3: typed `ClusterSingleton` extension |
-| `ClusterSingletonManagerIsStuck` runtime 検知 | core | カテゴリ6 | Phase 3: classic `ClusterSingletonManager` |
-| mediator 全体 `Count` query | core/pub_sub | カテゴリ7 | なし |
-| Pekko 形態の `EntityTypeKey[M]` / typed `EntityRef[M]` API と `askWithStatus` 統合 | core/typed + grain | カテゴリ8 | Phase 2: typed `ClusterSharding` extension |
-| `HashCodeMessageExtractor` / `HashCodeNoEnvelopeMessageExtractor` の Pekko shard 配置互換 | core/grain | カテゴリ8 | なし |
-| `ClusterShardingHealthCheck` | std | カテゴリ8 | Phase 2/3: sharding runtime / region lifecycle |
-| `JoinConfigCompatCheckSharding` | core/config | カテゴリ10 | Phase 2: `ClusterShardingSettings` 契約 |
-| module setup integration（sharding / singleton setup 相当） | core/typed + std | カテゴリ10 | Phase 3: typed singleton / sharding extension |
+| 項目 | 実装先層 | 根拠カテゴリ | 完了条件 |
+|------|----------|--------------|----------|
+| membership-driven routee add/remove の std 配線 | std | カテゴリ4 | `ClusterEvent` 購読から routee 更新までを統合テストで確認する |
+| mediator 全体 `Count` query | core/pub_sub | カテゴリ7 | `MediatorQuery` variant、集計ロジック、テストを同じ change で閉じる |
+| `HashCodeMessageExtractor` / `HashCodeNoEnvelopeMessageExtractor` の Pekko shard 配置互換 | core/grain | カテゴリ8 | shard id 計算の互換テストまで含め、配置基盤は増やさない |
+| `prepareForFullClusterShutdown` command path（kernel + typed） | core + core/typed + std | カテゴリ1 / 5 | 既存の shutdown status / event に command path を結線し、kernel と typed command を同じ change で閉じる |
 
-注: Phase 1 は難易度（trivial / easy）による分類であり、即時に単独着手できるとは限らない。依存 / 束ね先がある項目は、その基盤 spec と同じ change か後続 change で扱う。
+注: Phase 1 は「単独で見ても未結線を増やさない」ことを条件にする。設定だけ、wrapper だけ、setup だけの変更はここに置かない。
 
-### Phase 2: medium（既存の core / std 境界の中で閉じるもの）
+### Phase 2: 既存境界で本体ロジックと表層契約を同時に閉じるもの
 
-| 項目 | 実装先層 | 根拠カテゴリ |
-|------|----------|--------------|
-| `prepareForFullClusterShutdown` command path（kernel） | core + std | カテゴリ1 |
-| `CoordinatedShutdownLeave` | core/extension + std | カテゴリ1 |
-| `ClusterScope` deploy scope | core/extension | カテゴリ1 |
-| `PrepareForFullClusterShutdown` command（typed） | core/typed + std | カテゴリ5 |
-| `ClusterSingletonProxy` | std + core | カテゴリ6 |
-| `SingletonActor[M]` | core/typed | カテゴリ6 |
-| classic `ClusterSharding.start/startProxy` API | core/grain + std | カテゴリ8 |
-| typed `ClusterSharding` extension | core/typed | カテゴリ8 |
-| `Entity[M, E]` / `EntityContext` | core/typed + grain | カテゴリ8 |
-| `ClusterShardingSettings` 契約（classic + typed） | core/config | カテゴリ8 |
-| sharding query protocol（classic + typed） | core/grain + core/typed | カテゴリ8 |
-| passivation strategy settings（LRU / MRU / LFU / admission） | core/config + grain | カテゴリ8 |
-| external shard allocation | core/placement + std | カテゴリ8 |
-| typed `DistributedData` extension | core/typed | カテゴリ9 |
-| `ReplicatorMessageAdapter[A, B]` | core/typed | カテゴリ9 |
-| Get protocol | core/ddata | カテゴリ9 |
-| Update protocol | core/ddata | カテゴリ9 |
-| Subscribe protocol | core/ddata | カテゴリ9 |
-| Delete protocol | core/ddata | カテゴリ9 |
-| `DurableStore` SPI | core/ddata | カテゴリ9 |
-| durable store std adapter | std | カテゴリ9 |
-| `LWWRegister` / `LWWMap` | core/ddata | カテゴリ9 |
-| `ORSet` / `ORMap` / `ORMultiMap` | core/ddata | カテゴリ9 |
-| `PNCounterMap` key removal / entries surface | core/ddata | カテゴリ9 |
-| `VersionVector` | core/ddata | カテゴリ9 |
+| 項目 | 実装先層 | 根拠カテゴリ | 備考 |
+|------|----------|--------------|------|
+| Cross-DC Failure Detector Configuration の operational contract 整理（`CrossDcFailureDetectorSettings` / Multi-DC 設定 namespace を同梱） | core/config + std | カテゴリ1 | Failure Detector Configuration / Join Compatibility を触る change に同梱し、config 単独では出さない |
+| `CoordinatedShutdownLeave` | core/extension + std | カテゴリ1 | - |
+| `ClusterScope` deploy scope | core/extension | カテゴリ1 | - |
+| classic `ClusterSharding.start/startProxy` API | core/grain + std | カテゴリ8 | - |
+| typed `ClusterSharding` extension + Pekko 形態の `EntityTypeKey[M]` / typed `EntityRef[M]` API と `askWithStatus` 統合 | core/typed + grain | カテゴリ8 | typed facade は extension / lookup 経路と一緒に閉じる |
+| `Entity[M, E]` / `EntityContext` | core/typed + grain | カテゴリ8 | - |
+| `ClusterShardingSettings` 契約（classic + typed）+ `JoinConfigCompatCheckSharding` | core/config | カテゴリ8 / 10 | sharding 設定の所有化と互換性判定を同じ境界で扱う |
+| sharding query protocol（classic + typed） | core/grain + core/typed | カテゴリ8 | - |
+| `ClusterShardingHealthCheck` | core/grain + std | カテゴリ8 | region / placement readiness の入力契約と std adapter を同じ change で閉じる |
+| passivation strategy settings（LRU / MRU / LFU / admission） | core/config + grain | カテゴリ8 | passivation runtime の strategy 選択と一緒に扱う |
+| external shard allocation | core/placement + std | カテゴリ8 | - |
+| typed `DistributedData` extension | core/typed | カテゴリ9 | - |
+| `ReplicatorMessageAdapter[A, B]` | core/typed | カテゴリ9 | - |
+| Get protocol | core/ddata | カテゴリ9 | - |
+| Update protocol | core/ddata | カテゴリ9 | - |
+| Subscribe protocol | core/ddata | カテゴリ9 | - |
+| Delete protocol | core/ddata | カテゴリ9 | - |
+| `DurableStore` SPI | core/ddata | カテゴリ9 | - |
+| durable store std adapter | std | カテゴリ9 | - |
+| `LWWRegister` / `LWWMap` | core/ddata | カテゴリ9 | - |
+| `ORSet` / `ORMap` / `ORMultiMap` | core/ddata | カテゴリ9 | - |
+| `PNCounterMap` key removal / entries surface | core/ddata | カテゴリ9 | - |
+| `VersionVector` | core/ddata | カテゴリ9 | - |
 
 ### Phase 3: hard（新しい基盤・アーキテクチャ変更を要するもの）
 
@@ -314,10 +313,15 @@ n/a へ移動: `ClusterClient` / `ClusterClientReceptionist` / `ClusterClientSet
 | SBR runtime down execution loop（reachability 監視 → 責任ノード選択 → 自動 down 発行） | core + std | カテゴリ3 |
 | concrete lease coordination backend | std | カテゴリ3 |
 | classic `ClusterSingletonManager`（oldest election / handover） | std + core | カテゴリ6 |
+| `ClusterSingletonProxy` | std + core | カテゴリ6 |
 | typed `ClusterSingleton` extension | core/typed + std | カテゴリ6 |
+| `SingletonActor[M]` | core/typed | カテゴリ6 |
+| typed `ClusterSingletonManagerSettings` wrapper / `ClusterSingletonSetup` / singleton 側 module setup integration | core/config + core/typed + std | カテゴリ6 / 10 |
+| `ClusterSingletonManagerIsStuck` runtime 検知 | core + std | カテゴリ6 |
 | shard allocation / rebalance strategy（SPI + least-shard + coordinator protocol） | core/placement | カテゴリ8 |
 | remembered entities（store 契約 + StateStoreMode） | core/placement + persistence integration | カテゴリ8 |
 | `ShardedDaemonProcess` / `ShardedDaemonProcessSettings` | core/typed + placement | カテゴリ8 |
+| sharding 側 module setup integration | core/typed + std | カテゴリ10 |
 | replicated sharding | core/typed + placement | カテゴリ8 |
 | sharding delivery controllers | core/typed + actor-core/delivery | カテゴリ8 |
 | `DistributedData` extension（classic） | core + std | カテゴリ9 |
@@ -331,7 +335,7 @@ ClusterClient 系（deprecated）、`@InternalApi` 型、JMX / HOCON / JFR / Jav
 
 cluster は membership / gossip / heartbeat / reachability / downing decision model / typed Cluster facade / Grain runtime / PubSub / discovery provider / message serializer contract という基礎契約は強く、カテゴリ 1, 2, 4, 5, 7, 10 は 82〜100% のカバレッジに達している。全体カバレッジは 97/151 (64%) で、未実装の大半は Cluster Singleton（30%）、Distributed Data / CRDT（22%）、Pekko sharding public API 形態（44%）の 3 領域に集中している。
 
-低コストで parity を前進できるのは、Phase 1 の `CrossDcFailureDetectorSettings`、routee 更新の std 配線、typed `ClusterSingletonManagerSettings` wrapper、mediator 全体 `Count`、Pekko 形態の `EntityTypeKey[M]` / typed `EntityRef[M]` API、Pekko 互換 hash-code extractor、`JoinConfigCompatCheckSharding`、および Phase 2 の `prepareForFullClusterShutdown` command path（kernel + typed を 1 change で閉じられる）である。Phase 1 のうち singleton / sharding setup や health check は依存 / 束ね先の基盤と同時に扱う。
+最初に単独 PR として進める価値が高いのは、routee 更新の std 配線、mediator 全体 `Count`、Pekko 互換 hash-code extractor、`prepareForFullClusterShutdown` command path のように、既存の runtime / state に結線して挙動を閉じられる項目である。`CrossDcFailureDetectorSettings`、typed singleton settings wrapper、setup integration、`JoinConfigCompatCheckSharding` のような config / wrapper / setup / compatibility key は、対象本体を触る change に同梱する。
 
 parity 上の主要ギャップは Phase 3 に集約される: SBR runtime down execution loop（decision model は完成済みで、実行ループだけが欠けている）、Cluster Singleton（manager / proxy / typed extension）、sharding の rebalance / remembered entities / delivery controllers、そして Distributed Data の Replicator 基盤である。特に SBR runtime loop は、既存の `SplitBrainResolver` / `ReachabilityMatrix` / `MembershipCoordinator` が揃っているため、Phase 3 の中では最も着手可能性が高い。
 
