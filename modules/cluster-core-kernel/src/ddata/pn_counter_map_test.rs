@@ -297,10 +297,6 @@ fn full_state_merge_prunes_local_delta_with_merged_removed_value_prefix() {
   let removed_prefix_5 = PNCounter::new().increment(&self_address(0), 5).expect("increment must fit").reset_delta();
   let pending_value_8 = PNCounter::new().increment(&self_address(0), 8).expect("increment must fit").reset_delta();
 
-  let mut local_removed_key_dots = BTreeMap::new();
-  local_removed_key_dots.insert(node.clone(), 1);
-  let mut local_removed_dots = BTreeMap::new();
-  local_removed_dots.insert(1, local_removed_key_dots);
   let mut local_removed_values = BTreeMap::new();
   local_removed_values.insert(1, removed_prefix_5);
   let mut local_delta = BTreeMap::new();
@@ -312,7 +308,7 @@ fn full_state_merge_prunes_local_delta_with_merged_removed_value_prefix() {
   let local = PNCounterMap {
     entries:              BTreeMap::new(),
     dots:                 BTreeMap::new(),
-    removed_dots:         local_removed_dots,
+    removed_dots:         BTreeMap::new(),
     removed_values:       local_removed_values,
     delta:                local_delta,
     delta_dots:           local_delta_dots,
@@ -340,6 +336,32 @@ fn full_state_merge_prunes_local_delta_with_merged_removed_value_prefix() {
   let merged_delta = local.merge(&remote).delta().expect("remaining delta must be visible");
 
   assert_eq!(merged_delta.get(&1), Ok(Some(3)));
+}
+
+#[test]
+fn full_state_merge_keeps_recreated_local_delta_after_reset_delta() {
+  let original = PNCounterMap::new().increment(&self_address(0), 1, 5).expect("increment must fit");
+  let recreated = original.remove(&1).reset_delta().increment(&self_address(0), 1, 8).expect("increment must fit");
+  let remote_remove = original.reset_delta().remove(&1);
+
+  let merged = recreated.merge(&remote_remove);
+  let remaining_delta = merged.delta().expect("recreated local value must remain in delta");
+
+  assert_eq!(merged.get(&1), Ok(Some(8)));
+  assert_eq!(remaining_delta.get(&1), Ok(Some(8)));
+}
+
+#[test]
+fn merge_delta_keeps_recreated_local_delta_after_reset_delta() {
+  let original = PNCounterMap::new().increment(&self_address(0), 1, 5).expect("increment must fit");
+  let recreated = original.remove(&1).reset_delta().increment(&self_address(0), 1, 8).expect("increment must fit");
+  let remove_delta = original.reset_delta().remove(&1).delta().expect("remove must create delta");
+
+  let merged = recreated.merge_delta(&remove_delta);
+  let remaining_delta = merged.delta().expect("recreated local value must remain in delta");
+
+  assert_eq!(merged.get(&1), Ok(Some(8)));
+  assert_eq!(remaining_delta.get(&1), Ok(Some(8)));
 }
 
 #[test]

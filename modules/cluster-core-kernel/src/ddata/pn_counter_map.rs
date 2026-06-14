@@ -226,7 +226,7 @@ where
         &mut delta_dots,
         key,
         removed_key_dots,
-        self.delta_removed_dots.get(key),
+        self.removed_dots.get(key),
         removed_values.get(key),
       );
     }
@@ -293,7 +293,7 @@ where
         &mut local_delta_dots,
         key,
         removed_key_dots,
-        self.delta_removed_dots.get(key),
+        self.removed_dots.get(key),
         removed_values.get(key),
       );
     }
