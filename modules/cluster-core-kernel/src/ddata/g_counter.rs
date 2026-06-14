@@ -47,6 +47,10 @@ impl GCounter {
     Self { state, delta }
   }
 
+  pub(super) fn state_value(&self, node: &UniqueAddress) -> u128 {
+    self.state.get(node).copied().unwrap_or(0)
+  }
+
   /// Returns a counter with `n` added to the local node slot.
   ///
   /// # Errors

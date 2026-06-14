@@ -20,12 +20,14 @@ use super::{
 #[derive(Debug, Clone)]
 pub struct PNCounterMap<K> {
   // Invariant: every visible entry has a matching dot map; merge derives candidates from dots.
-  entries:            BTreeMap<K, PNCounter>,
-  dots:               BTreeMap<K, BTreeMap<UniqueAddress, u64>>,
-  removed_dots:       BTreeMap<K, BTreeMap<UniqueAddress, u64>>,
-  delta:              BTreeMap<K, PNCounter>,
-  delta_dots:         BTreeMap<K, BTreeMap<UniqueAddress, u64>>,
-  delta_removed_dots: BTreeMap<K, BTreeMap<UniqueAddress, u64>>,
+  entries:              BTreeMap<K, PNCounter>,
+  dots:                 BTreeMap<K, BTreeMap<UniqueAddress, u64>>,
+  removed_dots:         BTreeMap<K, BTreeMap<UniqueAddress, u64>>,
+  removed_values:       BTreeMap<K, PNCounter>,
+  delta:                BTreeMap<K, PNCounter>,
+  delta_dots:           BTreeMap<K, BTreeMap<UniqueAddress, u64>>,
+  delta_removed_dots:   BTreeMap<K, BTreeMap<UniqueAddress, u64>>,
+  delta_removed_values: BTreeMap<K, PNCounter>,
 }
 
 impl<K> PNCounterMap<K>
@@ -36,12 +38,14 @@ where
   #[must_use]
   pub const fn new() -> Self {
     Self {
-      entries:            BTreeMap::new(),
-      dots:               BTreeMap::new(),
-      removed_dots:       BTreeMap::new(),
-      delta:              BTreeMap::new(),
-      delta_dots:         BTreeMap::new(),
-      delta_removed_dots: BTreeMap::new(),
+      entries:              BTreeMap::new(),
+      dots:                 BTreeMap::new(),
+      removed_dots:         BTreeMap::new(),
+      removed_values:       BTreeMap::new(),
+      delta:                BTreeMap::new(),
+      delta_dots:           BTreeMap::new(),
+      delta_removed_dots:   BTreeMap::new(),
+      delta_removed_values: BTreeMap::new(),
     }
   }
 
@@ -125,14 +129,25 @@ where
     let mut removed_dots = self.removed_dots.clone();
     merge_dot_map_entry(&mut removed_dots, key.clone(), &observed_dots);
 
+    let observed_value = self.entries.get(key).map(|counter| counter.retain_nodes(&observed_dots).reset_delta());
+    let mut removed_values = self.removed_values.clone();
+    if let Some(observed_value) = &observed_value {
+      merge_counter_map_entry(&mut removed_values, key.clone(), observed_value.clone());
+    }
+
     let mut delta_removed_dots = self.delta_removed_dots.clone();
     merge_dot_map_entry(&mut delta_removed_dots, key.clone(), &observed_dots);
 
+    let mut delta_removed_values = self.delta_removed_values.clone();
+    if let Some(observed_value) = observed_value {
+      merge_counter_map_entry(&mut delta_removed_values, key.clone(), observed_value);
+    }
+
     let mut delta = self.delta.clone();
     let mut delta_dots = self.delta_dots.clone();
-    apply_removed_dots(&mut delta, &mut delta_dots, key, &observed_dots);
+    apply_removed_dots(&mut delta, &mut delta_dots, key, &observed_dots, None, removed_values.get(key));
 
-    Self { entries, dots, removed_dots, delta, delta_dots, delta_removed_dots }
+    Self { entries, dots, removed_dots, removed_values, delta, delta_dots, delta_removed_dots, delta_removed_values }
   }
 
   fn update_key(
@@ -171,9 +186,11 @@ where
       entries,
       dots,
       removed_dots: self.removed_dots.clone(),
+      removed_values: self.removed_values.clone(),
       delta,
       delta_dots,
       delta_removed_dots: self.delta_removed_dots.clone(),
+      delta_removed_values: self.delta_removed_values.clone(),
     })
   }
 }
@@ -184,16 +201,45 @@ where
 {
   fn merge(&self, other: &Self) -> Self {
     let removed_dots = merge_dot_maps(&self.removed_dots, &other.removed_dots);
-    let (entries, dots) =
-      merge_entries(&self.entries, &self.dots, &other.removed_dots, &other.entries, &other.dots, &self.removed_dots);
+    let removed_values = merge_counter_maps(&self.removed_values, &other.removed_values);
+    let (entries, dots) = merge_entries(
+      &MergeEntrySide {
+        entries:                 &self.entries,
+        dots:                    &self.dots,
+        own_removed:             &self.removed_dots,
+        removed_by_other:        &other.removed_dots,
+        removed_values_by_other: &other.removed_values,
+      },
+      &MergeEntrySide {
+        entries:                 &other.entries,
+        dots:                    &other.dots,
+        own_removed:             &other.removed_dots,
+        removed_by_other:        &self.removed_dots,
+        removed_values_by_other: &self.removed_values,
+      },
+    );
+    let mut delta = self.delta.clone();
+    let mut delta_dots = self.delta_dots.clone();
+    for (key, removed_key_dots) in &other.removed_dots {
+      apply_removed_dots(
+        &mut delta,
+        &mut delta_dots,
+        key,
+        removed_key_dots,
+        self.delta_removed_dots.get(key),
+        other.removed_values.get(key),
+      );
+    }
 
     Self {
       entries,
       dots,
       removed_dots,
-      delta: self.delta.clone(),
-      delta_dots: self.delta_dots.clone(),
+      removed_values,
+      delta,
+      delta_dots,
       delta_removed_dots: self.delta_removed_dots.clone(),
+      delta_removed_values: self.delta_removed_values.clone(),
     }
   }
 }
@@ -205,16 +251,18 @@ where
   type Delta = Self;
 
   fn delta(&self) -> Option<Self::Delta> {
-    if self.delta.is_empty() && self.delta_removed_dots.is_empty() {
+    if self.delta.is_empty() && self.delta_removed_dots.is_empty() && self.delta_removed_values.is_empty() {
       None
     } else {
       Some(Self {
-        entries:            self.delta.clone(),
-        dots:               self.delta_dots.clone(),
-        removed_dots:       self.delta_removed_dots.clone(),
-        delta:              BTreeMap::new(),
-        delta_dots:         BTreeMap::new(),
-        delta_removed_dots: BTreeMap::new(),
+        entries:              self.delta.clone(),
+        dots:                 self.delta_dots.clone(),
+        removed_dots:         self.delta_removed_dots.clone(),
+        removed_values:       self.delta_removed_values.clone(),
+        delta:                BTreeMap::new(),
+        delta_dots:           BTreeMap::new(),
+        delta_removed_dots:   BTreeMap::new(),
+        delta_removed_values: BTreeMap::new(),
       })
     }
   }
@@ -223,23 +271,42 @@ where
     let mut entries = self.entries.clone();
     let mut dots = self.dots.clone();
     let mut removed_dots = self.removed_dots.clone();
+    let mut removed_values = self.removed_values.clone();
     let mut local_delta = self.delta.clone();
     let mut local_delta_dots = self.delta_dots.clone();
 
     for (key, removed_key_dots) in &delta.removed_dots {
       merge_dot_map_entry(&mut removed_dots, key.clone(), removed_key_dots);
-      apply_removed_dots(&mut entries, &mut dots, key, removed_key_dots);
-      apply_removed_dots(&mut local_delta, &mut local_delta_dots, key, removed_key_dots);
+      if let Some(removed_value) = delta.removed_values.get(key) {
+        merge_counter_map_entry(&mut removed_values, key.clone(), removed_value.clone());
+      }
+      apply_removed_dots(
+        &mut entries,
+        &mut dots,
+        key,
+        removed_key_dots,
+        self.removed_dots.get(key),
+        removed_values.get(key),
+      );
+      apply_removed_dots(
+        &mut local_delta,
+        &mut local_delta_dots,
+        key,
+        removed_key_dots,
+        self.delta_removed_dots.get(key),
+        removed_values.get(key),
+      );
     }
 
     for (key, counter) in &delta.entries {
       let incoming_dots = delta.dots.get(key).cloned().unwrap_or_default();
-      let visible_dots = filter_visible_dots(&incoming_dots, removed_dots.get(key));
-      if visible_dots.is_empty() {
-        continue;
-      }
-
-      let Some(counter) = visible_counter(counter, &visible_dots) else {
+      let Some((counter, visible_dots)) = visible_counter(
+        counter,
+        &incoming_dots,
+        removed_dots.get(key),
+        delta.removed_dots.get(key),
+        removed_values.get(key),
+      ) else {
         continue;
       };
       let counter = counter.reset_delta();
@@ -256,9 +323,11 @@ where
       entries,
       dots,
       removed_dots,
+      removed_values,
       delta: local_delta,
       delta_dots: local_delta_dots,
       delta_removed_dots: self.delta_removed_dots.clone(),
+      delta_removed_values: self.delta_removed_values.clone(),
     }
   }
 
@@ -269,9 +338,11 @@ where
       entries,
       dots: self.dots.clone(),
       removed_dots: self.removed_dots.clone(),
+      removed_values: self.removed_values.clone(),
       delta: BTreeMap::new(),
       delta_dots: BTreeMap::new(),
       delta_removed_dots: BTreeMap::new(),
+      delta_removed_values: BTreeMap::new(),
     }
   }
 }
@@ -307,6 +378,9 @@ where
     for key_dots in self.removed_dots.values() {
       nodes.extend(key_dots.keys().cloned());
     }
+    for counter in self.removed_values.values() {
+      nodes.extend(counter.modified_by_nodes());
+    }
     nodes
   }
 
@@ -314,26 +388,38 @@ where
     self.entries.values().any(|counter| counter.need_pruning_from(removed_node))
       || self.dots.values().any(|key_dots| key_dots.contains_key(removed_node))
       || self.removed_dots.values().any(|key_dots| key_dots.contains_key(removed_node))
+      || self.removed_values.values().any(|counter| counter.need_pruning_from(removed_node))
   }
 
   fn prune(&self, removed_node: &UniqueAddress, collapse_into: &UniqueAddress) -> Result<Self, Self::PruneError> {
     let mut entries = BTreeMap::new();
     let mut dots = BTreeMap::new();
     let mut removed_dots = BTreeMap::new();
+    let mut removed_values = BTreeMap::new();
     let mut delta = BTreeMap::new();
     let mut delta_dots = BTreeMap::new();
     let delta_removed_dots: BTreeMap<K, BTreeMap<UniqueAddress, u64>> = self
       .delta_removed_dots
       .iter()
       .filter_map(|(key, key_dots)| {
-        let key_dots = pruning_cleanup_dots(key_dots, removed_node);
+        let key_dots = prune_tombstone_dots(key_dots, removed_node, collapse_into);
         if key_dots.is_empty() { None } else { Some((key.clone(), key_dots)) }
       })
       .collect();
+    let mut delta_removed_values = BTreeMap::new();
+    for (key, counter) in &self.delta_removed_values {
+      let counter = counter.prune(removed_node, collapse_into)?;
+      if !counter.modified_by_nodes().is_empty() {
+        delta_removed_values.insert(key.clone(), counter.reset_delta());
+      }
+    }
 
     for (key, counter) in &self.entries {
       let counter = counter.prune(removed_node, collapse_into)?;
-      let pruned_dots = self.dots.get(key).map(|key_dots| prune_dots(key_dots, removed_node, collapse_into));
+      let pruned_dots = self
+        .dots
+        .get(key)
+        .map(|key_dots| prune_entry_dots(key_dots, removed_node, collapse_into, self.removed_dots.get(key)));
       let dots_changed = pruned_dots.as_ref() != self.dots.get(key);
       if counter.delta().is_some() || dots_changed {
         delta.insert(key.clone(), counter.reset_delta());
@@ -345,17 +431,33 @@ where
     }
 
     for (key, key_dots) in &self.dots {
-      dots.insert(key.clone(), prune_dots(key_dots, removed_node, collapse_into));
+      dots.insert(key.clone(), prune_entry_dots(key_dots, removed_node, collapse_into, self.removed_dots.get(key)));
     }
 
     for (key, key_dots) in &self.removed_dots {
-      let pruned_dots = pruning_cleanup_dots(key_dots, removed_node);
+      let pruned_dots = prune_tombstone_dots(key_dots, removed_node, collapse_into);
       if !pruned_dots.is_empty() {
         removed_dots.insert(key.clone(), pruned_dots);
       }
     }
 
-    Ok(Self { entries, dots, removed_dots, delta, delta_dots, delta_removed_dots })
+    for (key, counter) in &self.removed_values {
+      let counter = counter.prune(removed_node, collapse_into)?;
+      if !counter.modified_by_nodes().is_empty() {
+        removed_values.insert(key.clone(), counter.reset_delta());
+      }
+    }
+
+    Ok(Self {
+      entries,
+      dots,
+      removed_dots,
+      removed_values,
+      delta,
+      delta_dots,
+      delta_removed_dots,
+      delta_removed_values,
+    })
   }
 
   fn pruning_cleanup(&self, removed_node: &UniqueAddress) -> Self {
@@ -375,6 +477,14 @@ where
       .filter_map(|(key, key_dots)| {
         let key_dots = pruning_cleanup_dots(key_dots, removed_node);
         if key_dots.is_empty() { None } else { Some((key.clone(), key_dots)) }
+      })
+      .collect();
+    let removed_values = self
+      .removed_values
+      .iter()
+      .filter_map(|(key, counter)| {
+        let counter = counter.pruning_cleanup(removed_node);
+        if counter.modified_by_nodes().is_empty() { None } else { Some((key.clone(), counter)) }
       })
       .collect();
     let delta = self
@@ -401,8 +511,16 @@ where
         if key_dots.is_empty() { None } else { Some((key.clone(), key_dots)) }
       })
       .collect();
+    let delta_removed_values = self
+      .delta_removed_values
+      .iter()
+      .filter_map(|(key, counter)| {
+        let counter = counter.pruning_cleanup(removed_node);
+        if counter.modified_by_nodes().is_empty() { None } else { Some((key.clone(), counter)) }
+      })
+      .collect();
 
-    Self { entries, dots, removed_dots, delta, delta_dots, delta_removed_dots }
+    Self { entries, dots, removed_dots, removed_values, delta, delta_dots, delta_removed_dots, delta_removed_values }
   }
 }
 
@@ -420,44 +538,62 @@ where
   K: Ord,
 {
   fn eq(&self, other: &Self) -> bool {
-    self.entries == other.entries && self.dots == other.dots && self.removed_dots == other.removed_dots
+    self.entries == other.entries
+      && self.dots == other.dots
+      && self.removed_dots == other.removed_dots
+      && self.removed_values == other.removed_values
   }
 }
 
 impl<K> Eq for PNCounterMap<K> where K: Ord {}
 
+struct MergeEntrySide<'a, K> {
+  entries:                 &'a BTreeMap<K, PNCounter>,
+  dots:                    &'a BTreeMap<K, BTreeMap<UniqueAddress, u64>>,
+  own_removed:             &'a BTreeMap<K, BTreeMap<UniqueAddress, u64>>,
+  removed_by_other:        &'a BTreeMap<K, BTreeMap<UniqueAddress, u64>>,
+  removed_values_by_other: &'a BTreeMap<K, PNCounter>,
+}
+
 fn merge_entries<K>(
-  left_entries: &BTreeMap<K, PNCounter>,
-  left_dots: &BTreeMap<K, BTreeMap<UniqueAddress, u64>>,
-  left_removed_by_right: &BTreeMap<K, BTreeMap<UniqueAddress, u64>>,
-  right_entries: &BTreeMap<K, PNCounter>,
-  right_dots: &BTreeMap<K, BTreeMap<UniqueAddress, u64>>,
-  right_removed_by_left: &BTreeMap<K, BTreeMap<UniqueAddress, u64>>,
+  left: &MergeEntrySide<'_, K>,
+  right: &MergeEntrySide<'_, K>,
 ) -> (BTreeMap<K, PNCounter>, BTreeMap<K, BTreeMap<UniqueAddress, u64>>)
 where
   K: Ord + Clone, {
-  debug_assert!(left_entries.keys().all(|key| left_dots.contains_key(key)));
-  debug_assert!(right_entries.keys().all(|key| right_dots.contains_key(key)));
+  debug_assert!(left.entries.keys().all(|key| left.dots.contains_key(key)));
+  debug_assert!(right.entries.keys().all(|key| right.dots.contains_key(key)));
 
   let mut keys = BTreeSet::new();
-  keys.extend(left_dots.keys().cloned());
-  keys.extend(right_dots.keys().cloned());
+  keys.extend(left.dots.keys().cloned());
+  keys.extend(right.dots.keys().cloned());
 
   let mut entries = BTreeMap::new();
   let mut dots = BTreeMap::new();
 
   for key in keys {
-    let left_visible_dots = left_dots
-      .get(&key)
-      .map(|key_dots| filter_visible_dots(key_dots, left_removed_by_right.get(&key)))
-      .unwrap_or_default();
-    let right_visible_dots = right_dots
-      .get(&key)
-      .map(|key_dots| filter_visible_dots(key_dots, right_removed_by_left.get(&key)))
-      .unwrap_or_default();
-
-    let left_value = left_entries.get(&key).and_then(|counter| visible_counter(counter, &left_visible_dots));
-    let right_value = right_entries.get(&key).and_then(|counter| visible_counter(counter, &right_visible_dots));
+    let left_visible = left.entries.get(&key).and_then(|counter| {
+      visible_counter(
+        counter,
+        left.dots.get(&key)?,
+        left.removed_by_other.get(&key),
+        left.own_removed.get(&key),
+        left.removed_values_by_other.get(&key),
+      )
+    });
+    let right_visible = right.entries.get(&key).and_then(|counter| {
+      visible_counter(
+        counter,
+        right.dots.get(&key)?,
+        right.removed_by_other.get(&key),
+        right.own_removed.get(&key),
+        right.removed_values_by_other.get(&key),
+      )
+    });
+    let left_visible_dots = left_visible.as_ref().map(|(_, dots)| dots.clone()).unwrap_or_default();
+    let right_visible_dots = right_visible.as_ref().map(|(_, dots)| dots.clone()).unwrap_or_default();
+    let left_value = left_visible.map(|(counter, _)| counter);
+    let right_value = right_visible.map(|(counter, _)| counter);
     let value = match (left_value, right_value) {
       | (Some(left), Some(right)) => Some(left.merge(&right)),
       | (Some(left), None) => Some(left),
@@ -477,13 +613,14 @@ where
   (entries, dots)
 }
 
-fn visible_counter(counter: &PNCounter, visible_dots: &BTreeMap<UniqueAddress, u64>) -> Option<PNCounter> {
-  if visible_dots.is_empty() {
-    return None;
-  }
-
-  let counter = counter.retain_nodes(visible_dots);
-  if counter.modified_by_nodes().is_empty() { None } else { Some(counter) }
+fn visible_counter(
+  counter: &PNCounter,
+  dots: &BTreeMap<UniqueAddress, u64>,
+  removed_dots: Option<&BTreeMap<UniqueAddress, u64>>,
+  own_removed_dots: Option<&BTreeMap<UniqueAddress, u64>>,
+  removed_value: Option<&PNCounter>,
+) -> Option<(PNCounter, BTreeMap<UniqueAddress, u64>)> {
+  counter.retain_visible_nodes(dots, removed_dots, own_removed_dots, removed_value)
 }
 
 fn merge_dot_maps<K>(
@@ -497,6 +634,22 @@ where
     merge_dot_map_entry(&mut merged, key.clone(), dots);
   }
   merged
+}
+
+fn merge_counter_maps<K>(left: &BTreeMap<K, PNCounter>, right: &BTreeMap<K, PNCounter>) -> BTreeMap<K, PNCounter>
+where
+  K: Ord + Clone, {
+  let mut merged = left.clone();
+  for (key, counter) in right {
+    merge_counter_map_entry(&mut merged, key.clone(), counter.clone());
+  }
+  merged
+}
+
+fn merge_counter_map_entry<K>(target: &mut BTreeMap<K, PNCounter>, key: K, incoming: PNCounter)
+where
+  K: Ord, {
+  target.entry(key).and_modify(|current| *current = current.merge(&incoming)).or_insert(incoming);
 }
 
 fn merge_dot_map_entry<K>(
@@ -523,46 +676,25 @@ fn merge_dots_into(target: &mut BTreeMap<UniqueAddress, u64>, incoming: &BTreeMa
   }
 }
 
-fn filter_visible_dots(
-  key_dots: &BTreeMap<UniqueAddress, u64>,
-  removed_key_dots: Option<&BTreeMap<UniqueAddress, u64>>,
-) -> BTreeMap<UniqueAddress, u64> {
-  let Some(removed_key_dots) = removed_key_dots else {
-    return key_dots.clone();
-  };
-
-  key_dots
-    .iter()
-    .filter(|(node, version)| removed_key_dots.get(*node).copied().unwrap_or(0) < **version)
-    .map(|(node, version)| (node.clone(), *version))
-    .collect()
-}
-
-fn remove_covered_dots(key_dots: &mut BTreeMap<UniqueAddress, u64>, removed_key_dots: &BTreeMap<UniqueAddress, u64>) {
-  key_dots.retain(|node, version| removed_key_dots.get(node).copied().unwrap_or(0) < *version);
-}
-
 fn apply_removed_dots<K>(
   entries: &mut BTreeMap<K, PNCounter>,
   dots: &mut BTreeMap<K, BTreeMap<UniqueAddress, u64>>,
   key: &K,
   removed_key_dots: &BTreeMap<UniqueAddress, u64>,
+  own_removed_dots: Option<&BTreeMap<UniqueAddress, u64>>,
+  removed_value: Option<&PNCounter>,
 ) where
   K: Ord + Clone, {
-  let Some(current_dots) = dots.get_mut(key) else {
+  let Some(current_dots) = dots.get(key).cloned() else {
     return;
   };
 
-  remove_covered_dots(current_dots, removed_key_dots);
-  if current_dots.is_empty() {
-    dots.remove(key);
-    entries.remove(key);
-    return;
-  }
-
   if let Some(counter) = entries.get(key).cloned() {
-    if let Some(counter) = visible_counter(&counter, current_dots) {
+    if let Some((counter, visible_dots)) =
+      visible_counter(&counter, &current_dots, Some(removed_key_dots), own_removed_dots, removed_value)
+    {
       entries.insert(key.clone(), counter);
+      dots.insert(key.clone(), visible_dots);
     } else {
       dots.remove(key);
       entries.remove(key);
@@ -570,7 +702,27 @@ fn apply_removed_dots<K>(
   }
 }
 
-fn prune_dots(
+fn prune_entry_dots(
+  key_dots: &BTreeMap<UniqueAddress, u64>,
+  removed_node: &UniqueAddress,
+  collapse_into: &UniqueAddress,
+  removed_key_dots: Option<&BTreeMap<UniqueAddress, u64>>,
+) -> BTreeMap<UniqueAddress, u64> {
+  let mut pruned = key_dots.clone();
+  if pruned.remove(removed_node).is_none() {
+    return pruned;
+  }
+
+  if removed_node != collapse_into {
+    let current = pruned.get(collapse_into).copied().unwrap_or(0);
+    let removed = removed_key_dots.and_then(|key_dots| key_dots.get(collapse_into)).copied().unwrap_or(0);
+    pruned.insert(collapse_into.clone(), current.max(removed).saturating_add(1));
+  }
+
+  pruned
+}
+
+fn prune_tombstone_dots(
   key_dots: &BTreeMap<UniqueAddress, u64>,
   removed_node: &UniqueAddress,
   collapse_into: &UniqueAddress,

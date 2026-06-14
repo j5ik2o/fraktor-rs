@@ -280,6 +280,17 @@ fn remote_remove_drops_covered_local_delta() {
 }
 
 #[test]
+fn full_state_remove_drops_covered_local_delta() {
+  let local = PNCounterMap::new().increment(&self_address(0), 1, 5).expect("increment must fit");
+  let remote_remove = local.reset_delta().remove(&1);
+
+  let merged = local.merge(&remote_remove);
+
+  assert_eq!(merged.get(&1), Ok(None));
+  assert_eq!(merged.delta(), None);
+}
+
+#[test]
 fn remove_tombstone_participates_in_equality() {
   let original = PNCounterMap::new().increment(&self_address(0), 1, 5).expect("increment must fit");
   let removed = original.remove(&1);
@@ -301,6 +312,15 @@ fn merge_excludes_tombstoned_counter_slots() {
   assert_eq!(left_associated.get(&1), Ok(Some(2)));
   assert_eq!(right_associated.get(&1), Ok(Some(2)));
   assert_eq!(left_associated, right_associated);
+}
+
+#[test]
+fn merge_subtracts_removed_same_node_prefix_from_later_dot() {
+  let original = PNCounterMap::new().increment(&self_address(0), 1, 5).expect("increment must fit");
+  let removed = original.remove(&1);
+  let stale_later_dot = original.increment(&self_address(0), 1, 3).expect("increment must fit");
+
+  assert_eq!(removed.merge(&stale_later_dot).get(&1), Ok(Some(3)));
 }
 
 #[test]
@@ -434,6 +454,35 @@ fn prune_does_not_retarget_removed_dot_tombstones() {
 }
 
 #[test]
+fn prune_avoids_collapse_dot_collision_with_target_tombstone() {
+  let removed = self_address(0);
+  let collapse_into = self_address(2);
+  let target_removed = PNCounterMap::new().increment(&collapse_into, 1, 7).expect("increment must fit").remove(&1);
+  let visible_removed_node_entry = PNCounterMap::new().increment(&removed, 1, 5).expect("increment must fit");
+  let map = target_removed.merge(&visible_removed_node_entry);
+
+  let pruned = map.prune(removed.unique_address(), collapse_into.unique_address()).expect("pruning must fit");
+
+  assert_eq!(pruned.get(&1), Ok(Some(5)));
+  assert_eq!(pruned.merge(&pruned).get(&1), Ok(Some(5)));
+}
+
+#[test]
+fn pruned_tombstone_suppresses_pruned_removed_node_entry() {
+  let removed = self_address(0);
+  let collapse_into = self_address(2);
+  let original = PNCounterMap::new().increment(&removed, 1, 5).expect("increment must fit");
+  let pruned_tombstone = original
+    .remove(&1)
+    .prune(removed.unique_address(), collapse_into.unique_address())
+    .expect("pruning tombstone must fit");
+  let pruned_entry =
+    original.prune(removed.unique_address(), collapse_into.unique_address()).expect("pruning entry must fit");
+
+  assert_eq!(pruned_tombstone.merge(&pruned_entry).get(&1), Ok(None));
+}
+
+#[test]
 fn get_propagates_nested_counter_overflow() {
   let counter = PNCounter::from_parts(g_counter_with_slot(0, u128::MAX), GCounter::new());
   let mut entries = BTreeMap::new();
@@ -442,9 +491,11 @@ fn get_propagates_nested_counter_overflow() {
     entries,
     dots: BTreeMap::new(),
     removed_dots: BTreeMap::new(),
+    removed_values: BTreeMap::new(),
     delta: BTreeMap::new(),
     delta_dots: BTreeMap::new(),
     delta_removed_dots: BTreeMap::new(),
+    delta_removed_values: BTreeMap::new(),
   };
 
   assert_eq!(map.get(&1), Err(CounterArithmeticError::Overflow));
