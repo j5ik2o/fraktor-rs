@@ -1,6 +1,6 @@
 # 実装計画
 
-- [ ] 1. 基盤: イベント語彙とトレースフィールド契約
+- [x] 1. 基盤: イベント語彙とトレースフィールド契約
 - [x] 1.1 cluster イベント語彙に shutdown 進行と DC 到達性の 4 種別を追加する
   - shutdown 準備開始・完了（member 識別 + 観測時刻）と data center の unreachable / reachable（data center 識別 + 観測時刻）のイベントを既存 variant のフィールド規約に合わせて追加する
   - イベント種別フィルタに対応 4 種別を追加し、種別照合の網羅 match を更新する
@@ -18,7 +18,7 @@
   - _Boundary:_ cluster_lifecycle_trace_field
   - _Depends:_ none
 
-- [ ] 2. コア: 順序契約・DC 到達性ラッチ・イベント併発
+- [x] 2. コア: 順序契約・DC 到達性ラッチ・イベント併発
 - [x] 2.1 (P) Member Ordering の公開契約を実装する
   - 既存のペア比較（join 古さ + authority tie-break）を正本として、全順序比較・age 順整列・最古メンバー特定の pure な公開関数群を membership に追加する
   - フィルタ（active / leader-eligible）は持ち込まず順序のみを所有する
@@ -48,7 +48,7 @@
   - _Boundary:_ MembershipCoordinator 変更
   - _Depends:_ 1.1
 
-- [ ] 3. 統合: 重複実装の集約と std 準拠化
+- [x] 3. 統合: 重複実装の集約と std 準拠化
 - [x] 3.1 (P) coordinator の oldest / role leader 算出を順序契約へ委譲する
   - leader 算出のプライベートな oldest 判定と role leader の比較部分を、順序契約の参照に置き換える（leader-eligible フィルタは coordinator 側に残す）
   - 2.3 の併発実装が完了した後に着手する（同一ファイルへの変更競合を避ける）
@@ -71,7 +71,7 @@
   - _Boundary:_ std tracing 準拠化
   - _Depends:_ 1.2
 
-- [ ] 4. 検証
+- [x] 4. 検証
 - [x] 4.1 購読フィルタと配信の統合検証を追加する
   - 新イベント種別だけを指定した購読者が shutdown 進行イベントのみを受信することを cluster の購読 API 経由で検証する
   - DC ラッチの遷移出力（`DataCenterReachabilityTransition`）から `UnreachableDataCenter` / `ReachableDataCenter` の `ClusterEvent` への変換ロジックを実装し、`data_center` 識別子が正しく引き継がれることをテストで検証する
