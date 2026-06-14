@@ -142,6 +142,19 @@ fn provider_hook_downing_provider_decide_context_uses_membership_context() {
 }
 
 #[test]
+fn provider_hook_strategy_decision_preserves_downing_targets() {
+  let config =
+    SplitBrainResolverConfig::new(Duration::ZERO, SplitBrainResolverStrategy::KeepMajority, Duration::from_secs(30));
+  let mut hook = SplitBrainResolverProviderHook::new(config);
+  let node_c = unique("node-c", 3);
+
+  let decision = hook.decide_strategy_context(&majority_context()).expect("strategy decision");
+
+  assert_eq!(decision.simple_decision(), DowningDecision::Keep);
+  assert_eq!(decision.downing_targets(), &[node_c]);
+}
+
+#[test]
 fn provider_hook_returns_down_when_local_observer_is_downing_target() {
   let config =
     SplitBrainResolverConfig::new(Duration::ZERO, SplitBrainResolverStrategy::KeepMajority, Duration::from_secs(30));
@@ -150,6 +163,19 @@ fn provider_hook_returns_down_when_local_observer_is_downing_target() {
   let decision = hook.decide_context(&minority_observer_context());
 
   assert_eq!(decision, Ok(DowningDecision::Down));
+}
+
+#[test]
+fn provider_hook_strategy_decision_returns_down_when_local_observer_is_downing_target() {
+  let config =
+    SplitBrainResolverConfig::new(Duration::ZERO, SplitBrainResolverStrategy::KeepMajority, Duration::from_secs(30));
+  let mut hook = SplitBrainResolverProviderHook::new(config);
+  let node_a = unique("node-a", 1);
+
+  let decision = hook.decide_strategy_context(&minority_observer_context()).expect("strategy decision");
+
+  assert_eq!(decision.simple_decision(), DowningDecision::Down);
+  assert_eq!(decision.downing_targets(), &[node_a]);
 }
 
 #[test]
@@ -198,5 +224,21 @@ fn provider_hook_with_lease_returns_down_when_local_observer_is_downing_target()
   let decision = hook.decide_context_with_lease(&minority_observer_context(), &mut lease_port);
 
   assert_eq!(decision, Ok(DowningDecision::Down));
+  assert_eq!(lease_port.calls, 0);
+}
+
+#[test]
+fn provider_hook_strategy_decision_with_lease_returns_down_when_local_observer_is_downing_target() {
+  let config =
+    SplitBrainResolverConfig::new(Duration::ZERO, SplitBrainResolverStrategy::LeaseMajority, Duration::from_secs(30));
+  let mut hook = SplitBrainResolverProviderHook::new(config);
+  let mut lease_port = RecordingLeasePort { outcome: LeaseAcquisitionOutcome::Acquired, calls: 0 };
+  let node_a = unique("node-a", 1);
+
+  let decision =
+    hook.decide_strategy_context_with_lease(&minority_observer_context(), &mut lease_port).expect("strategy decision");
+
+  assert_eq!(decision.simple_decision(), DowningDecision::Down);
+  assert_eq!(decision.downing_targets(), &[node_a]);
   assert_eq!(lease_port.calls, 0);
 }

@@ -10,7 +10,8 @@ use core::time::Duration;
 use fraktor_cluster_core_kernel_rs::{
   downing_provider::{
     DowningDecision, DowningDecisionContext, DowningInput, DowningProvider, DowningProviderCompatibility,
-    LeaseAcquisitionOutcome, LeaseMajorityPort, SplitBrainResolverConfig, SplitBrainResolverProviderHook,
+    DowningStrategyDecision, LeaseAcquisitionOutcome, LeaseMajorityPort, SplitBrainResolverConfig,
+    SplitBrainResolverProviderHook,
   },
   extension::ClusterProviderError,
 };
@@ -101,6 +102,28 @@ impl StdSplitBrainResolverProvider {
       return hook.decide_context_with_lease(context, &mut lease_port);
     }
     hook.decide_context(context)
+  }
+
+  /// Decides from a prebuilt context while preserving strategy target details.
+  ///
+  /// The provider starts lazily when it has not been explicitly started yet. A stopped provider
+  /// still rejects the decision.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`ClusterProviderError::DownFailed`] when the provider is stopped or the core hook
+  /// reports a decision failure.
+  pub fn decide_strategy_context(
+    &mut self,
+    context: &DowningDecisionContext,
+  ) -> Result<DowningStrategyDecision, ClusterProviderError> {
+    self.ensure_started_for_downing_provider()?;
+    let hook = self.hook.as_mut().ok_or_else(|| ClusterProviderError::down(NOT_STARTED))?;
+    if let Some(lease_backend) = self.lease_backend.as_mut() {
+      let mut lease_port = StdLeaseMajorityPort { backend: lease_backend.as_mut() };
+      return hook.decide_strategy_context_with_lease(context, &mut lease_port);
+    }
+    hook.decide_strategy_context(context)
   }
 
   fn close_active(&mut self) {

@@ -351,7 +351,7 @@ impl MembershipTable {
 
     match record.status {
       | NodeStatus::Dead => return Ok(None),
-      | NodeStatus::Suspect | NodeStatus::WeaklyUp => {},
+      | status if status.is_active() => {},
       | _ => {
         return Err(MembershipError::InvalidTransition {
           authority: authority.to_string(),

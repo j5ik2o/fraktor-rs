@@ -176,8 +176,11 @@ impl MembershipCoordinator {
     let mut outcome = MembershipCoordinatorOutcome { membership_events, ..Default::default() };
 
     if changed {
+      if let Some(record) = self.gossip.table().record(&authority).cloned() {
+        self.clear_rejoining_reachability(&record, before);
+      }
       self.update_suspect_tracking(&authority, NodeStatus::Joining, now);
-      self.topology_accumulator.joined.insert(authority.clone());
+      self.topology_accumulator.mark_joined(authority.clone());
       self.refresh_peers();
       if self.config.gossip_enabled {
         outcome.gossip_outbound = self.gossip.disseminate(&delta);
@@ -225,7 +228,7 @@ impl MembershipCoordinator {
     let membership_events = self.gossip.table_mut().drain_events();
     let mut outcome = MembershipCoordinatorOutcome { membership_events, ..Default::default() };
     if self.gossip.table().record(authority).map(|record| record.status) == Some(NodeStatus::Removed) {
-      self.topology_accumulator.left.insert(authority.to_string());
+      self.topology_accumulator.mark_left(authority.to_string());
     }
     if let Some(status) = self.gossip.table().record(authority).map(|record| record.status) {
       self.update_suspect_tracking(authority, status, now);
@@ -265,6 +268,53 @@ impl MembershipCoordinator {
       });
     }
 
+    self.collect_gossip_and_state_events(now, &mut outcome);
+    Ok(outcome)
+  }
+
+  /// Handles a downing decision for a member selected by a downing provider.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`MembershipCoordinatorError::NotStarted`] when stopped,
+  /// [`MembershipCoordinatorError::InvalidState`] in client mode, or a membership
+  /// error when the target cannot transition to `Dead`.
+  pub fn handle_down(
+    &mut self,
+    authority: &str,
+    now: TimerInstant,
+  ) -> Result<MembershipCoordinatorOutcome, MembershipCoordinatorError> {
+    self.ensure_member()?;
+
+    let before = self.gossip.table().record(authority).map(|record| record.status);
+    let Some(delta) = self.gossip.table_mut().mark_dead(authority).map_err(MembershipCoordinatorError::Membership)?
+    else {
+      return Ok(MembershipCoordinatorOutcome::default());
+    };
+
+    let mut outcome = MembershipCoordinatorOutcome::default();
+    self.refresh_peers();
+    if self.config.gossip_enabled {
+      outcome.gossip_outbound.extend(self.gossip.disseminate(&delta));
+    }
+    if let Some(record) = self.gossip.table().record(authority).cloned() {
+      self.update_suspect_tracking(authority, record.status, now);
+      self.topology_accumulator.mark_dead(authority.to_string());
+      self.record_terminated(&record);
+      if let Some(from) = before {
+        self.emit_status_change(authority, from, record.status, now, &mut outcome);
+      }
+      let reason = "downing-decision".to_string();
+      let event = self.quarantine.quarantine(authority.to_string(), reason.clone(), now, self.config.quarantine_ttl);
+      outcome.quarantine_events.push(event);
+      outcome.member_events.push(ClusterEvent::MemberQuarantined {
+        authority: authority.to_string(),
+        reason,
+        observed_at: now,
+      });
+    }
+
+    outcome.membership_events = self.gossip.table_mut().drain_events();
     self.collect_gossip_and_state_events(now, &mut outcome);
     Ok(outcome)
   }
@@ -529,14 +579,15 @@ impl MembershipCoordinator {
     match status {
       | NodeStatus::Joining | NodeStatus::WeaklyUp | NodeStatus::Up | NodeStatus::Suspect => {
         if before.is_none() || matches!(before, Some(NodeStatus::Removed | NodeStatus::Dead)) {
-          self.topology_accumulator.joined.insert(record.authority.clone());
+          self.clear_rejoining_reachability(record, before);
+          self.topology_accumulator.mark_joined(record.authority.clone());
         }
       },
       | NodeStatus::Removed => {
-        self.topology_accumulator.left.insert(record.authority.clone());
+        self.topology_accumulator.mark_left(record.authority.clone());
       },
       | NodeStatus::Dead => {
-        self.topology_accumulator.dead.insert(record.authority.clone());
+        self.topology_accumulator.mark_dead(record.authority.clone());
         let reason = "gossip-dead".to_string();
         let event =
           self.quarantine.quarantine(record.authority.clone(), reason.clone(), now, self.config.quarantine_ttl);
@@ -601,6 +652,17 @@ impl MembershipCoordinator {
 
   fn record_reachable(&mut self, subject: &NodeRecord) {
     self.reachability.reachable(self.local_unique_address(), subject.unique_address.clone());
+  }
+
+  fn record_terminated(&mut self, subject: &NodeRecord) {
+    self.reachability.terminated(self.local_unique_address(), subject.unique_address.clone());
+  }
+
+  fn clear_rejoining_reachability(&mut self, record: &NodeRecord, before: Option<NodeStatus>) {
+    if matches!(before, Some(NodeStatus::Removed | NodeStatus::Dead)) {
+      self.reachability.clear_subject(&record.unique_address);
+      self.reachability.clear_observer(&record.unique_address);
+    }
   }
 
   fn local_unique_address(&self) -> UniqueAddress {
@@ -770,6 +832,24 @@ impl TopologyAccumulator {
     self.joined.clear();
     self.left.clear();
     self.dead.clear();
+  }
+
+  fn mark_joined(&mut self, authority: String) {
+    self.left.remove(&authority);
+    self.dead.remove(&authority);
+    self.joined.insert(authority);
+  }
+
+  fn mark_left(&mut self, authority: String) {
+    self.joined.remove(&authority);
+    self.dead.remove(&authority);
+    self.left.insert(authority);
+  }
+
+  fn mark_dead(&mut self, authority: String) {
+    self.joined.remove(&authority);
+    self.left.remove(&authority);
+    self.dead.insert(authority);
   }
 
   fn joined_sorted(&self) -> Vec<String> {

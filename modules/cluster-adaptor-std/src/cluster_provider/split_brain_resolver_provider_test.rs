@@ -215,6 +215,30 @@ fn downing_provider_decide_context_routes_trait_path_to_lease_backend() {
 }
 
 #[test]
+fn strategy_context_starts_factory_provider_lazily_and_preserves_targets() {
+  let calls = counter();
+  let closed = counter();
+  let calls_for_factory = calls.clone();
+  let closed_for_factory = closed.clone();
+  let mut provider =
+    StdSplitBrainResolverProvider::new(lease_majority_config()).with_lease_backend_factory(move || {
+      Box::new(RecordingLeaseBackend::new(
+        LeaseAcquisitionOutcome::Acquired,
+        calls_for_factory.clone(),
+        closed_for_factory.clone(),
+      ))
+    });
+  let node_c = unique("node-c", 3);
+
+  let decision = provider.decide_strategy_context(&majority_context()).expect("strategy decision");
+
+  assert!(provider.is_started());
+  assert_eq!(decision.simple_decision(), DowningDecision::Keep);
+  assert_eq!(decision.downing_targets(), &[node_c]);
+  assert_eq!(calls.with_read(|calls| *calls), 1);
+}
+
+#[test]
 fn downing_provider_trait_path_starts_factory_provider_lazily() {
   let calls = counter();
   let closed = counter();
