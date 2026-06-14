@@ -46,6 +46,7 @@ impl ClusterRouterPoolRouteeSubscriber {
 
   fn replace_members(&mut self, members: &[NodeRecord]) {
     self.members = members.to_vec();
+    self.retain_status_overrides_for_current_members();
     self.apply_status_overrides();
     self.update_router();
   }
@@ -59,6 +60,7 @@ impl ClusterRouterPoolRouteeSubscriber {
         NodeRecord::new(node_id, authority, NodeStatus::Up, version, String::new(), Vec::new())
       })
       .collect();
+    self.retain_status_overrides_for_current_members();
     self.apply_status_overrides();
     self.update_router();
   }
@@ -86,6 +88,11 @@ impl ClusterRouterPoolRouteeSubscriber {
         member.status = *status;
       }
     }
+  }
+
+  fn retain_status_overrides_for_current_members(&mut self) {
+    let members = &self.members;
+    self.status_overrides.retain(|(authority, _)| members.iter().any(|member| &member.authority == authority));
   }
 
   fn record_status_override(&mut self, authority: &str, status: NodeStatus) {

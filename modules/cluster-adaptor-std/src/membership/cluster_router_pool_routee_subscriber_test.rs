@@ -171,3 +171,58 @@ fn topology_updated_refreshes_routees_without_status_events() {
 
   assert_eq!(routees(&router), vec![String::from("remote-b:2553")]);
 }
+
+#[test]
+fn snapshot_removal_clears_status_override_for_rejoined_member() {
+  let config = ClusterRouterPoolConfig::new(10).with_max_instances_per_node(1).with_allow_local_routees(false);
+  let router = SharedLock::new_with_driver::<DefaultMutex<_>>(ClusterRouterPool::new(config, Vec::new()));
+  let event_stream = EventStreamShared::default();
+  let subscriber = subscriber_handle(ClusterRouterPoolRouteeSubscriber::new(router.clone(), String::from("self:2551")));
+  let _subscription = event_stream.subscribe_no_replay(&subscriber);
+
+  event_stream.publish(&cluster_extension_event(ClusterEvent::CurrentClusterState {
+    state:       CurrentClusterState::new(
+      vec![node("self:2551", NodeStatus::Up), node("remote-a:2552", NodeStatus::Up)],
+      Vec::new(),
+      Vec::new(),
+      None,
+      BTreeMap::new(),
+    ),
+    observed_at: observed_at(),
+  }));
+  assert_eq!(routees(&router), vec![String::from("remote-a:2552")]);
+
+  event_stream.publish(&cluster_extension_event(ClusterEvent::MemberStatusChanged {
+    node_id:     String::from("remote-a:2552"),
+    authority:   String::from("remote-a:2552"),
+    from:        NodeStatus::Up,
+    to:          NodeStatus::PreparingForShutdown,
+    observed_at: observed_at(),
+  }));
+  assert_eq!(routees(&router), Vec::<String>::new());
+
+  event_stream.publish(&cluster_extension_event(ClusterEvent::CurrentClusterState {
+    state:       CurrentClusterState::new(
+      vec![node("self:2551", NodeStatus::Up)],
+      Vec::new(),
+      Vec::new(),
+      None,
+      BTreeMap::new(),
+    ),
+    observed_at: observed_at(),
+  }));
+  assert_eq!(routees(&router), Vec::<String>::new());
+
+  event_stream.publish(&cluster_extension_event(ClusterEvent::CurrentClusterState {
+    state:       CurrentClusterState::new(
+      vec![node("self:2551", NodeStatus::Up), node("remote-a:2552", NodeStatus::Up)],
+      Vec::new(),
+      Vec::new(),
+      None,
+      BTreeMap::new(),
+    ),
+    observed_at: observed_at(),
+  }));
+
+  assert_eq!(routees(&router), vec![String::from("remote-a:2552")]);
+}
