@@ -227,7 +227,7 @@ where
         key,
         removed_key_dots,
         self.delta_removed_dots.get(key),
-        other.removed_values.get(key),
+        removed_values.get(key),
       );
     }
 

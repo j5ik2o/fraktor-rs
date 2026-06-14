@@ -291,6 +291,58 @@ fn full_state_remove_drops_covered_local_delta() {
 }
 
 #[test]
+fn full_state_merge_prunes_local_delta_with_merged_removed_value_prefix() {
+  let node = unique_address(0);
+  let removed_prefix_3 = PNCounter::new().increment(&self_address(0), 3).expect("increment must fit").reset_delta();
+  let removed_prefix_5 = PNCounter::new().increment(&self_address(0), 5).expect("increment must fit").reset_delta();
+  let pending_value_8 = PNCounter::new().increment(&self_address(0), 8).expect("increment must fit").reset_delta();
+
+  let mut local_removed_key_dots = BTreeMap::new();
+  local_removed_key_dots.insert(node.clone(), 1);
+  let mut local_removed_dots = BTreeMap::new();
+  local_removed_dots.insert(1, local_removed_key_dots);
+  let mut local_removed_values = BTreeMap::new();
+  local_removed_values.insert(1, removed_prefix_5);
+  let mut local_delta = BTreeMap::new();
+  local_delta.insert(1, pending_value_8);
+  let mut local_delta_key_dots = BTreeMap::new();
+  local_delta_key_dots.insert(node.clone(), 2);
+  let mut local_delta_dots = BTreeMap::new();
+  local_delta_dots.insert(1, local_delta_key_dots);
+  let local = PNCounterMap {
+    entries:              BTreeMap::new(),
+    dots:                 BTreeMap::new(),
+    removed_dots:         local_removed_dots,
+    removed_values:       local_removed_values,
+    delta:                local_delta,
+    delta_dots:           local_delta_dots,
+    delta_removed_dots:   BTreeMap::new(),
+    delta_removed_values: BTreeMap::new(),
+  };
+
+  let mut remote_removed_key_dots = BTreeMap::new();
+  remote_removed_key_dots.insert(node, 1);
+  let mut remote_removed_dots = BTreeMap::new();
+  remote_removed_dots.insert(1, remote_removed_key_dots);
+  let mut remote_removed_values = BTreeMap::new();
+  remote_removed_values.insert(1, removed_prefix_3);
+  let remote = PNCounterMap {
+    entries:              BTreeMap::new(),
+    dots:                 BTreeMap::new(),
+    removed_dots:         remote_removed_dots,
+    removed_values:       remote_removed_values,
+    delta:                BTreeMap::new(),
+    delta_dots:           BTreeMap::new(),
+    delta_removed_dots:   BTreeMap::new(),
+    delta_removed_values: BTreeMap::new(),
+  };
+
+  let merged_delta = local.merge(&remote).delta().expect("remaining delta must be visible");
+
+  assert_eq!(merged_delta.get(&1), Ok(Some(3)));
+}
+
+#[test]
 fn remove_tombstone_participates_in_equality() {
   let original = PNCounterMap::new().increment(&self_address(0), 1, 5).expect("increment must fit");
   let removed = original.remove(&1);
