@@ -60,6 +60,8 @@ impl ClusterRouterPoolRouteeSubscriber {
 
   fn replace_member_authorities(&mut self, authorities: &[String], version: MembershipVersion) {
     let existing_members = self.members.clone();
+    let default_status =
+      if is_full_shutdown_preparing(&existing_members) { NodeStatus::PreparingForShutdown } else { NodeStatus::Up };
     self.members = authorities
       .iter()
       .cloned()
@@ -70,7 +72,7 @@ impl ClusterRouterPoolRouteeSubscriber {
           member
         } else {
           let node_id = authority.clone();
-          NodeRecord::new(node_id, authority, NodeStatus::Up, version, String::new(), Vec::new())
+          NodeRecord::new(node_id, authority, default_status, version, String::new(), Vec::new())
         }
       })
       .collect();
@@ -142,6 +144,13 @@ impl ClusterRouterPoolRouteeSubscriber {
   fn update_router(&self) {
     self.router.with_lock(|router| router.update_from_members(&self.members, &self.self_authority));
   }
+}
+
+fn is_full_shutdown_preparing(members: &[NodeRecord]) -> bool {
+  !members.is_empty()
+    && members
+      .iter()
+      .all(|member| matches!(member.status, NodeStatus::PreparingForShutdown | NodeStatus::ReadyForShutdown))
 }
 
 impl EventStreamSubscriber for ClusterRouterPoolRouteeSubscriber {

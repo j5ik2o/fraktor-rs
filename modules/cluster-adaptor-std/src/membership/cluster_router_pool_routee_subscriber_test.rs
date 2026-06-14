@@ -257,6 +257,40 @@ fn status_override_does_not_apply_to_rejoined_member_with_new_node_id() {
 }
 
 #[test]
+fn topology_updated_during_shutdown_does_not_add_new_routees() {
+  let config = ClusterRouterPoolConfig::new(10).with_max_instances_per_node(1).with_allow_local_routees(false);
+  let router = SharedLock::new_with_driver::<DefaultMutex<_>>(ClusterRouterPool::new(config, Vec::new()));
+  let event_stream = EventStreamShared::default();
+  let subscriber = subscriber_handle(ClusterRouterPoolRouteeSubscriber::new(router.clone(), String::from("self:2551")));
+  let _subscription = event_stream.subscribe_no_replay(&subscriber);
+
+  event_stream.publish(&cluster_extension_event(ClusterEvent::CurrentClusterState {
+    state:       CurrentClusterState::new(
+      vec![
+        node("self:2551", NodeStatus::PreparingForShutdown),
+        node("remote-a:2552", NodeStatus::PreparingForShutdown),
+      ],
+      Vec::new(),
+      Vec::new(),
+      None,
+      BTreeMap::new(),
+    ),
+    observed_at: observed_at(),
+  }));
+  assert_eq!(routees(&router), Vec::<String>::new());
+
+  event_stream.publish(&cluster_extension_event(ClusterEvent::TopologyUpdated {
+    update: topology_update(2, vec![
+      String::from("self:2551"),
+      String::from("remote-a:2552"),
+      String::from("remote-b:2553"),
+    ]),
+  }));
+
+  assert_eq!(routees(&router), Vec::<String>::new());
+}
+
+#[test]
 fn snapshot_removal_clears_status_override_for_rejoined_member() {
   let config = ClusterRouterPoolConfig::new(10).with_max_instances_per_node(1).with_allow_local_routees(false);
   let router = SharedLock::new_with_driver::<DefaultMutex<_>>(ClusterRouterPool::new(config, Vec::new()));
