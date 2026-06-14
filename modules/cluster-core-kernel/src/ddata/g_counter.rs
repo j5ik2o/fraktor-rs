@@ -30,6 +30,23 @@ impl GCounter {
     Self { state, delta }
   }
 
+  pub(super) fn retain_nodes(&self, nodes: &BTreeMap<UniqueAddress, u64>) -> Self {
+    let state = self
+      .state
+      .iter()
+      .filter(|(node, _)| nodes.contains_key(*node))
+      .map(|(node, value)| (node.clone(), *value))
+      .collect();
+    let delta = self
+      .delta
+      .iter()
+      .filter(|(node, _)| nodes.contains_key(*node))
+      .map(|(node, value)| (node.clone(), *value))
+      .collect();
+
+    Self { state, delta }
+  }
+
   /// Returns a counter with `n` added to the local node slot.
   ///
   /// # Errors

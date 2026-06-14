@@ -4,7 +4,7 @@
 #[path = "pn_counter_test.rs"]
 mod tests;
 
-use alloc::collections::BTreeSet;
+use alloc::collections::{BTreeMap, BTreeSet};
 use core::convert::TryFrom;
 
 use fraktor_remote_core_rs::address::UniqueAddress;
@@ -32,6 +32,10 @@ impl PNCounter {
 
   pub(super) const fn from_parts(increments: GCounter, decrements: GCounter) -> Self {
     Self { increments, decrements }
+  }
+
+  pub(super) fn retain_nodes(&self, nodes: &BTreeMap<UniqueAddress, u64>) -> Self {
+    Self { increments: self.increments.retain_nodes(nodes), decrements: self.decrements.retain_nodes(nodes) }
   }
 
   /// Returns a counter with `n` added to the positive component.

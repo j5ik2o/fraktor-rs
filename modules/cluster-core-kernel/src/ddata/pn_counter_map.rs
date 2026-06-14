@@ -15,8 +15,8 @@ use super::{
 
 /// CRDT map whose values are positive-negative counters.
 ///
-/// Equality is based on the visible counter entries only; causal dot metadata is internal
-/// convergence state.
+/// Equality ignores local delta buffers but includes causal dot and tombstone metadata because
+/// that state affects future merges.
 #[derive(Debug, Clone)]
 pub struct PNCounterMap<K> {
   entries:            BTreeMap<K, PNCounter>,
@@ -226,33 +226,29 @@ where
     let mut dots = self.dots.clone();
     let mut removed_dots = self.removed_dots.clone();
 
+    for (key, removed_key_dots) in &delta.removed_dots {
+      merge_dot_map_entry(&mut removed_dots, key.clone(), removed_key_dots);
+      apply_removed_dots(&mut entries, &mut dots, key, removed_key_dots);
+    }
+
     for (key, counter) in &delta.entries {
       let incoming_dots = delta.dots.get(key).cloned().unwrap_or_default();
-      let visible_dots = filter_visible_dots(&incoming_dots, self.removed_dots.get(key));
+      let visible_dots = filter_visible_dots(&incoming_dots, removed_dots.get(key));
       if visible_dots.is_empty() {
         continue;
       }
+
+      let Some(counter) = visible_counter(counter, &visible_dots) else {
+        continue;
+      };
+      let counter = counter.reset_delta();
 
       dots
         .entry(key.clone())
         .and_modify(|current| merge_dots_into(current, &visible_dots))
         .or_insert_with(|| visible_dots.clone());
 
-      entries
-        .entry(key.clone())
-        .and_modify(|current| *current = current.merge(counter))
-        .or_insert_with(|| counter.reset_delta());
-    }
-
-    for (key, removed_key_dots) in &delta.removed_dots {
-      merge_dot_map_entry(&mut removed_dots, key.clone(), removed_key_dots);
-      if let Some(current_dots) = dots.get_mut(key) {
-        remove_covered_dots(current_dots, removed_key_dots);
-        if current_dots.is_empty() {
-          dots.remove(key);
-          entries.remove(key);
-        }
-      }
+      entries.entry(key.clone()).and_modify(|current| *current = current.merge(&counter)).or_insert(counter);
     }
 
     Self {
@@ -325,7 +321,14 @@ where
     let mut removed_dots = BTreeMap::new();
     let mut delta = BTreeMap::new();
     let mut delta_dots = BTreeMap::new();
-    let mut delta_removed_dots = BTreeMap::new();
+    let mut delta_removed_dots: BTreeMap<K, BTreeMap<UniqueAddress, u64>> = self
+      .delta_removed_dots
+      .iter()
+      .filter_map(|(key, key_dots)| {
+        let key_dots = prune_dots(key_dots, removed_node, collapse_into);
+        if key_dots.is_empty() { None } else { Some((key.clone(), key_dots)) }
+      })
+      .collect();
 
     for (key, counter) in &self.entries {
       let counter = counter.prune(removed_node, collapse_into)?;
@@ -347,7 +350,7 @@ where
     for (key, key_dots) in &self.removed_dots {
       let pruned_dots = prune_dots(key_dots, removed_node, collapse_into);
       if pruned_dots != *key_dots {
-        delta_removed_dots.insert(key.clone(), pruned_dots.clone());
+        merge_dot_map_entry(&mut delta_removed_dots, key.clone(), &pruned_dots);
       }
       removed_dots.insert(key.clone(), pruned_dots);
     }
@@ -414,7 +417,7 @@ where
   K: Ord,
 {
   fn eq(&self, other: &Self) -> bool {
-    self.entries == other.entries
+    self.entries == other.entries && self.dots == other.dots && self.removed_dots == other.removed_dots
   }
 }
 
@@ -447,11 +450,11 @@ where
       .map(|key_dots| filter_visible_dots(key_dots, right_removed_by_left.get(&key)))
       .unwrap_or_default();
 
-    let left_value = if left_visible_dots.is_empty() { None } else { left_entries.get(&key) };
-    let right_value = if right_visible_dots.is_empty() { None } else { right_entries.get(&key) };
+    let left_value = left_entries.get(&key).and_then(|counter| visible_counter(counter, &left_visible_dots));
+    let right_value = right_entries.get(&key).and_then(|counter| visible_counter(counter, &right_visible_dots));
     let value = match (left_value, right_value) {
-      | (Some(left), Some(right)) => Some(left.merge(right)),
-      | (Some(left), None) => Some(left.clone()),
+      | (Some(left), Some(right)) => Some(left.merge(&right)),
+      | (Some(left), None) => Some(left),
       | (None, Some(right)) => Some(right.reset_delta()),
       | (None, None) => None,
     };
@@ -466,6 +469,15 @@ where
   }
 
   (entries, dots)
+}
+
+fn visible_counter(counter: &PNCounter, visible_dots: &BTreeMap<UniqueAddress, u64>) -> Option<PNCounter> {
+  if visible_dots.is_empty() {
+    return None;
+  }
+
+  let counter = counter.retain_nodes(visible_dots);
+  if counter.modified_by_nodes().is_empty() { None } else { Some(counter) }
 }
 
 fn merge_dot_maps<K>(
@@ -522,6 +534,34 @@ fn filter_visible_dots(
 
 fn remove_covered_dots(key_dots: &mut BTreeMap<UniqueAddress, u64>, removed_key_dots: &BTreeMap<UniqueAddress, u64>) {
   key_dots.retain(|node, version| removed_key_dots.get(node).copied().unwrap_or(0) < *version);
+}
+
+fn apply_removed_dots<K>(
+  entries: &mut BTreeMap<K, PNCounter>,
+  dots: &mut BTreeMap<K, BTreeMap<UniqueAddress, u64>>,
+  key: &K,
+  removed_key_dots: &BTreeMap<UniqueAddress, u64>,
+) where
+  K: Ord + Clone, {
+  let Some(current_dots) = dots.get_mut(key) else {
+    return;
+  };
+
+  remove_covered_dots(current_dots, removed_key_dots);
+  if current_dots.is_empty() {
+    dots.remove(key);
+    entries.remove(key);
+    return;
+  }
+
+  if let Some(counter) = entries.get(key).cloned() {
+    if let Some(counter) = visible_counter(&counter, current_dots) {
+      entries.insert(key.clone(), counter);
+    } else {
+      dots.remove(key);
+      entries.remove(key);
+    }
+  }
 }
 
 fn prune_dots(
