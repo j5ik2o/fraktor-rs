@@ -30,6 +30,46 @@ impl GCounter {
     Self { state, delta }
   }
 
+  pub(super) fn retain_nodes(&self, nodes: &BTreeMap<UniqueAddress, u64>) -> Self {
+    let state = self
+      .state
+      .iter()
+      .filter(|(node, _)| nodes.contains_key(*node))
+      .map(|(node, value)| (node.clone(), *value))
+      .collect();
+    let delta = self
+      .delta
+      .iter()
+      .filter(|(node, _)| nodes.contains_key(*node))
+      .map(|(node, value)| (node.clone(), *value))
+      .collect();
+
+    Self { state, delta }
+  }
+
+  pub(super) fn replace_nodes(&self, nodes: &BTreeMap<UniqueAddress, u64>, replacement: &Self) -> Self {
+    let mut state = self.state.clone();
+    let mut delta = self.delta.clone();
+
+    for node in nodes.keys() {
+      match replacement.state.get(node).copied() {
+        | Some(value) if value != 0 => {
+          state.insert(node.clone(), value);
+        },
+        | _ => {
+          state.remove(node);
+        },
+      }
+      delta.remove(node);
+    }
+
+    Self { state, delta }
+  }
+
+  pub(super) fn state_value(&self, node: &UniqueAddress) -> u128 {
+    self.state.get(node).copied().unwrap_or(0)
+  }
+
   /// Returns a counter with `n` added to the local node slot.
   ///
   /// # Errors

@@ -58,18 +58,18 @@ fraktor-rs 側はスキル指定の `pub` 系抽出で、型 297 件 (core-kerne
 | 指標 | 値 |
 |------|-----|
 | Pekko 固定スコープ対象公開契約グループ | 151 |
-| fraktor-rs 固定スコープ対応公開契約グループ（実装済み） | 102 |
-| 固定スコープカバレッジ | 102/151 (68%) |
-| 部分実装 | 11 |
+| fraktor-rs 固定スコープ対応公開契約グループ（実装済み） | 103 |
+| 固定スコープカバレッジ | 103/151 (68%) |
+| 部分実装 | 10 |
 | 未対応 | 38（ギャップ表上は31行。カテゴリ9の13行が20未対応公開契約グループを集約） |
 | raw public type declarations | 297 (core-kernel: 265, core-typed: 9, std: 23) |
 | raw public method declarations | 843 (core-kernel: 730, core-typed: 32, std: 81) |
-| hard / medium / easy / trivial gap | 11 / 30 / 8 / 0 |
+| hard / medium / easy / trivial gap | 11 / 29 / 8 / 0 |
 | panic 系スタブ | 0 件 |
 | 機能 placeholder / TODO | 0 件 |
 
 注: `raw public` は `pub(crate)` など内部到達可能な `pub` を含む参考値であり、crate 外から到達可能な外部公開 API 数ではない。
-注: `実装済み` / `部分実装` / `未対応` / 難易度内訳は、この台帳で定義した公開契約グループ単位で数える。ギャップ表は42行（部分実装11行、未対応31行）だが、カテゴリ9の protocol / CRDT 行は複数の公開契約グループを1行に集約している。raw 型名やメソッド名の個数を個別加算するものではない。
+注: `実装済み` / `部分実装` / `未対応` / 難易度内訳は、この台帳で定義した公開契約グループ単位で数える。ギャップ表は41行（部分実装10行、未対応31行）だが、カテゴリ9の protocol / CRDT 行は複数の公開契約グループを1行に集約している。raw 型名やメソッド名の個数を個別加算するものではない。
 
 ### 前回 (2026-06-05) からの判定変更
 
@@ -91,7 +91,7 @@ fraktor-rs 側はスキル指定の `pub` 系抽出で、型 297 件 (core-kerne
 | core / downing | `DowningProvider`, `NoDowning`, `SplitBrainResolverProvider` | `DowningProvider`, `DowningDecisionContext`, `DowningStrategyDecision`, `DowningDecisionTrace`, `NoopDowningProvider`, `SplitBrainResolver`, `LeaseMajorityPort`, `SplitBrainResolverProviderHook` | decision model / settings / provider binding は完了。SBR runtime actor（reachability 変化監視 → 責任ノード選択 → 自動 down 発行ループ）と concrete lease backend が未実装 |
 | core / typed | typed `Cluster`, command, subscription, singleton, sharding typed API | `Cluster` / `ClusterCommand` / `ClusterStateSubscription` / `ClusterEventSubscription` / `SelfUp` / `SelfRemoved` / `ClusterSetup` | typed Cluster facade（subscribe / unsubscribe / current_state / `PrepareForFullClusterShutdown` command 含む）は完備。singleton / sharding typed API が未実装 |
 | core / virtual actor | `ClusterSharding`, `EntityRef`, `EntityTypeKey`, `ShardRegion`, coordinator | `GrainRef`, `GrainKey`, `GrainTypeKey`, typed `GrainRef`, `ShardingEnvelope`, `ShardingMessageExtractor`, `ShardingRouter`, `VirtualActorRegistry`, `PlacementCoordinatorCore`, `PartitionIdentityLookup`, `RendezvousHasher`, `PidCache` | protoactor-go style の同等機能は強いが、Pekko public API 形態（typed Entity / `ClusterSharding.init` / `EntityRef` / `askWithStatus`）、rebalance / remembered entities / query protocol / health check が不足 |
-| core / distributed state | `DistributedData`, `Replicator`, CRDT 型群 | `ReplicatedData`, `DeltaReplicatedData`, `RemovedNodePruning`, `Key`, `SelfUniqueAddress`, `Flag`, `GCounter`, `PNCounter`, `PNCounterMap`（increment / decrement / get のみ）, read/write consistency 語彙 | CRDT 基底 SPI と scalar counter 型は実装済み。`PNCounterMap` は key removal / entries surface が不足。DistributedData / Replicator runtime、protocol、durable store、map/set/register 系 CRDT が不足 |
+| core / distributed state | `DistributedData`, `Replicator`, CRDT 型群 | `ReplicatedData`, `DeltaReplicatedData`, `RemovedNodePruning`, `Key`, `SelfUniqueAddress`, `Flag`, `GCounter`, `PNCounter`, `PNCounterMap`（increment / decrement / get / entries / remove）, read/write consistency 語彙 | CRDT 基底 SPI と scalar counter 型、`PNCounterMap` の entries surface / observed-remove key deletion は実装済み。DistributedData / Replicator runtime、protocol、durable store、map/set/register 系 CRDT が不足 |
 | std / adapter | gossip transport, provider, discovery adapter | `TokioGossipTransport`, `TokioGossiper`, `LocalClusterProvider`, `StaticClusterProvider`, `AwsEcsClusterProvider`, `GenericDiscoveryAdapter`, `ProviderLifecycleBridge`, `ClusterWireCodec`, `ConfiguredPhiAccrualDetectorFactory` | Rust adapter、logical envelope handoff、seed/discovery provider boundary、cluster message serializer contract、failure detector factory はある。sharding/singleton 系 setup と sharding join compat key が不足 |
 
 ## カテゴリ別ギャップ
@@ -178,9 +178,9 @@ n/a へ移動: `ClusterClient` / `ClusterClientReceptionist` / `ClusterClientSet
 
 実装済みとして扱うもの: `GrainRef`、`GrainKey`、typed `GrainTypeKey<M>`、typed `GrainRef<M>`、`GrainCodec`、`ShardingEnvelope`、`ShardingMessageExtractor` SPI、Pekko 互換 `HashCodeMessageExtractor` / `HashCodeNoEnvelopeMessageExtractor`、Kafka 互換 `Murmur2MessageExtractor`、`ShardingRouter`、`VirtualActorRegistry`、`PlacementCoordinatorCore`、`PartitionIdentityLookup`、`RendezvousHasher`、`PidCache`、remote/local placement decision、passivation（基本機構）、RPC router（`GrainRpcRouter`）。
 
-### 9. Distributed Data / CRDT　✅ 実装済み 6/27 (22%)
+### 9. Distributed Data / CRDT　✅ 実装済み 7/27 (26%)
 
-このカテゴリの `6/27` は raw 型数ではなく、(1) CRDT 基底 SPI、(2) Key 階層、(3) SelfUniqueAddress、(4) scalar state / counter CRDT 群（`Flag` / `GCounter` / `PNCounter`）、(5) read/write consistency 語彙、(6) 補助 protocol 語彙、という公開契約グループ単位で数える。`PNCounterMap` は型自体と increment / decrement / get はあるが、Pekko の key removal / entries surface がないため部分実装として扱う。
+このカテゴリの `7/27` は raw 型数ではなく、(1) CRDT 基底 SPI、(2) Key 階層、(3) SelfUniqueAddress、(4) scalar state / counter CRDT 群（`Flag` / `GCounter` / `PNCounter`）、(5) read/write consistency 語彙、(6) 補助 protocol 語彙、(7) `PNCounterMap` の entries surface / observed-remove key deletion、という公開契約グループ単位で数える。
 
 | Pekko API / 契約 | Pekko 参照 | fraktor-rs 対応 | 実装先層 | 難易度 | 備考 |
 |------------------|------------|-----------------|----------|--------|------|
@@ -196,10 +196,9 @@ n/a へ移動: `ClusterClient` / `ClusterClientReceptionist` / `ClusterClientSet
 | durable store std adapter（`LmdbDurableStore` 相当） | `DurableStore.scala:112` | 未対応 | std | medium | LMDB 完全互換ではなく、embedded KV による std 実装が対象 |
 | `LWWRegister` / `LWWMap` | `LWWRegister.scala:21`, `LWWMap.scala:21` | 未対応 | core/ddata | medium | timestamp / node ordering と clock 抽象が必要 |
 | `ORSet` / `ORMap` / `ORMultiMap` | `ORSet.scala:43`, `ORMap.scala:24`, `ORMultiMap.scala:21` | 未対応 | core/ddata | medium | dot / tombstone / delta semantics が必要 |
-| `PNCounterMap` key removal / entries surface | `PNCounterMap.scala:63`, `PNCounterMap.scala:142` | 部分実装 | core/ddata | medium | `PNCounterMap` 型、increment / decrement / get、delta / pruning はあるが、Pekko 契約の `entries` surface と observed-remove key deletion がない |
 | `VersionVector` | `VersionVector.scala:28` | 未対応 | core/ddata | medium | membership 用 `VectorClock` はあるが CRDT pruning / dot 管理用ではない |
 
-実装済みとして扱うもの: CRDT merge / delta / pruning 基底 SPI（`ReplicatedData` / `DeltaReplicatedData` / `ReplicatedDelta` / `RequiresCausalDeliveryOfDeltas` / `RemovedNodePruning`）、`Key<T>` と基本 key alias、`SelfUniqueAddress`、`Flag`、`GCounter`、`PNCounter`、read/write consistency 語彙（`ReadConsistency` / `WriteConsistency`）、補助 protocol 語彙（`GetReplicaCount` / `ReplicaCount` / `FlushChanges`）。
+実装済みとして扱うもの: CRDT merge / delta / pruning 基底 SPI（`ReplicatedData` / `DeltaReplicatedData` / `ReplicatedDelta` / `RequiresCausalDeliveryOfDeltas` / `RemovedNodePruning`）、`Key<T>` と基本 key alias、`SelfUniqueAddress`、`Flag`、`GCounter`、`PNCounter`、`PNCounterMap`（increment / decrement / get / entries / remove、delta / pruning）、read/write consistency 語彙（`ReadConsistency` / `WriteConsistency`）、補助 protocol 語彙（`GetReplicaCount` / `ReplicaCount` / `FlushChanges`）。
 
 ### 10. std adapter / discovery / wire integration　✅ 実装済み 9/11 (82%)
 
@@ -296,7 +295,7 @@ n/a へ移動: `ClusterClient` / `ClusterClientReceptionist` / `ClusterClientSet
 | durable store std adapter | std | カテゴリ9 | - |
 | `LWWRegister` / `LWWMap` | core/ddata | カテゴリ9 | - |
 | `ORSet` / `ORMap` / `ORMultiMap` | core/ddata | カテゴリ9 | - |
-| `PNCounterMap` key removal / entries surface | core/ddata | カテゴリ9 | - |
+| `PNCounterMap` key removal / entries surface | core/ddata | カテゴリ9 | 実装済み（`PNCounterMap::entries` / `contains_key` / `len` / `is_empty` + observed-remove `remove` + full/delta merge テスト） |
 | `VersionVector` | core/ddata | カテゴリ9 | - |
 
 ### Phase 3: hard（新しい基盤・アーキテクチャ変更を要するもの）
@@ -326,7 +325,7 @@ ClusterClient 系（deprecated）、`@InternalApi` 型、JMX / HOCON / JFR / Jav
 
 ## まとめ
 
-cluster は membership / gossip / heartbeat / reachability / downing decision model / typed Cluster facade / Grain runtime / PubSub / discovery provider / message serializer contract という基礎契約は強く、カテゴリ 1, 2, 4, 5, 7, 10 は 86〜100% のカバレッジに達している。全体カバレッジは 102/151 (68%) で、未実装の大半は Cluster Singleton（30%）、Distributed Data / CRDT（22%）、Pekko sharding public API 形態（48%）の 3 領域に集中している。
+cluster は membership / gossip / heartbeat / reachability / downing decision model / typed Cluster facade / Grain runtime / PubSub / discovery provider / message serializer contract という基礎契約は強く、カテゴリ 1, 2, 4, 5, 7, 10 は 82〜100% のカバレッジに達している。全体カバレッジは 103/151 (68%) で、未実装の大半は Cluster Singleton（30%）、Distributed Data / CRDT（26%）、Pekko sharding public API 形態（48%）の 3 領域に集中している。
 
 Phase 1 は完了済み。次に進めるなら、`CrossDcFailureDetectorSettings`、typed singleton settings wrapper、setup integration、`JoinConfigCompatCheckSharding` のような config / wrapper / setup / compatibility key は単独で切らず、対象本体を触る change に同梱する。
 

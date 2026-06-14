@@ -4,7 +4,7 @@
 #[path = "pn_counter_test.rs"]
 mod tests;
 
-use alloc::collections::BTreeSet;
+use alloc::collections::{BTreeMap, BTreeSet};
 use core::convert::TryFrom;
 
 use fraktor_remote_core_rs::address::UniqueAddress;
@@ -32,6 +32,105 @@ impl PNCounter {
 
   pub(super) const fn from_parts(increments: GCounter, decrements: GCounter) -> Self {
     Self { increments, decrements }
+  }
+
+  pub(super) fn retain_nodes(&self, nodes: &BTreeMap<UniqueAddress, u64>) -> Self {
+    Self { increments: self.increments.retain_nodes(nodes), decrements: self.decrements.retain_nodes(nodes) }
+  }
+
+  pub(super) fn replace_nodes(&self, nodes: &BTreeMap<UniqueAddress, u64>, replacement: &Self) -> Self {
+    Self {
+      increments: self.increments.replace_nodes(nodes, &replacement.increments),
+      decrements: self.decrements.replace_nodes(nodes, &replacement.decrements),
+    }
+  }
+
+  pub(super) fn from_node_components(components: BTreeMap<UniqueAddress, (u128, u128)>) -> Self {
+    let mut increments = BTreeMap::new();
+    let mut decrements = BTreeMap::new();
+    for (node, (increment, decrement)) in components {
+      if increment != 0 {
+        increments.insert(node.clone(), increment);
+      }
+      if decrement != 0 {
+        decrements.insert(node, decrement);
+      }
+    }
+
+    Self::from_parts(
+      GCounter::from_parts(increments, BTreeMap::new()),
+      GCounter::from_parts(decrements, BTreeMap::new()),
+    )
+  }
+
+  pub(super) fn node_components(&self, node: &UniqueAddress) -> (u128, u128) {
+    (self.increments.state_value(node), self.decrements.state_value(node))
+  }
+
+  pub(super) fn retain_visible_nodes(
+    &self,
+    dots: &BTreeMap<UniqueAddress, u64>,
+    removed_dots: Option<&BTreeMap<UniqueAddress, u64>>,
+    own_removed_dots: Option<&BTreeMap<UniqueAddress, u64>>,
+    removed_prefix: Option<&Self>,
+  ) -> Option<(Self, BTreeMap<UniqueAddress, u64>)> {
+    let mut increment_state = BTreeMap::new();
+    let mut decrement_state = BTreeMap::new();
+    let mut visible_dots = BTreeMap::new();
+
+    for (node, version) in dots {
+      let removed_version = removed_dots.and_then(|removed_dots| removed_dots.get(node)).copied();
+      let increment = self.increments.state_value(node);
+      let decrement = self.decrements.state_value(node);
+      let removed_increment =
+        removed_prefix.map(|removed_prefix| removed_prefix.increments.state_value(node)).unwrap_or(0);
+      let removed_decrement =
+        removed_prefix.map(|removed_prefix| removed_prefix.decrements.state_value(node)).unwrap_or(0);
+      let owns_covering_remove = own_removed_dots
+        .and_then(|own_removed_dots| own_removed_dots.get(node))
+        .copied()
+        .is_some_and(|own_removed_version| {
+          let removed_version = removed_version.unwrap_or(0);
+          own_removed_version >= removed_version && *version > own_removed_version
+        });
+
+      let (visible_increment, visible_decrement) =
+        if removed_version.is_some_and(|removed_version| *version <= removed_version) {
+          if increment == removed_increment && decrement == removed_decrement {
+            continue;
+          }
+          (increment, decrement)
+        } else if owns_covering_remove {
+          (increment, decrement)
+        } else if removed_version.is_some() {
+          (subtract_removed_prefix(increment, removed_increment), subtract_removed_prefix(decrement, removed_decrement))
+        } else {
+          (increment, decrement)
+        };
+
+      if visible_increment == 0 && visible_decrement == 0 {
+        continue;
+      }
+      if visible_increment != 0 {
+        increment_state.insert(node.clone(), visible_increment);
+      }
+      if visible_decrement != 0 {
+        decrement_state.insert(node.clone(), visible_decrement);
+      }
+      visible_dots.insert(node.clone(), *version);
+    }
+
+    if visible_dots.is_empty() {
+      None
+    } else {
+      Some((
+        Self::from_parts(
+          GCounter::from_parts(increment_state, BTreeMap::new()),
+          GCounter::from_parts(decrement_state, BTreeMap::new()),
+        ),
+        visible_dots,
+      ))
+    }
   }
 
   /// Returns a counter with `n` added to the positive component.
@@ -63,6 +162,10 @@ impl PNCounter {
   pub fn value(&self) -> Result<i128, CounterArithmeticError> {
     signed_difference(self.increments.value()?, self.decrements.value()?)
   }
+}
+
+const fn subtract_removed_prefix(current: u128, removed_prefix: u128) -> u128 {
+  if current >= removed_prefix { current - removed_prefix } else { current }
 }
 
 impl ReplicatedData for PNCounter {
