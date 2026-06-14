@@ -398,6 +398,25 @@ fn merge_subtracts_removed_same_node_prefix_from_later_dot() {
 }
 
 #[test]
+fn merge_subtracts_equal_removed_prefix_from_later_dot() {
+  let original = PNCounterMap::new().increment(&self_address(0), 1, 5).expect("increment must fit");
+  let removed = original.remove(&1);
+  let stale_later_dot = original.decrement(&self_address(0), 1, 2).expect("decrement must fit");
+
+  assert_eq!(removed.merge(&stale_later_dot).get(&1), Ok(Some(-2)));
+}
+
+#[test]
+fn repeated_remove_replaces_same_node_removed_prefix() {
+  let original = PNCounterMap::new().increment(&self_address(0), 1, 5).expect("increment must fit");
+  let recreated = original.remove(&1).increment(&self_address(0), 1, 3).expect("increment must fit");
+  let removed_again = recreated.remove(&1);
+  let concurrent = recreated.increment(&self_address(0), 1, 2).expect("increment must fit");
+
+  assert_eq!(removed_again.merge(&concurrent).get(&1), Ok(Some(2)));
+}
+
+#[test]
 fn merge_preserves_local_delta() {
   let local = PNCounterMap::new().increment(&self_address(0), 1, 7).expect("increment must fit");
   let remote = PNCounterMap::new().decrement(&self_address(1), 2, 2).expect("decrement must fit");
@@ -500,6 +519,19 @@ fn prune_records_entry_collapse_contribution_in_delta() {
 }
 
 #[test]
+fn prune_drops_entry_when_pruned_dots_become_empty() {
+  let removed = self_address(0);
+  let map = PNCounterMap::new().increment(&removed, 1, 5).expect("increment must fit").reset_delta();
+
+  let pruned = map.prune(removed.unique_address(), removed.unique_address()).expect("pruning must fit");
+
+  assert_eq!(pruned.get(&1), Ok(None));
+  assert!(!pruned.contains_key(&1));
+  assert_eq!(pruned.len(), 0);
+  assert!(pruned.is_empty());
+}
+
+#[test]
 fn prune_preserves_pending_remove_delta() {
   let removed = self_address(2);
   let collapse_into = self_address(3);
@@ -514,6 +546,22 @@ fn prune_preserves_pending_remove_delta() {
 }
 
 #[test]
+fn prune_emits_stable_tombstone_delta() {
+  let removed = self_address(0);
+  let collapse_into = self_address(2);
+  let original = PNCounterMap::new().increment(&removed, 1, 5).expect("increment must fit");
+  let stable_tombstone = original.remove(&1).reset_delta();
+
+  let pruned_tombstone =
+    stable_tombstone.prune(removed.unique_address(), collapse_into.unique_address()).expect("pruning must fit");
+  let tombstone_delta = pruned_tombstone.delta().expect("pruned tombstone must be replicated");
+  let pruned_entry =
+    original.prune(removed.unique_address(), collapse_into.unique_address()).expect("pruning must fit");
+
+  assert_eq!(pruned_entry.merge_delta(&tombstone_delta).get(&1), Ok(None));
+}
+
+#[test]
 fn prune_does_not_retarget_removed_dot_tombstones() {
   let removed = self_address(0);
   let collapse_into = self_address(2);
@@ -521,10 +569,10 @@ fn prune_does_not_retarget_removed_dot_tombstones() {
   let tombstone = removed_entry.remove(&1);
 
   let pruned = tombstone.prune(removed.unique_address(), collapse_into.unique_address()).expect("pruning must fit");
-  let concurrent = PNCounterMap::new().increment(&collapse_into, 1, 7).expect("increment must fit");
+  let concurrent = PNCounterMap::new().increment(&collapse_into, 1, 4).expect("increment must fit");
 
   assert!(!pruned.need_pruning_from(removed.unique_address()));
-  assert_eq!(pruned.merge(&concurrent).get(&1), Ok(Some(7)));
+  assert_eq!(pruned.merge(&concurrent).get(&1), Ok(Some(4)));
 }
 
 #[test]
