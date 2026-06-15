@@ -108,6 +108,19 @@ fn default_clock_lets_unobserved_later_write_win_by_time() {
 }
 
 #[test]
+fn reverse_clock_lets_unobserved_earlier_write_win_by_time() {
+  let first = LWWRegister::new_with_clock(&self_address(0), "alpha", |current, _| {
+    LWWRegister::<&str>::reverse_clock(current, 1_000)
+  });
+  let second = LWWRegister::new_with_clock(&self_address(1), "beta", |current, _| {
+    LWWRegister::<&str>::reverse_clock(current, 1_001)
+  });
+
+  assert_eq!(first.merge(&second), first);
+  assert_eq!(second.merge(&first), first);
+}
+
+#[test]
 fn merge_picks_larger_timestamp() {
   let first = register_at(&self_address(0), "alpha", 10);
   let second = register_at(&self_address(1), "beta", 11);

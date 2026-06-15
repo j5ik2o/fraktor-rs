@@ -11,10 +11,10 @@ use crate::ddata::{ReplicatedData, SelfUniqueAddress};
 /// Last-writer-wins register CRDT using timestamp and node ordering.
 ///
 /// Merge selects the value with the greatest timestamp. If timestamps are equal, the value written
-/// by the lowest [`UniqueAddress`] wins, matching Pekko's deterministic tie-break contract. If the
-/// Values are not used as tie-break input. Clocks must not produce different writes from the same
-/// node with the same timestamp; [`Self::with_value_with_clock`] returns [`None`] for local
-/// same-writer timestamp reuse.
+/// by the lowest [`UniqueAddress`] wins, matching Pekko's deterministic tie-break contract. Values
+/// are not used as tie-break input. Clocks must not produce different writes from the same node
+/// with the same timestamp; [`Self::with_value_with_clock`] returns [`None`] for local same-writer
+/// timestamp reuse.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LWWRegister<T> {
   updated_by: UniqueAddress,
@@ -51,6 +51,10 @@ impl<T> LWWRegister<T> {
   }
 
   /// Returns the next timestamp for first-write-wins semantics.
+  ///
+  /// The supplied wall-clock millis is negated and used as an additional descending timestamp
+  /// candidate, so unobserved reverse-clock writes can be ordered by supplied time before falling
+  /// back to node ordering.
   #[must_use]
   pub const fn reverse_clock(current_timestamp: i64, current_time_millis: i64) -> i64 {
     let previous_timestamp = current_timestamp.saturating_sub(1);
