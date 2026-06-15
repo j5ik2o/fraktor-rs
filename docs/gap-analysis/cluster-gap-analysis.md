@@ -82,7 +82,7 @@ fraktor-rs 側はスキル指定の `pub` 系抽出で、型 347 件 (core-kerne
 | `MembershipCoordinatorDriver` | 実装済み概念として列挙 | 公開型ではない | `pub(super)`。`TokioGossiper` の内部実装であり外部 API には露出しない |
 | SBR runtime down execution loop | 部分実装 | 実装済み | `SplitBrainResolverProviderHook::decide_strategy_context` / `StdSplitBrainResolverProvider::decide_strategy_context` が target-aware decision を保持し、std `SplitBrainResolverDowningDriver` + `TokioGossiper::with_split_brain_resolver_downing` が reachability snapshot から downing target を `MembershipCoordinator::handle_down` と `ClusterProvider::down` へ自動発行 |
 | `VersionVector` | 未対応 | 実装済み | `VersionVector` が per-node causal ordering / merge / removed-node pruning を実装し、`VersionVectorOrdering` と property tests で CRDT merge law を検証 |
-| `LWWRegister` | 未対応 | 実装済み | `LWWRegister<T>` が signed timestamp / `UniqueAddress` ordering / same-writer value fallback による last-writer-wins merge、caller-supplied current millis を使う default / reverse clock、clock closure 経由の値更新を実装し、`LWWRegisterKey<T>` と merge law / tie-break tests で検証 |
+| `LWWRegister` | 未対応 | 実装済み | `LWWRegister<T>` が signed timestamp / `UniqueAddress` ordering / clock-valid same-writer timestamp contract による last-writer-wins merge、caller-supplied current millis を使う default / reverse clock、clock closure 経由の値更新を実装し、`LWWRegisterKey<T>` と merge law / tie-break tests で検証 |
 
 備考: `ClusterPubSub` trait は `pub_sub::cluster_pub_sub::ClusterPubSub` のネストパスでのみ公開されており、トップレベル `pub_sub` への re-export はない（実装済み判定は維持、公開面の整理は別件）。`NodeStatus` の Pekko `Down` 相当は `Dead` バリアント（別名実装済み）。
 
@@ -94,7 +94,7 @@ fraktor-rs 側はスキル指定の `pub` 系抽出で、型 347 件 (core-kerne
 | core / downing | `DowningProvider`, `NoDowning`, `SplitBrainResolverProvider` | `DowningProvider`, `DowningDecisionContext`, `DowningStrategyDecision`, `DowningDecisionTrace`, `NoopDowningProvider`, `SplitBrainResolver`, `LeaseMajorityPort`, `SplitBrainResolverProviderHook` | decision model / settings / provider binding / target-aware runtime decision は完了。std 側の自動 down 発行ループも `TokioGossiper` opt-in で接続済み。concrete lease backend が未実装 |
 | core / typed | typed `Cluster`, command, subscription, singleton, sharding typed API | `Cluster` / `ClusterCommand` / `ClusterStateSubscription` / `ClusterEventSubscription` / `SelfUp` / `SelfRemoved` / `ClusterSetup` | typed Cluster facade（subscribe / unsubscribe / current_state / `PrepareForFullClusterShutdown` command 含む）は完備。singleton / sharding typed API が未実装 |
 | core / virtual actor | `ClusterSharding`, `EntityRef`, `EntityTypeKey`, `ShardRegion`, coordinator | `GrainRef`, `GrainKey`, `GrainTypeKey`, typed `GrainRef`, `ShardingEnvelope`, `ShardingMessageExtractor`, `ShardingRouter`, `VirtualActorRegistry`, `PlacementCoordinatorCore`, `PartitionIdentityLookup`, `RendezvousHasher`, `PidCache` | protoactor-go style の同等機能は強いが、Pekko public API 形態（typed Entity / `ClusterSharding.init` / `EntityRef` / `askWithStatus`）、rebalance / remembered entities / query protocol / health check が不足 |
-| core / distributed state | `DistributedData`, `Replicator`, CRDT 型群 | `ReplicatedData`, `DeltaReplicatedData`, `RemovedNodePruning`, `Key`, `SelfUniqueAddress`, `Flag`, `GCounter`, `PNCounter`, `PNCounterMap`（increment / decrement / get / entries / remove）, `VersionVector`, `LWWRegister`, read/write consistency 語彙 | CRDT 基底 SPI と scalar counter 型、`PNCounterMap` の entries surface / observed-remove key deletion、`VersionVector` の causal ordering / merge / pruning、`LWWRegister` の timestamp / node-order / same-writer value fallback merge は実装済み。DistributedData / Replicator runtime、protocol、durable store、map/set 系 CRDT が不足 |
+| core / distributed state | `DistributedData`, `Replicator`, CRDT 型群 | `ReplicatedData`, `DeltaReplicatedData`, `RemovedNodePruning`, `Key`, `SelfUniqueAddress`, `Flag`, `GCounter`, `PNCounter`, `PNCounterMap`（increment / decrement / get / entries / remove）, `VersionVector`, `LWWRegister`, read/write consistency 語彙 | CRDT 基底 SPI と scalar counter 型、`PNCounterMap` の entries surface / observed-remove key deletion、`VersionVector` の causal ordering / merge / pruning、`LWWRegister` の timestamp / node-order / clock-valid same-writer timestamp contract は実装済み。DistributedData / Replicator runtime、protocol、durable store、map/set 系 CRDT が不足 |
 | std / adapter | gossip transport, provider, discovery adapter | `TokioGossipTransport`, `TokioGossiper`, `LocalClusterProvider`, `StaticClusterProvider`, `AwsEcsClusterProvider`, `GenericDiscoveryAdapter`, `ProviderLifecycleBridge`, `ClusterWireCodec`, `ConfiguredPhiAccrualDetectorFactory` | Rust adapter、logical envelope handoff、seed/discovery provider boundary、cluster message serializer contract、failure detector factory、SBR down execution loop はある。sharding/singleton 系 setup と sharding join compat key が不足 |
 
 ## カテゴリ別ギャップ
@@ -182,7 +182,7 @@ n/a へ移動: `ClusterClient` / `ClusterClientReceptionist` / `ClusterClientSet
 
 ### 9. Distributed Data / CRDT　✅ 実装済み 9/27 (33%)
 
-このカテゴリの `9/27` は raw 型数ではなく、(1) CRDT 基底 SPI、(2) Key 階層、(3) SelfUniqueAddress、(4) scalar state / counter CRDT 群（`Flag` / `GCounter` / `PNCounter`）、(5) read/write consistency 語彙、(6) 補助 protocol 語彙、(7) `PNCounterMap` の entries surface / observed-remove key deletion、(8) `VersionVector` の causal ordering / merge / removed-node pruning、(9) `LWWRegister` の timestamp / node-order / same-writer value fallback merge、という公開契約グループ単位で数える。
+このカテゴリの `9/27` は raw 型数ではなく、(1) CRDT 基底 SPI、(2) Key 階層、(3) SelfUniqueAddress、(4) scalar state / counter CRDT 群（`Flag` / `GCounter` / `PNCounter`）、(5) read/write consistency 語彙、(6) 補助 protocol 語彙、(7) `PNCounterMap` の entries surface / observed-remove key deletion、(8) `VersionVector` の causal ordering / merge / removed-node pruning、(9) `LWWRegister` の timestamp / node-order / clock-valid same-writer timestamp contract、という公開契約グループ単位で数える。
 
 | Pekko API / 契約 | Pekko 参照 | fraktor-rs 対応 | 実装先層 | 難易度 | 備考 |
 |------------------|------------|-----------------|----------|--------|------|
@@ -199,7 +199,7 @@ n/a へ移動: `ClusterClient` / `ClusterClientReceptionist` / `ClusterClientSet
 | `LWWMap` | `LWWMap.scala:21` | 未対応 | core/ddata | medium | `ORMap` 相当の observed-remove map と `LWWRegister` entry 合成が必要 |
 | `ORSet` / `ORMap` / `ORMultiMap` | `ORSet.scala:43`, `ORMap.scala:24`, `ORMultiMap.scala:21` | 未対応 | core/ddata | medium | dot / tombstone / delta semantics が必要 |
 
-実装済みとして扱うもの: CRDT merge / delta / pruning 基底 SPI（`ReplicatedData` / `DeltaReplicatedData` / `ReplicatedDelta` / `RequiresCausalDeliveryOfDeltas` / `RemovedNodePruning`）、`Key<T>` と基本 key alias、`SelfUniqueAddress`、`Flag`、`GCounter`、`PNCounter`、`PNCounterMap`（increment / decrement / get / entries / remove、delta / pruning）、`VersionVector`（increment / compare / merge / removed-node pruning）、`LWWRegister`（signed timestamp / `UniqueAddress` ordering / same-writer value fallback / caller-supplied current millis default / reverse clock update）、read/write consistency 語彙（`ReadConsistency` / `WriteConsistency`）、補助 protocol 語彙（`GetReplicaCount` / `ReplicaCount` / `FlushChanges`）。
+実装済みとして扱うもの: CRDT merge / delta / pruning 基底 SPI（`ReplicatedData` / `DeltaReplicatedData` / `ReplicatedDelta` / `RequiresCausalDeliveryOfDeltas` / `RemovedNodePruning`）、`Key<T>` と基本 key alias、`SelfUniqueAddress`、`Flag`、`GCounter`、`PNCounter`、`PNCounterMap`（increment / decrement / get / entries / remove、delta / pruning）、`VersionVector`（increment / compare / merge / removed-node pruning）、`LWWRegister`（signed timestamp / `UniqueAddress` ordering / clock-valid same-writer timestamp contract / caller-supplied current millis default / reverse clock update）、read/write consistency 語彙（`ReadConsistency` / `WriteConsistency`）、補助 protocol 語彙（`GetReplicaCount` / `ReplicaCount` / `FlushChanges`）。
 
 ### 10. std adapter / discovery / wire integration　✅ 実装済み 9/11 (82%)
 
@@ -300,7 +300,7 @@ n/a へ移動: `ClusterClient` / `ClusterClientReceptionist` / `ClusterClientSet
 | `ORSet` / `ORMap` / `ORMultiMap` | core/ddata | カテゴリ9 | - |
 | `PNCounterMap` key removal / entries surface | core/ddata | カテゴリ9 | 実装済み（`PNCounterMap::entries` / `contains_key` / `len` / `is_empty` + observed-remove `remove` + full/delta merge テスト） |
 | `VersionVector` | core/ddata | カテゴリ9 | 実装済み（`VersionVector::increment` / `compare` / `merge` / removed-node pruning + property tests） |
-| `LWWRegister` | core/ddata | カテゴリ9 | 実装済み（`LWWRegister::merge` / `with_value_with_clock` / caller-supplied current millis `default_clock` / `reverse_clock` / `LWWRegisterKey<T>` + timestamp / node-order / same-writer value fallback tie-break tests） |
+| `LWWRegister` | core/ddata | カテゴリ9 | 実装済み（`LWWRegister::merge` / `with_value_with_clock` / caller-supplied current millis `default_clock` / `reverse_clock` / `LWWRegisterKey<T>` + timestamp / node-order / clock contract tests） |
 
 ### Phase 3: hard（新しい基盤・アーキテクチャ変更を要するもの）
 

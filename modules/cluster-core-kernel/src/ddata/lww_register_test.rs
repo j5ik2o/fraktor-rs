@@ -3,6 +3,9 @@ use proptest::prelude::*;
 
 use crate::ddata::{Key, LWWRegister, LWWRegisterKey, ReplicatedData, SelfUniqueAddress};
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct Payload(&'static str);
+
 fn unique_address(index: usize) -> UniqueAddress {
   match index % 4 {
     | 0 => UniqueAddress::new(Address::new("sys", "node-a", 2552), 1),
@@ -20,8 +23,13 @@ fn register_at<T>(node: &SelfUniqueAddress, value: T, timestamp: i64) -> LWWRegi
   LWWRegister::new_with_clock(node, value, |_, _| timestamp)
 }
 
-fn register_from_parts(node_index: usize, value: i16, timestamp: i64) -> LWWRegister<i16> {
+fn register_from_parts(node_index: usize, value: i64, timestamp: i64) -> LWWRegister<i64> {
   register_at(&self_address(node_index), value, timestamp)
+}
+
+fn clock_valid_register_from_parts(node_index: usize, timestamp: i64) -> LWWRegister<i64> {
+  let value = timestamp.saturating_mul(4).saturating_add((node_index % 4) as i64);
+  register_from_parts(node_index, value, timestamp)
 }
 
 #[test]
@@ -118,13 +126,22 @@ fn merge_picks_lowest_node_order_when_timestamps_match() {
 }
 
 #[test]
-fn merge_picks_lowest_value_when_writer_and_timestamp_match() {
+fn merge_keeps_same_write_when_writer_and_timestamp_match() {
   let node = self_address(0);
-  let lower_value = register_at(&node, "alpha", 10);
-  let higher_value = register_at(&node, "beta", 10);
+  let first = register_at(&node, "alpha", 10);
+  let second = register_at(&node, "alpha", 10);
 
-  assert_eq!(higher_value.merge(&lower_value), lower_value);
-  assert_eq!(lower_value.merge(&higher_value), lower_value);
+  assert_eq!(first.merge(&second), first);
+  assert_eq!(second.merge(&first), second);
+}
+
+#[test]
+fn merge_does_not_require_ordered_payload() {
+  let older = register_at(&self_address(0), Payload("older"), 10);
+  let newer = register_at(&self_address(1), Payload("newer"), 11);
+
+  assert_eq!(older.merge(&newer), newer);
+  assert_eq!(newer.merge(&older), newer);
 }
 
 #[test]
@@ -151,34 +168,32 @@ proptest! {
   #[test]
   fn merge_is_commutative(
     left_node in 0_usize..4,
-    left_value in any::<i16>(),
     left_timestamp in -20_i64..20,
     right_node in 0_usize..4,
-    right_value in any::<i16>(),
     right_timestamp in -20_i64..20,
   ) {
-    let left = register_from_parts(left_node, left_value, left_timestamp);
-    let right = register_from_parts(right_node, right_value, right_timestamp);
+    let left = clock_valid_register_from_parts(left_node, left_timestamp);
+    let right = clock_valid_register_from_parts(right_node, right_timestamp);
 
     prop_assert_eq!(left.merge(&right), right.merge(&left));
   }
 
   #[test]
   fn merge_is_associative(
-    left in (0_usize..4, any::<i16>(), -20_i64..20),
-    middle in (0_usize..4, any::<i16>(), -20_i64..20),
-    right in (0_usize..4, any::<i16>(), -20_i64..20),
+    left in (0_usize..4, -20_i64..20),
+    middle in (0_usize..4, -20_i64..20),
+    right in (0_usize..4, -20_i64..20),
   ) {
-    let left = register_from_parts(left.0, left.1, left.2);
-    let middle = register_from_parts(middle.0, middle.1, middle.2);
-    let right = register_from_parts(right.0, right.1, right.2);
+    let left = clock_valid_register_from_parts(left.0, left.1);
+    let middle = clock_valid_register_from_parts(middle.0, middle.1);
+    let right = clock_valid_register_from_parts(right.0, right.1);
 
     prop_assert_eq!(left.merge(&middle.merge(&right)), left.merge(&middle).merge(&right));
   }
 
   #[test]
-  fn merge_is_idempotent(node in 0_usize..4, value in any::<i16>(), timestamp in -20_i64..20) {
-    let register = register_from_parts(node, value, timestamp);
+  fn merge_is_idempotent(node in 0_usize..4, timestamp in -20_i64..20) {
+    let register = clock_valid_register_from_parts(node, timestamp);
 
     prop_assert_eq!(register.merge(&register), register);
   }

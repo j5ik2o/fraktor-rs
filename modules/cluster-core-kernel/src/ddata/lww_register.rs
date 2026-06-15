@@ -12,8 +12,9 @@ use crate::ddata::{ReplicatedData, SelfUniqueAddress};
 ///
 /// Merge selects the value with the greatest timestamp. If timestamps are equal, the value written
 /// by the lowest [`UniqueAddress`] wins, matching Pekko's deterministic tie-break contract. If the
-/// timestamp and writer are both equal but values differ, the lowest value wins so merge remains
-/// commutative for invalid same-writer timestamp collisions.
+/// Values are not used as tie-break input. Clocks must not produce different writes from the same
+/// node with the same timestamp; [`Self::with_value_with_clock`] returns [`None`] for local
+/// same-writer timestamp reuse.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LWWRegister<T> {
   updated_by: UniqueAddress,
@@ -108,18 +109,10 @@ impl<T> LWWRegister<T> {
 
 impl<T> ReplicatedData for LWWRegister<T>
 where
-  T: Clone + Ord,
+  T: Clone,
 {
   fn merge(&self, other: &Self) -> Self {
-    if other.timestamp > self.timestamp {
-      other.clone()
-    } else if other.timestamp < self.timestamp {
-      self.clone()
-    } else if other.updated_by < self.updated_by {
-      other.clone()
-    } else if other.updated_by > self.updated_by {
-      self.clone()
-    } else if other.value < self.value {
+    if other.timestamp > self.timestamp || (other.timestamp == self.timestamp && other.updated_by < self.updated_by) {
       other.clone()
     } else {
       self.clone()
