@@ -10,7 +10,7 @@ use core::{
   marker::PhantomData,
 };
 
-use super::{Flag, GCounter, PNCounter, PNCounterMap};
+use super::{Flag, GCounter, PNCounter, PNCounterMap, VersionVector};
 
 /// Typed key that identifies a CRDT value by string id.
 #[derive(Debug)]
@@ -64,3 +64,6 @@ pub type PNCounterKey = Key<PNCounter>;
 
 /// Key for [`PNCounterMap`] values.
 pub type PNCounterMapKey<K> = Key<PNCounterMap<K>>;
+
+/// Key for [`VersionVector`] values.
+pub type VersionVectorKey = Key<VersionVector>;
