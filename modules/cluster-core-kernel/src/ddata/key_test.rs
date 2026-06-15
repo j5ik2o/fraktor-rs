@@ -1,7 +1,7 @@
 use alloc::{collections::BTreeMap, string::String};
 use core::hash::{Hash, Hasher};
 
-use crate::ddata::{FlagKey, GCounterKey, Key, PNCounterKey, PNCounterMapKey};
+use crate::ddata::{FlagKey, GCounterKey, Key, PNCounterKey, PNCounterMapKey, VersionVectorKey};
 
 #[derive(Default)]
 struct StableHasher(u64);
@@ -52,5 +52,6 @@ fn concrete_key_aliases_are_constructible() {
   let _g_counter: GCounterKey = Key::new("g-counter");
   let _pn_counter: PNCounterKey = Key::new("pn-counter");
   let _pn_counter_map: PNCounterMapKey<String> = Key::new("pn-counter-map");
+  let _version_vector: VersionVectorKey = Key::new("version-vector");
   let _: BTreeMap<String, i128> = BTreeMap::new();
 }
