@@ -6,7 +6,7 @@ mod tests;
 
 use fraktor_remote_core_rs::address::UniqueAddress;
 
-use super::{ReplicatedData, SelfUniqueAddress};
+use crate::ddata::{ReplicatedData, SelfUniqueAddress};
 
 /// Last-writer-wins register CRDT using timestamp and node ordering.
 ///
