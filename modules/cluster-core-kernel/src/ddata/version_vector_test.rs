@@ -89,9 +89,21 @@ fn pruning_collapses_removed_node_into_active_node() {
   let pruned = vector.prune(&removed, &collapse_into).expect("collapse version must fit");
 
   assert_eq!(pruned.version_at(&removed), 0);
-  assert_eq!(pruned.version_at(&collapse_into), 8);
+  assert_eq!(pruned.version_at(&collapse_into), 3);
   assert!(!pruned.need_pruning_from(&removed));
   assert!(pruned.need_pruning_from(&collapse_into));
+}
+
+#[test]
+fn pruning_does_not_reuse_removed_node_version_as_collapse_clock() {
+  let removed = unique_address(0);
+  let collapse_into = unique_address(1);
+  let vector = vector_from_entries(&[(0, 100), (1, 2)]);
+
+  let pruned = vector.prune(&removed, &collapse_into).expect("collapse version must fit");
+
+  assert_eq!(pruned.version_at(&collapse_into), 3);
+  assert!(pruned.is_before(&vector_from_entries(&[(1, 50)])));
 }
 
 #[test]
@@ -120,7 +132,7 @@ fn pruning_cleanup_removes_removed_node_only() {
 fn prune_detects_collapse_version_overflow() {
   let removed = unique_address(0);
   let collapse_into = unique_address(1);
-  let vector = VersionVector::from_entries([(removed.clone(), u64::MAX), (collapse_into.clone(), 1)]);
+  let vector = VersionVector::from_entries([(removed.clone(), 1), (collapse_into.clone(), u64::MAX)]);
 
   assert_eq!(vector.prune(&removed, &collapse_into), Err(CounterArithmeticError::Overflow));
 }

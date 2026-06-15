@@ -5,7 +5,6 @@
 mod tests;
 
 use alloc::collections::{BTreeMap, BTreeSet};
-use core::cmp::max;
 
 use fraktor_remote_core_rs::address::UniqueAddress;
 
@@ -180,7 +179,7 @@ impl RemovedNodePruning for VersionVector {
 
     if removed_node != collapse_into {
       let collapse_version = versions.get(collapse_into).copied().unwrap_or(0);
-      let next = max(collapse_version, removed_version).checked_add(1).ok_or(CounterArithmeticError::Overflow)?;
+      let next = collapse_version.checked_add(1).ok_or(CounterArithmeticError::Overflow)?;
       versions.insert(collapse_into.clone(), next);
     }
 
