@@ -82,7 +82,7 @@ fraktor-rs 側はスキル指定の `pub` 系抽出で、型 347 件 (core-kerne
 | `MembershipCoordinatorDriver` | 実装済み概念として列挙 | 公開型ではない | `pub(super)`。`TokioGossiper` の内部実装であり外部 API には露出しない |
 | SBR runtime down execution loop | 部分実装 | 実装済み | `SplitBrainResolverProviderHook::decide_strategy_context` / `StdSplitBrainResolverProvider::decide_strategy_context` が target-aware decision を保持し、std `SplitBrainResolverDowningDriver` + `TokioGossiper::with_split_brain_resolver_downing` が reachability snapshot から downing target を `MembershipCoordinator::handle_down` と `ClusterProvider::down` へ自動発行 |
 | `VersionVector` | 未対応 | 実装済み | `VersionVector` が per-node causal ordering / merge / removed-node pruning を実装し、`VersionVectorOrdering` と property tests で CRDT merge law を検証 |
-| `LWWRegister` | 未対応 | 実装済み | `LWWRegister<T>` が signed timestamp / `UniqueAddress` ordering による last-writer-wins merge、default / reverse clock、clock closure 経由の値更新を実装し、`LWWRegisterKey<T>` と merge tie-break tests で検証 |
+| `LWWRegister` | 未対応 | 実装済み | `LWWRegister<T>` が signed timestamp / `UniqueAddress` ordering による last-writer-wins merge、caller-supplied current millis を使う default / reverse clock、clock closure 経由の値更新を実装し、`LWWRegisterKey<T>` と merge tie-break tests で検証 |
 
 備考: `ClusterPubSub` trait は `pub_sub::cluster_pub_sub::ClusterPubSub` のネストパスでのみ公開されており、トップレベル `pub_sub` への re-export はない（実装済み判定は維持、公開面の整理は別件）。`NodeStatus` の Pekko `Down` 相当は `Dead` バリアント（別名実装済み）。
 
@@ -199,7 +199,7 @@ n/a へ移動: `ClusterClient` / `ClusterClientReceptionist` / `ClusterClientSet
 | `LWWMap` | `LWWMap.scala:21` | 未対応 | core/ddata | medium | `ORMap` 相当の observed-remove map と `LWWRegister` entry 合成が必要 |
 | `ORSet` / `ORMap` / `ORMultiMap` | `ORSet.scala:43`, `ORMap.scala:24`, `ORMultiMap.scala:21` | 未対応 | core/ddata | medium | dot / tombstone / delta semantics が必要 |
 
-実装済みとして扱うもの: CRDT merge / delta / pruning 基底 SPI（`ReplicatedData` / `DeltaReplicatedData` / `ReplicatedDelta` / `RequiresCausalDeliveryOfDeltas` / `RemovedNodePruning`）、`Key<T>` と基本 key alias、`SelfUniqueAddress`、`Flag`、`GCounter`、`PNCounter`、`PNCounterMap`（increment / decrement / get / entries / remove、delta / pruning）、`VersionVector`（increment / compare / merge / removed-node pruning）、`LWWRegister`（signed timestamp / `UniqueAddress` ordering / default / reverse clock update）、read/write consistency 語彙（`ReadConsistency` / `WriteConsistency`）、補助 protocol 語彙（`GetReplicaCount` / `ReplicaCount` / `FlushChanges`）。
+実装済みとして扱うもの: CRDT merge / delta / pruning 基底 SPI（`ReplicatedData` / `DeltaReplicatedData` / `ReplicatedDelta` / `RequiresCausalDeliveryOfDeltas` / `RemovedNodePruning`）、`Key<T>` と基本 key alias、`SelfUniqueAddress`、`Flag`、`GCounter`、`PNCounter`、`PNCounterMap`（increment / decrement / get / entries / remove、delta / pruning）、`VersionVector`（increment / compare / merge / removed-node pruning）、`LWWRegister`（signed timestamp / `UniqueAddress` ordering / caller-supplied current millis default / reverse clock update）、read/write consistency 語彙（`ReadConsistency` / `WriteConsistency`）、補助 protocol 語彙（`GetReplicaCount` / `ReplicaCount` / `FlushChanges`）。
 
 ### 10. std adapter / discovery / wire integration　✅ 実装済み 9/11 (82%)
 
@@ -300,7 +300,7 @@ n/a へ移動: `ClusterClient` / `ClusterClientReceptionist` / `ClusterClientSet
 | `ORSet` / `ORMap` / `ORMultiMap` | core/ddata | カテゴリ9 | - |
 | `PNCounterMap` key removal / entries surface | core/ddata | カテゴリ9 | 実装済み（`PNCounterMap::entries` / `contains_key` / `len` / `is_empty` + observed-remove `remove` + full/delta merge テスト） |
 | `VersionVector` | core/ddata | カテゴリ9 | 実装済み（`VersionVector::increment` / `compare` / `merge` / removed-node pruning + property tests） |
-| `LWWRegister` | core/ddata | カテゴリ9 | 実装済み（`LWWRegister::merge` / `with_value_with_clock` / `default_clock` / `reverse_clock` / `LWWRegisterKey<T>` + timestamp / node-order tie-break tests） |
+| `LWWRegister` | core/ddata | カテゴリ9 | 実装済み（`LWWRegister::merge` / `with_value_with_clock` / caller-supplied current millis `default_clock` / `reverse_clock` / `LWWRegisterKey<T>` + timestamp / node-order tie-break tests） |
 
 ### Phase 3: hard（新しい基盤・アーキテクチャ変更を要するもの）
 

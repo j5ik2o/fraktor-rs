@@ -20,13 +20,21 @@ fn register_at<T>(node: &SelfUniqueAddress, value: T, timestamp: i64) -> LWWRegi
 }
 
 #[test]
-fn new_uses_default_logical_clock() {
+fn new_uses_default_clock_with_supplied_time() {
   let node = self_address(0);
-  let register = LWWRegister::new(&node, "alpha");
+  let register = LWWRegister::new(&node, "alpha", 1_700);
 
   assert_eq!(register.value(), &"alpha");
-  assert_eq!(register.timestamp(), 1);
+  assert_eq!(register.timestamp(), 1_700);
   assert_eq!(register.updated_by(), node.unique_address());
+}
+
+#[test]
+fn new_uses_logical_floor_when_supplied_time_is_behind() {
+  let node = self_address(0);
+  let register = LWWRegister::new(&node, "alpha", 0);
+
+  assert_eq!(register.timestamp(), 1);
 }
 
 #[test]
@@ -46,7 +54,7 @@ fn with_value_replaces_value_writer_and_timestamp() {
   let first = self_address(0);
   let second = self_address(1);
   let register = register_at(&first, "alpha", 10);
-  let updated = register.with_value(&second, "beta").expect("default clock must advance");
+  let updated = register.with_value(&second, "beta", 9).expect("default clock must advance");
 
   assert_eq!(updated.value(), &"beta");
   assert_eq!(updated.timestamp(), 11);
@@ -78,6 +86,15 @@ fn with_value_with_clock_rejects_same_writer_same_timestamp() {
 }
 
 #[test]
+fn default_clock_lets_unobserved_later_write_win_by_time() {
+  let first = LWWRegister::new(&self_address(0), "alpha", 1_000);
+  let second = LWWRegister::new(&self_address(1), "beta", 1_001);
+
+  assert_eq!(first.merge(&second), second);
+  assert_eq!(second.merge(&first), second);
+}
+
+#[test]
 fn merge_picks_larger_timestamp() {
   let first = register_at(&self_address(0), "alpha", 10);
   let second = register_at(&self_address(1), "beta", 11);
@@ -98,9 +115,11 @@ fn merge_picks_lowest_node_order_when_timestamps_match() {
 #[test]
 fn merge_can_model_first_write_wins_with_descending_timestamps() {
   let node = self_address(0);
-  let first = LWWRegister::new_with_clock(&node, "alpha", LWWRegister::reverse_clock);
-  let later_candidate =
-    first.with_value_with_clock(&node, "beta", LWWRegister::reverse_clock).expect("reverse clock must move backwards");
+  let first =
+    LWWRegister::new_with_clock(&node, "alpha", |current, _| LWWRegister::<&str>::reverse_clock(current, 100));
+  let later_candidate = first
+    .with_value_with_clock(&node, "beta", |current, _| LWWRegister::<&str>::reverse_clock(current, 101))
+    .expect("reverse clock must move backwards");
 
   assert_eq!(first.merge(&later_candidate), first);
   assert_eq!(later_candidate.merge(&first), first);

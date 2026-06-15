@@ -20,10 +20,12 @@ pub struct LWWRegister<T> {
 }
 
 impl<T> LWWRegister<T> {
-  /// Creates a register with the default logical clock.
+  /// Creates a register with the default last-writer-wins clock.
   #[must_use]
-  pub fn new(node: &SelfUniqueAddress, value: T) -> Self {
-    Self::new_with_clock(node, value, Self::default_clock)
+  pub fn new(node: &SelfUniqueAddress, value: T, current_time_millis: i64) -> Self {
+    Self::new_with_clock(node, value, |current_timestamp, _| {
+      Self::default_clock(current_timestamp, current_time_millis)
+    })
   }
 
   /// Creates a register by asking `clock` for the first timestamp.
@@ -35,16 +37,22 @@ impl<T> LWWRegister<T> {
     Self::new_at(node, value, timestamp)
   }
 
-  /// Returns the next timestamp for the default last-write-wins logical clock.
+  /// Returns the next timestamp for the default last-write-wins clock.
+  ///
+  /// This mirrors Pekko's default clock while keeping the core crate free of direct wall-clock
+  /// access: callers supply the current wall-clock millis.
   #[must_use]
-  pub const fn default_clock(current_timestamp: i64, _value: &T) -> i64 {
-    current_timestamp.saturating_add(1)
+  pub const fn default_clock(current_timestamp: i64, current_time_millis: i64) -> i64 {
+    let next_timestamp = current_timestamp.saturating_add(1);
+    if current_time_millis > next_timestamp { current_time_millis } else { next_timestamp }
   }
 
   /// Returns the next timestamp for first-write-wins semantics.
   #[must_use]
-  pub const fn reverse_clock(current_timestamp: i64, _value: &T) -> i64 {
-    current_timestamp.saturating_sub(1)
+  pub const fn reverse_clock(current_timestamp: i64, current_time_millis: i64) -> i64 {
+    let previous_timestamp = current_timestamp.saturating_sub(1);
+    let reversed_time = current_time_millis.saturating_neg();
+    if reversed_time < previous_timestamp { reversed_time } else { previous_timestamp }
   }
 
   fn new_at(node: &SelfUniqueAddress, value: T, timestamp: i64) -> Self {
@@ -69,10 +77,12 @@ impl<T> LWWRegister<T> {
     &self.updated_by
   }
 
-  /// Returns a register with a replacement value using the default logical clock.
+  /// Returns a register with a replacement value using the default last-writer-wins clock.
   #[must_use]
-  pub fn with_value(&self, node: &SelfUniqueAddress, value: T) -> Option<Self> {
-    self.with_value_with_clock(node, value, Self::default_clock)
+  pub fn with_value(&self, node: &SelfUniqueAddress, value: T, current_time_millis: i64) -> Option<Self> {
+    self.with_value_with_clock(node, value, |current_timestamp, _| {
+      Self::default_clock(current_timestamp, current_time_millis)
+    })
   }
 
   /// Returns a register with a replacement value whose timestamp is selected by `clock`.
