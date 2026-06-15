@@ -66,9 +66,23 @@ impl SplitBrainResolverProviderHook {
     if context.explicit_down_authority().is_some() {
       return Ok(DowningDecision::Down);
     }
+    let strategy_decision = self.decide_strategy_context(context)?;
+    Ok(Self::provider_decision(context, &strategy_decision))
+  }
+
+  /// Decides from a prebuilt context and preserves strategy target details.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`ClusterProviderError::DownFailed`] when the evaluator trace reports a provider
+  /// failure.
+  pub fn decide_strategy_context(
+    &mut self,
+    context: &DowningDecisionContext,
+  ) -> Result<DowningStrategyDecision, ClusterProviderError> {
     let strategy_decision = self.resolver.decide(context);
     Self::map_trace(strategy_decision.trace())?;
-    Ok(Self::provider_decision(context, &strategy_decision))
+    Ok(Self::apply_provider_decision(context, strategy_decision))
   }
 
   /// Decides from a prebuilt context with a lease backend port.
@@ -85,9 +99,24 @@ impl SplitBrainResolverProviderHook {
     if context.explicit_down_authority().is_some() {
       return Ok(DowningDecision::Down);
     }
+    let strategy_decision = self.decide_strategy_context_with_lease(context, lease_port)?;
+    Ok(Self::provider_decision(context, &strategy_decision))
+  }
+
+  /// Decides from a prebuilt context with a lease backend and preserves strategy target details.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`ClusterProviderError::DownFailed`] when the evaluator trace reports a provider
+  /// failure.
+  pub fn decide_strategy_context_with_lease(
+    &mut self,
+    context: &DowningDecisionContext,
+    lease_port: &mut dyn LeaseMajorityPort,
+  ) -> Result<DowningStrategyDecision, ClusterProviderError> {
     let strategy_decision = self.resolver.decide_with_lease(context, lease_port);
     Self::map_trace(strategy_decision.trace())?;
-    Ok(Self::provider_decision(context, &strategy_decision))
+    Ok(Self::apply_provider_decision(context, strategy_decision))
   }
 
   fn expected_compatibility(config: SplitBrainResolverConfig) -> DowningProviderCompatibility {
@@ -122,6 +151,14 @@ impl SplitBrainResolverProviderHook {
       return DowningDecision::Down;
     }
     strategy_decision.simple_decision()
+  }
+
+  fn apply_provider_decision(
+    context: &DowningDecisionContext,
+    strategy_decision: DowningStrategyDecision,
+  ) -> DowningStrategyDecision {
+    let provider_decision = Self::provider_decision(context, &strategy_decision);
+    strategy_decision.with_simple_decision(provider_decision)
   }
 }
 

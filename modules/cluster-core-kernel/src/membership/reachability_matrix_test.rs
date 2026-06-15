@@ -73,6 +73,51 @@ fn terminated_has_aggregate_precedence_and_is_not_overwritten_by_reachable() {
 }
 
 #[test]
+fn clear_subject_removes_terminated_records_and_bumps_observer_version() {
+  let observer_a = unique("observer-a", 1);
+  let observer_b = unique("observer-b", 2);
+  let subject = unique("subject-a", 3);
+  let other_subject = unique("subject-b", 4);
+  let mut matrix = ReachabilityMatrix::new();
+
+  matrix.terminated(observer_a.clone(), subject.clone());
+  matrix.unreachable(observer_b.clone(), subject.clone());
+  matrix.unreachable(observer_b.clone(), other_subject.clone());
+
+  matrix.clear_subject(&subject);
+
+  let snapshot = matrix.snapshot();
+  assert!(snapshot.records.iter().all(|record| record.subject != subject));
+  assert!(snapshot.records.iter().any(|record| record.subject == other_subject));
+  assert_eq!(snapshot.observer_versions.get(&observer_a), Some(&2));
+  assert_eq!(snapshot.observer_versions.get(&observer_b), Some(&3));
+  assert_eq!(matrix.aggregate_status(&subject), ReachabilityStatus::Reachable);
+}
+
+#[test]
+fn clear_observer_removes_row_and_bumps_observer_version_once() {
+  let observer = unique("observer-a", 1);
+  let subject_a = unique("subject-a", 2);
+  let subject_b = unique("subject-b", 3);
+  let other_observer = unique("observer-b", 4);
+  let mut matrix = ReachabilityMatrix::new();
+
+  matrix.unreachable(observer.clone(), subject_a.clone());
+  matrix.terminated(observer.clone(), subject_b.clone());
+  matrix.unreachable(other_observer.clone(), subject_b.clone());
+
+  matrix.clear_observer(&observer);
+
+  let snapshot = matrix.snapshot();
+  assert!(snapshot.records.iter().all(|record| record.observer != observer));
+  assert!(snapshot.records.iter().any(|record| record.observer == other_observer));
+  assert_eq!(snapshot.observer_versions.get(&observer), Some(&3));
+  assert_eq!(snapshot.observer_versions.get(&other_observer), Some(&1));
+  assert_eq!(matrix.aggregate_status(&subject_a), ReachabilityStatus::Reachable);
+  assert_eq!(matrix.aggregate_status(&subject_b), ReachabilityStatus::Unreachable);
+}
+
+#[test]
 fn repeated_same_status_does_not_advance_observer_version() {
   let observer = unique("observer-a", 1);
   let subject = unique("subject-a", 2);

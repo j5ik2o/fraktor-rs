@@ -1,6 +1,6 @@
 # cluster モジュール ギャップ分析
 
-更新日: 2026-06-14 (parity 分母再構成 + 全カテゴリ再検証 + 完了証跡同期)
+更新日: 2026-06-15 (SBR runtime down execution loop 完了証跡同期)
 
 ## 位置づけ
 
@@ -58,18 +58,18 @@ fraktor-rs 側はスキル指定の `pub` 系抽出で、型 297 件 (core-kerne
 | 指標 | 値 |
 |------|-----|
 | Pekko 固定スコープ対象公開契約グループ | 151 |
-| fraktor-rs 固定スコープ対応公開契約グループ（実装済み） | 103 |
-| 固定スコープカバレッジ | 103/151 (68%) |
-| 部分実装 | 10 |
+| fraktor-rs 固定スコープ対応公開契約グループ（実装済み） | 104 |
+| 固定スコープカバレッジ | 104/151 (69%) |
+| 部分実装 | 9 |
 | 未対応 | 38（ギャップ表上は31行。カテゴリ9の13行が20未対応公開契約グループを集約） |
 | raw public type declarations | 297 (core-kernel: 265, core-typed: 9, std: 23) |
 | raw public method declarations | 843 (core-kernel: 730, core-typed: 32, std: 81) |
-| hard / medium / easy / trivial gap | 11 / 29 / 8 / 0 |
+| hard / medium / easy / trivial gap | 10 / 29 / 8 / 0 |
 | panic 系スタブ | 0 件 |
 | 機能 placeholder / TODO | 0 件 |
 
 注: `raw public` は `pub(crate)` など内部到達可能な `pub` を含む参考値であり、crate 外から到達可能な外部公開 API 数ではない。
-注: `実装済み` / `部分実装` / `未対応` / 難易度内訳は、この台帳で定義した公開契約グループ単位で数える。ギャップ表は41行（部分実装10行、未対応31行）だが、カテゴリ9の protocol / CRDT 行は複数の公開契約グループを1行に集約している。raw 型名やメソッド名の個数を個別加算するものではない。
+注: `実装済み` / `部分実装` / `未対応` / 難易度内訳は、この台帳で定義した公開契約グループ単位で数える。ギャップ表は40行（部分実装9行、未対応31行）だが、カテゴリ9の protocol / CRDT 行は複数の公開契約グループを1行に集約している。raw 型名やメソッド名の個数を個別加算するものではない。
 
 ### 前回 (2026-06-05) からの判定変更
 
@@ -80,6 +80,7 @@ fraktor-rs 側はスキル指定の `pub` 系抽出で、型 297 件 (core-kerne
 | `SubscriptionInitialStateMode` | 分母外 | 実装済み | `ClusterSubscriptionInitialStateMode` が extension モジュールに存在 |
 | pub-sub query | mediator protocol に包含 | 実装済み | `MediatorQuery::CurrentTopics` / `SubscriberCount` / `Count` を実装済み。`Count` は active owner の delivery view からトピック横断 subscriber 登録総数を返す |
 | `MembershipCoordinatorDriver` | 実装済み概念として列挙 | 公開型ではない | `pub(super)`。`TokioGossiper` の内部実装であり外部 API には露出しない |
+| SBR runtime down execution loop | 部分実装 | 実装済み | `SplitBrainResolverProviderHook::decide_strategy_context` / `StdSplitBrainResolverProvider::decide_strategy_context` が target-aware decision を保持し、std `SplitBrainResolverDowningDriver` + `TokioGossiper::with_split_brain_resolver_downing` が reachability snapshot から downing target を `MembershipCoordinator::handle_down` と `ClusterProvider::down` へ自動発行 |
 
 備考: `ClusterPubSub` trait は `pub_sub::cluster_pub_sub::ClusterPubSub` のネストパスでのみ公開されており、トップレベル `pub_sub` への re-export はない（実装済み判定は維持、公開面の整理は別件）。`NodeStatus` の Pekko `Down` 相当は `Dead` バリアント（別名実装済み）。
 
@@ -88,11 +89,11 @@ fraktor-rs 側はスキル指定の `pub` 系抽出で、型 297 件 (core-kerne
 | 層 | Pekko 対応範囲 | fraktor-rs 現状 | 評価 |
 |----|----------------|-----------------|------|
 | core / membership | `Cluster`, `Member`, `MemberStatus`, `CurrentClusterState`, `ClusterEvent`, `Gossip`, `Reachability` | `ClusterExtension`, `ClusterApi`, `NodeRecord`, `NodeStatus`, `CurrentClusterState`, `MembershipCoordinator`, `GossipDisseminationCoordinator`, `ReachabilityMatrix`, `GossipStateModel`, `HeartbeatProtocolState`, `CrossDcHeartbeat` | UniqueAddress、data center、WeaklyUp、reachability matrix、gossip envelope、full gossip merge / tombstone / seen digest、dedicated heartbeat evidence、SeedNodeProcess の core contract はある。Member ordering 公開契約、shutdown 系イベント型、CoordinatedShutdown 連携が不足 |
-| core / downing | `DowningProvider`, `NoDowning`, `SplitBrainResolverProvider` | `DowningProvider`, `DowningDecisionContext`, `DowningStrategyDecision`, `DowningDecisionTrace`, `NoopDowningProvider`, `SplitBrainResolver`, `LeaseMajorityPort`, `SplitBrainResolverProviderHook` | decision model / settings / provider binding は完了。SBR runtime actor（reachability 変化監視 → 責任ノード選択 → 自動 down 発行ループ）と concrete lease backend が未実装 |
+| core / downing | `DowningProvider`, `NoDowning`, `SplitBrainResolverProvider` | `DowningProvider`, `DowningDecisionContext`, `DowningStrategyDecision`, `DowningDecisionTrace`, `NoopDowningProvider`, `SplitBrainResolver`, `LeaseMajorityPort`, `SplitBrainResolverProviderHook` | decision model / settings / provider binding / target-aware runtime decision は完了。std 側の自動 down 発行ループも `TokioGossiper` opt-in で接続済み。concrete lease backend が未実装 |
 | core / typed | typed `Cluster`, command, subscription, singleton, sharding typed API | `Cluster` / `ClusterCommand` / `ClusterStateSubscription` / `ClusterEventSubscription` / `SelfUp` / `SelfRemoved` / `ClusterSetup` | typed Cluster facade（subscribe / unsubscribe / current_state / `PrepareForFullClusterShutdown` command 含む）は完備。singleton / sharding typed API が未実装 |
 | core / virtual actor | `ClusterSharding`, `EntityRef`, `EntityTypeKey`, `ShardRegion`, coordinator | `GrainRef`, `GrainKey`, `GrainTypeKey`, typed `GrainRef`, `ShardingEnvelope`, `ShardingMessageExtractor`, `ShardingRouter`, `VirtualActorRegistry`, `PlacementCoordinatorCore`, `PartitionIdentityLookup`, `RendezvousHasher`, `PidCache` | protoactor-go style の同等機能は強いが、Pekko public API 形態（typed Entity / `ClusterSharding.init` / `EntityRef` / `askWithStatus`）、rebalance / remembered entities / query protocol / health check が不足 |
 | core / distributed state | `DistributedData`, `Replicator`, CRDT 型群 | `ReplicatedData`, `DeltaReplicatedData`, `RemovedNodePruning`, `Key`, `SelfUniqueAddress`, `Flag`, `GCounter`, `PNCounter`, `PNCounterMap`（increment / decrement / get / entries / remove）, read/write consistency 語彙 | CRDT 基底 SPI と scalar counter 型、`PNCounterMap` の entries surface / observed-remove key deletion は実装済み。DistributedData / Replicator runtime、protocol、durable store、map/set/register 系 CRDT が不足 |
-| std / adapter | gossip transport, provider, discovery adapter | `TokioGossipTransport`, `TokioGossiper`, `LocalClusterProvider`, `StaticClusterProvider`, `AwsEcsClusterProvider`, `GenericDiscoveryAdapter`, `ProviderLifecycleBridge`, `ClusterWireCodec`, `ConfiguredPhiAccrualDetectorFactory` | Rust adapter、logical envelope handoff、seed/discovery provider boundary、cluster message serializer contract、failure detector factory はある。sharding/singleton 系 setup と sharding join compat key が不足 |
+| std / adapter | gossip transport, provider, discovery adapter | `TokioGossipTransport`, `TokioGossiper`, `LocalClusterProvider`, `StaticClusterProvider`, `AwsEcsClusterProvider`, `GenericDiscoveryAdapter`, `ProviderLifecycleBridge`, `ClusterWireCodec`, `ConfiguredPhiAccrualDetectorFactory` | Rust adapter、logical envelope handoff、seed/discovery provider boundary、cluster message serializer contract、failure detector factory、SBR down execution loop はある。sharding/singleton 系 setup と sharding join compat key が不足 |
 
 ## カテゴリ別ギャップ
 
@@ -114,14 +115,13 @@ fraktor-rs 側はスキル指定の `pub` 系抽出で、型 297 件 (core-kerne
 
 実装済みとして扱うもの: `Reachability` matrix（`ReachabilityMatrix` / `ReachabilityRecord` / `ReachabilitySnapshot`）、full `Gossip` merge / tombstone / seen digest（`GossipStateModel` / `GossipStateSnapshot`）、`GossipEnvelope` + logical handoff、dedicated heartbeat protocol（`HeartbeatProtocolState`）、`CrossDcClusterHeartbeat` evidence（`CrossDcHeartbeat`）、`SeedNodeProcess`、config compatibility full key set（`ClusterCompatibilityKeyCatalog` / `JoinCompatibilityComposition`）、Failure Detector Configuration（`FailureDetectorConfig` + `ConfiguredPhiAccrualDetectorFactory`）、`SubscriptionInitialStateMode`（`ClusterSubscriptionInitialStateMode`）、`MembershipTable` / `MembershipDelta` / `MembershipVersion` / `VectorClock`、`DefaultFailureDetectorRegistry`、`MembershipCoordinator::poll` による suspect/dead 遷移、indirect connection evidence、`TokioGossipTransport`。
 
-### 3. Downing / Split Brain Resolver　✅ 実装済み 3/5 (60%)
+### 3. Downing / Split Brain Resolver　✅ 実装済み 4/5 (80%)
 
 | Pekko API / 契約 | Pekko 参照 | fraktor-rs 対応 | 実装先層 | 難易度 | 備考 |
 |------------------|------------|-----------------|----------|--------|------|
-| SBR runtime down execution loop | `SplitBrainResolver.scala:160`（@InternalApi actor だが機能として公開契約） | 部分実装 | core + std | hard | `SplitBrainResolver` の decision model / trace / provider hook は実装済み。reachability 変化の購読、stable-after タイマー駆動、責任ノード選択、`ClusterCore::down` への自動発行ループが未実装。現状 down は明示呼び出しのみ |
 | concrete lease coordination backend | `DowningStrategy.scala:602` | 部分実装 | std | hard | `LeaseMajorityPort` / `LeaseAcquisitionOutcome` / `StdLeaseMajorityBackend` trait は実装済み。実際の分散 lease backend（coordination service 連携、retry、network I/O）が未実装 |
 
-実装済みとして扱うもの: `DowningProvider` SPI、`NoDowning`（`NoopDowningProvider`）、SBR settings 契約（`SplitBrainResolverConfig` / `SplitBrainResolverStrategy`: KeepMajority / StaticQuorum / KeepOldest / DownAll / LeaseMajority の 5 戦略）。`DowningDecisionContext` / `DowningStrategyDecision` / `DowningDecisionTrace` / `FailureObservation` / `IndirectConnectionEvidence` / `SplitBrainResolverProviderHook` / `StdSplitBrainResolverProvider` / downing provider・SBR settings の join compatibility は上記概念の evidence。
+実装済みとして扱うもの: `DowningProvider` SPI、`NoDowning`（`NoopDowningProvider`）、SBR settings 契約（`SplitBrainResolverConfig` / `SplitBrainResolverStrategy`: KeepMajority / StaticQuorum / KeepOldest / DownAll / LeaseMajority の 5 戦略）、SBR runtime down execution loop（`SplitBrainResolverProviderHook::decide_strategy_context` / `StdSplitBrainResolverProvider::decide_strategy_context` / std `SplitBrainResolverDowningDriver` / `TokioGossiper::with_split_brain_resolver_downing` / `MembershipCoordinator::handle_down`）。`DowningDecisionContext` / `DowningStrategyDecision` / `DowningDecisionTrace` / `FailureObservation` / `IndirectConnectionEvidence` / downing provider・SBR settings の join compatibility は上記概念の evidence。
 
 ### 4. Cluster router pool / group　✅ 実装済み 6/6 (100%)
 
@@ -232,13 +232,13 @@ n/a へ移動: `ClusterClient` / `ClusterClientReceptionist` / `ClusterClientSet
 
 ## 内部モジュール構造ギャップ
 
-今回は API / 実動作ギャップが支配的なため、内部モジュール構造ギャップの詳細分析は省略する。固定スコープ概念カバレッジは 68% で、判定基準（カバレッジ 80% 以上、または hard/medium 未実装 5 件以下）を満たさない。
+今回は API / 実動作ギャップが支配的なため、内部モジュール構造ギャップの詳細分析は省略する。固定スコープ概念カバレッジは 69% で、判定基準（カバレッジ 80% 以上、または hard/medium 未実装 5 件以下）を満たさない。
 
 次版で構造分析へ進む場合の観点:
 
 | 構造観点 | 現状 | 次に見るべき点 |
 |----------|------|----------------|
-| membership と provider の境界 | pure coordinator と provider/event-stream adapter が分かれている | SBR runtime loop / CoordinatedShutdownLeave がどちらに入るべきか |
+| membership と provider の境界 | pure coordinator と provider/event-stream adapter が分かれている | SBR runtime loop は std `TokioGossiper` の opt-in driver として接続済み。次は CoordinatedShutdownLeave をどちらに入れるか |
 | gossip と wire の境界 | core gossip / heartbeat contract + std logical handoff + postcard delta UDP + actor-core serialization bridge | Pekko/protobuf 完全バイナリ互換を将来採用するか |
 | grain と typed sharding の境界 | protoactor-go style の Grain API が中心 | Pekko typed sharding wrapper（Entity / EntityRef / Extractor）を薄く載せられるか |
 | pubsub と distributed-data の境界 | PubSub は独自 broker、CRDT 基本型はあるが Replicator は未実装 | PubSub registry gossip を ddata Replicator 相当に寄せるか |
@@ -302,7 +302,6 @@ n/a へ移動: `ClusterClient` / `ClusterClientReceptionist` / `ClusterClientSet
 
 | 項目 | 実装先層 | 根拠カテゴリ |
 |------|----------|--------------|
-| SBR runtime down execution loop（reachability 監視 → 責任ノード選択 → 自動 down 発行） | core + std | カテゴリ3 |
 | concrete lease coordination backend | std | カテゴリ3 |
 | classic `ClusterSingletonManager`（oldest election / handover） | std + core | カテゴリ6 |
 | `ClusterSingletonProxy` | std + core | カテゴリ6 |
@@ -325,10 +324,10 @@ ClusterClient 系（deprecated）、`@InternalApi` 型、JMX / HOCON / JFR / Jav
 
 ## まとめ
 
-cluster は membership / gossip / heartbeat / reachability / downing decision model / typed Cluster facade / Grain runtime / PubSub / discovery provider / message serializer contract という基礎契約は強く、カテゴリ 1, 2, 4, 5, 7, 10 は 82〜100% のカバレッジに達している。全体カバレッジは 103/151 (68%) で、未実装の大半は Cluster Singleton（30%）、Distributed Data / CRDT（26%）、Pekko sharding public API 形態（48%）の 3 領域に集中している。
+cluster は membership / gossip / heartbeat / reachability / downing decision model / SBR runtime down execution loop / typed Cluster facade / Grain runtime / PubSub / discovery provider / message serializer contract という基礎契約は強く、カテゴリ 1, 2, 3, 4, 5, 7, 10 は 80〜100% のカバレッジに達している。全体カバレッジは 104/151 (69%) で、未実装の大半は Cluster Singleton（30%）、Distributed Data / CRDT（26%）、Pekko sharding public API 形態（48%）の 3 領域に集中している。
 
 Phase 1 は完了済み。次に進めるなら、`CrossDcFailureDetectorSettings`、typed singleton settings wrapper、setup integration、`JoinConfigCompatCheckSharding` のような config / wrapper / setup / compatibility key は単独で切らず、対象本体を触る change に同梱する。
 
-parity 上の主要ギャップは Phase 3 に集約される: SBR runtime down execution loop（decision model は完成済みで、実行ループだけが欠けている）、Cluster Singleton（manager / proxy / typed extension）、sharding の rebalance / remembered entities / delivery controllers、そして Distributed Data の Replicator 基盤である。特に SBR runtime loop は、既存の `SplitBrainResolver` / `ReachabilityMatrix` / `MembershipCoordinator` が揃っているため、Phase 3 の中では最も着手可能性が高い。
+parity 上の主要ギャップは Phase 3 に集約される: concrete lease coordination backend、Cluster Singleton（manager / proxy / typed extension）、sharding の rebalance / remembered entities / delivery controllers、そして Distributed Data の Replicator 基盤である。
 
 API ギャップが支配的であり、内部モジュール構造の比較は、singleton / ddata / sharding public API の scope を採用する OpenSpec change が立った後に進めるのが妥当である。

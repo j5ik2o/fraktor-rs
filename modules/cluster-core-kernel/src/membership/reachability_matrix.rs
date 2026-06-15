@@ -39,6 +39,37 @@ impl ReachabilityMatrix {
     self.update(observer, subject, ReachabilityStatus::Terminated);
   }
 
+  /// Clears all reachability records for a subject.
+  pub fn clear_subject(&mut self, subject: &UniqueAddress) {
+    let observers = self
+      .records
+      .keys()
+      .filter(|(_, record_subject)| record_subject == subject)
+      .map(|(observer, _)| observer.clone())
+      .collect::<Vec<_>>();
+    for observer in observers {
+      self.records.remove(&(observer.clone(), subject.clone()));
+      self.bump_observer_version(observer);
+    }
+  }
+
+  /// Clears all reachability records reported by an observer.
+  pub fn clear_observer(&mut self, observer: &UniqueAddress) {
+    let subjects = self
+      .records
+      .keys()
+      .filter(|(record_observer, _)| record_observer == observer)
+      .map(|(_, subject)| subject.clone())
+      .collect::<Vec<_>>();
+    if subjects.is_empty() {
+      return;
+    }
+    for subject in subjects {
+      self.records.remove(&(observer.clone(), subject));
+    }
+    self.bump_observer_version(observer.clone());
+  }
+
   /// Returns the aggregate status for a subject across all observers.
   #[must_use]
   pub fn aggregate_status(&self, subject: &UniqueAddress) -> ReachabilityStatus {

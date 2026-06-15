@@ -322,6 +322,39 @@ fn weakly_up_can_leave_or_be_marked_dead() {
 }
 
 #[test]
+fn active_member_can_be_marked_dead() {
+  for (status, authority, node_id) in [
+    (NodeStatus::Joining, "n1:4050", "node-joining"),
+    (NodeStatus::WeaklyUp, "n2:4050", "node-weakly-up"),
+    (NodeStatus::Up, "n3:4050", "node-up"),
+    (NodeStatus::Suspect, "n4:4050", "node-suspect"),
+  ] {
+    let mut table = MembershipTable::new(3);
+    table
+      .try_join(node_id.to_string(), authority.to_string(), "1.0.0".to_string(), vec!["backend".to_string()])
+      .expect("join succeeds");
+    match status {
+      | NodeStatus::Joining => {},
+      | NodeStatus::WeaklyUp => {
+        table.mark_weakly_up(authority).expect("weakly up succeeds");
+      },
+      | NodeStatus::Up => {
+        table.mark_weakly_up(authority).expect("weakly up succeeds");
+        table.mark_up(authority).expect("up succeeds");
+      },
+      | NodeStatus::Suspect => {
+        table.mark_suspect(authority).expect("suspect succeeds");
+      },
+      | _ => unreachable!("test covers active statuses only"),
+    }
+
+    let dead_delta = table.mark_dead(authority).expect("active member can be downed").expect("delta");
+
+    assert_eq!(dead_delta.entries[0].status, NodeStatus::Dead);
+  }
+}
+
+#[test]
 fn heartbeat_miss_is_ignored_for_exiting_member() {
   let mut table = MembershipTable::new(1);
   table

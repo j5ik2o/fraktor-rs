@@ -73,6 +73,12 @@ impl DowningStrategyDecision {
     self.simple_decision
   }
 
+  #[must_use]
+  pub(crate) const fn with_simple_decision(mut self, simple_decision: DowningDecision) -> Self {
+    self.simple_decision = simple_decision;
+    self
+  }
+
   /// Returns the trace explaining this decision.
   #[must_use]
   pub const fn trace(&self) -> &DowningDecisionTrace {

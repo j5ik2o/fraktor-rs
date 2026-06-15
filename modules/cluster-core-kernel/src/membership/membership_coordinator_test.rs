@@ -85,6 +85,7 @@ fn stopped_rejects_inputs() {
   let now = now(1);
 
   assert_eq!(coordinator.handle_heartbeat("node-a", now).unwrap_err(), MembershipCoordinatorError::NotStarted);
+  assert_eq!(coordinator.handle_down("node-a", now).unwrap_err(), MembershipCoordinatorError::NotStarted);
   assert_eq!(coordinator.poll(now).unwrap_err(), MembershipCoordinatorError::NotStarted);
 
   let delta = MembershipDelta::new(MembershipVersion::zero(), MembershipVersion::zero(), Vec::new());
@@ -103,6 +104,9 @@ fn client_rejects_join_and_leave() {
   assert_eq!(err, MembershipCoordinatorError::InvalidState { state: MembershipCoordinatorState::Client });
 
   let err = coordinator.handle_leave("node-a", now(1)).unwrap_err();
+  assert_eq!(err, MembershipCoordinatorError::InvalidState { state: MembershipCoordinatorState::Client });
+
+  let err = coordinator.handle_down("node-a", now(1)).unwrap_err();
   assert_eq!(err, MembershipCoordinatorError::InvalidState { state: MembershipCoordinatorState::Client });
 }
 
@@ -233,6 +237,166 @@ fn leave_emits_exiting_then_removed() {
       .iter()
       .any(|event| matches!(event, MembershipEvent::Left { authority, .. } if authority == "node-a"))
   );
+}
+
+#[test]
+fn down_marks_suspect_dead_and_terminates_reachability() {
+  let table = MembershipTable::new(3);
+  let config = base_config();
+  let mut coordinator = MembershipCoordinator::new(config, local_cluster_config_with_address(), table, registry(1.0));
+  coordinator.start_member().unwrap();
+
+  let _ = coordinator
+    .handle_join("node-1".to_string(), "node-a:2552".to_string(), &joining_cluster_config(), now(1))
+    .unwrap();
+  let _ = coordinator.handle_heartbeat("node-a:2552", now(2)).unwrap();
+  let _ = coordinator.handle_heartbeat("node-a:2552", now(3)).unwrap();
+  let _ = coordinator.poll(now(5)).unwrap();
+
+  let suspect_record =
+    coordinator.snapshot().entries.into_iter().find(|record| record.authority == "node-a:2552").expect("node-a record");
+  assert_eq!(suspect_record.status, NodeStatus::Suspect);
+
+  let outcome = coordinator.handle_down("node-a:2552", now(6)).unwrap();
+  assert!(
+    outcome
+      .member_events
+      .iter()
+      .any(|event| matches!(event, ClusterEvent::MemberStatusChanged { to: NodeStatus::Dead, .. }))
+  );
+  assert!(
+    outcome
+      .member_events
+      .iter()
+      .any(|event| matches!(event, ClusterEvent::MemberQuarantined { authority, .. } if authority == "node-a:2552"))
+  );
+
+  let snapshot = coordinator.snapshot();
+  assert!(snapshot.entries.iter().any(|record| record.authority == "node-a:2552" && record.status == NodeStatus::Dead));
+  assert_eq!(snapshot.reachability.aggregate_status(&suspect_record.unique_address), ReachabilityStatus::Terminated);
+}
+
+#[test]
+fn down_marks_up_dead_for_self_downing_target() {
+  let table = MembershipTable::new(3);
+  let config = base_config();
+  let mut coordinator = MembershipCoordinator::new(config, local_cluster_config_with_address(), table, registry(1.0));
+  coordinator.start_member().unwrap();
+
+  let _ = coordinator
+    .handle_join("node-1".to_string(), "node-a:2552".to_string(), &joining_cluster_config(), now(1))
+    .unwrap();
+  let _ = coordinator.handle_heartbeat("node-a:2552", now(2)).unwrap();
+  let _ = coordinator.handle_heartbeat("node-a:2552", now(3)).unwrap();
+
+  let up_record =
+    coordinator.snapshot().entries.into_iter().find(|record| record.authority == "node-a:2552").expect("node-a record");
+  assert_eq!(up_record.status, NodeStatus::Up);
+
+  let outcome = coordinator.handle_down("node-a:2552", now(4)).unwrap();
+
+  assert!(outcome.member_events.iter().any(|event| matches!(event, ClusterEvent::MemberStatusChanged {
+    from: NodeStatus::Up,
+    to: NodeStatus::Dead,
+    ..
+  })));
+  let snapshot = coordinator.snapshot();
+  assert!(snapshot.entries.iter().any(|record| record.authority == "node-a:2552" && record.status == NodeStatus::Dead));
+}
+
+#[test]
+fn rejoin_after_down_clears_terminated_reachability() {
+  let table = MembershipTable::new(3);
+  let config = base_config();
+  let mut coordinator = MembershipCoordinator::new(config, local_cluster_config_with_address(), table, registry(1.0));
+  coordinator.start_member().unwrap();
+
+  let _ = coordinator
+    .handle_join("node-1".to_string(), "node-a:2552".to_string(), &joining_cluster_config(), now(1))
+    .unwrap();
+  let _ = coordinator.handle_heartbeat("node-a:2552", now(2)).unwrap();
+  let _ = coordinator.handle_heartbeat("node-a:2552", now(3)).unwrap();
+  let _ = coordinator.handle_down("node-a:2552", now(4)).unwrap();
+
+  let down_record =
+    coordinator.snapshot().entries.into_iter().find(|record| record.authority == "node-a:2552").expect("down record");
+  assert_eq!(
+    coordinator.snapshot().reachability.aggregate_status(&down_record.unique_address),
+    ReachabilityStatus::Terminated
+  );
+
+  let _ = coordinator.poll(now(6)).unwrap();
+  let _ = coordinator
+    .handle_join("node-1".to_string(), "node-a:2552".to_string(), &joining_cluster_config(), now(7))
+    .unwrap();
+
+  let snapshot = coordinator.snapshot();
+  let rejoined_record =
+    snapshot.entries.iter().find(|record| record.authority == "node-a:2552").expect("rejoined record");
+  assert_eq!(rejoined_record.status, NodeStatus::Joining);
+  assert_eq!(snapshot.reachability.aggregate_status(&rejoined_record.unique_address), ReachabilityStatus::Reachable);
+}
+
+#[test]
+fn rejoin_after_down_clears_observer_reachability_rows() {
+  let table = MembershipTable::new(3);
+  let mut config = base_config();
+  config.suspect_timeout = Duration::from_secs(30);
+  config.dead_timeout = Duration::from_secs(30);
+  let mut coordinator = MembershipCoordinator::new(config, local_cluster_config_with_address(), table, registry(1.0));
+  coordinator.start_member().unwrap();
+
+  let _ = coordinator
+    .handle_join("local-node".to_string(), "local:2552".to_string(), &local_cluster_config(), now(1))
+    .unwrap();
+  let _ = coordinator
+    .handle_join("node-b".to_string(), "node-b:2552".to_string(), &joining_cluster_config(), now(1))
+    .unwrap();
+  let _ = coordinator.handle_heartbeat("node-b:2552", now(2)).unwrap();
+  let _ = coordinator.handle_heartbeat("node-b:2552", now(3)).unwrap();
+  let _ = coordinator.poll(now(5)).unwrap();
+
+  let node_b_record =
+    coordinator.snapshot().entries.into_iter().find(|record| record.authority == "node-b:2552").expect("node-b record");
+  assert_eq!(
+    coordinator.snapshot().reachability.aggregate_status(&node_b_record.unique_address),
+    ReachabilityStatus::Unreachable
+  );
+
+  let _ = coordinator.handle_down("local:2552", now(6)).unwrap();
+  let _ = coordinator.poll(now(8)).unwrap();
+  let _ = coordinator
+    .handle_join("local-node".to_string(), "local:2552".to_string(), &local_cluster_config(), now(9))
+    .unwrap();
+
+  assert_eq!(
+    coordinator.snapshot().reachability.aggregate_status(&node_b_record.unique_address),
+    ReachabilityStatus::Reachable
+  );
+}
+
+#[test]
+fn down_cancels_pending_joined_topology_delta() {
+  let table = MembershipTable::new(3);
+  let mut config = base_config();
+  config.topology_emit_interval = Duration::from_secs(2);
+  let mut coordinator = MembershipCoordinator::new(config, local_cluster_config(), table, registry(1.0));
+  coordinator.start_member().unwrap();
+
+  let _ =
+    coordinator.handle_join("node-1".to_string(), "node-a".to_string(), &joining_cluster_config(), now(1)).unwrap();
+  assert!(coordinator.poll(now(1)).unwrap().topology_event.is_none());
+  let _ = coordinator.handle_down("node-a", now(2)).unwrap();
+
+  let outcome = coordinator.poll(now(3)).unwrap();
+  let update = outcome
+    .topology_event
+    .and_then(|event| if let ClusterEvent::TopologyUpdated { update } = event { Some(update) } else { None })
+    .expect("topology update");
+
+  assert!(update.joined.is_empty());
+  assert!(update.left.is_empty());
+  assert_eq!(update.dead, vec![String::from("node-a")]);
 }
 
 #[test]

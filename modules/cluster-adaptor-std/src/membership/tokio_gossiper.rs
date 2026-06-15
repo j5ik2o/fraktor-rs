@@ -3,7 +3,10 @@
 use core::time::Duration;
 
 use fraktor_actor_core_kernel_rs::event::stream::EventStreamShared;
-use fraktor_cluster_core_kernel_rs::membership::{Gossiper, MembershipCoordinatorShared};
+use fraktor_cluster_core_kernel_rs::{
+  extension::ClusterProviderShared,
+  membership::{Gossiper, MembershipCoordinatorError, MembershipCoordinatorShared},
+};
 use fraktor_utils_core_rs::time::TimerInstant;
 use tokio::{
   runtime::Handle,
@@ -15,6 +18,7 @@ use super::{
   membership_coordinator_driver::MembershipCoordinatorDriver, tokio_gossip_transport::TokioGossipTransport,
   tokio_gossiper_config::TokioGossiperConfig,
 };
+use crate::cluster_provider::StdSplitBrainResolverProvider;
 
 #[cfg(test)]
 #[path = "tokio_gossiper_test.rs"]
@@ -29,6 +33,7 @@ pub struct TokioGossiper {
   tokio_handle: Handle,
   shutdown:     Option<Sender<()>>,
   task:         Option<JoinHandle<()>>,
+  sbr_downing:  Option<(StdSplitBrainResolverProvider, String, ClusterProviderShared)>,
 }
 
 impl TokioGossiper {
@@ -41,7 +46,28 @@ impl TokioGossiper {
     event_stream: EventStreamShared,
     tokio_handle: Handle,
   ) -> Self {
-    Self { config, coordinator, transport: Some(transport), event_stream, tokio_handle, shutdown: None, task: None }
+    Self {
+      config,
+      coordinator,
+      transport: Some(transport),
+      event_stream,
+      tokio_handle,
+      shutdown: None,
+      task: None,
+      sbr_downing: None,
+    }
+  }
+
+  /// Enables automatic Split Brain Resolver down execution during membership polling.
+  #[must_use]
+  pub fn with_split_brain_resolver_downing(
+    mut self,
+    provider: StdSplitBrainResolverProvider,
+    local_authority: impl Into<String>,
+    cluster_provider: ClusterProviderShared,
+  ) -> Self {
+    self.sbr_downing = Some((provider, local_authority.into(), cluster_provider));
+    self
   }
 
   /// Returns the shared coordinator handle.
@@ -66,6 +92,9 @@ impl Gossiper for TokioGossiper {
     let tick_interval = self.config.tick_interval;
     let (shutdown_tx, mut shutdown_rx) = oneshot::channel();
     let mut driver = MembershipCoordinatorDriver::new(coordinator, transport, event_stream);
+    if let Some((provider, local_authority, cluster_provider)) = self.sbr_downing.take() {
+      driver = driver.with_split_brain_resolver_downing(provider, local_authority, cluster_provider);
+    }
 
     let task = self.tokio_handle.spawn(async move {
       let mut interval = tokio::time::interval(tick_interval);
@@ -81,7 +110,12 @@ impl Gossiper for TokioGossiper {
             if driver.handle_gossip_deltas(now).is_err() {
               break;
             }
-            if driver.poll(now).is_err() {
+            if let Err(error) = driver.poll(now) {
+              if should_continue_after_poll_error(&error) {
+                tracing::warn!(?error, "membership coordinator poll error did not stop gossip");
+                continue;
+              }
+              tracing::warn!(?error, "membership coordinator poll failed");
               break;
             }
           }
@@ -108,4 +142,8 @@ impl Gossiper for TokioGossiper {
     }
     Ok(())
   }
+}
+
+fn should_continue_after_poll_error(error: &MembershipCoordinatorError) -> bool {
+  matches!(error, MembershipCoordinatorError::ClusterProvider(_))
 }

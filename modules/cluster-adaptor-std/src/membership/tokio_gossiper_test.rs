@@ -2,15 +2,17 @@ use core::time::Duration;
 
 use fraktor_actor_core_kernel_rs::event::stream::EventStreamShared;
 use fraktor_cluster_core_kernel_rs::{
-  extension::ClusterExtensionConfig,
+  extension::{ClusterExtensionConfig, ClusterProviderError},
   failure_detector::{DefaultFailureDetectorRegistry, FailureDetectorConfig},
   membership::{
-    Gossiper, MembershipCoordinator, MembershipCoordinatorConfig, MembershipCoordinatorShared, MembershipTable,
+    Gossiper, MembershipCoordinator, MembershipCoordinatorConfig, MembershipCoordinatorError,
+    MembershipCoordinatorShared, MembershipTable,
   },
 };
 use fraktor_remote_core_rs::address::Address;
 use tokio::runtime::Handle;
 
+use super::should_continue_after_poll_error;
 use crate::membership::{
   ConfiguredPhiAccrualDetectorFactory, TokioGossipTransport, TokioGossipTransportConfig, TokioGossiper,
   TokioGossiperConfig,
@@ -40,6 +42,13 @@ fn build_coordinator() -> MembershipCoordinatorShared {
 
 fn detector_address() -> Address {
   Address::new("cluster-test", "127.0.0.1", 0)
+}
+
+#[test]
+fn poll_error_policy_keeps_cluster_provider_failure_non_fatal() {
+  let provider_error = MembershipCoordinatorError::ClusterProvider(ClusterProviderError::down("down failed"));
+  assert!(should_continue_after_poll_error(&provider_error));
+  assert!(!should_continue_after_poll_error(&MembershipCoordinatorError::NotStarted));
 }
 
 #[tokio::test]
