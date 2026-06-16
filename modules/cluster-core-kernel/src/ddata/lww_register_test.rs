@@ -204,6 +204,18 @@ fn prune_keeps_merge_order_independent_when_collapse_node_has_same_timestamp() {
 }
 
 #[test]
+fn prune_is_noop_when_collapse_into_same_node() {
+  let removed = self_address(0);
+  let register = register_at(&removed, "alpha", 10);
+
+  let pruned =
+    register.prune(removed.unique_address(), removed.unique_address()).expect("same-node pruning is infallible");
+
+  assert_eq!(pruned, register);
+  assert_eq!(pruned.timestamp(), 10);
+}
+
+#[test]
 fn prune_reports_overflow_at_max_timestamp() {
   let removed = self_address(0);
   let collapse = unique_address(1);
