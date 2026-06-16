@@ -86,6 +86,24 @@ fn concurrent_add_and_remove_binding_keeps_element() {
 }
 
 #[test]
+fn merge_hides_key_when_concurrent_removes_empty_inner_set() {
+  let node_a = self_address(0);
+  let node_b = self_address(1);
+  let shared = ORMultiMap::new().add_binding(&node_a, 1_u8, 10_u8).add_binding(&node_a, 1_u8, 20_u8).reset_delta();
+
+  let left = shared.remove_binding(&node_a, &1, &10);
+  let right = shared.remove_binding(&node_b, &1, &20);
+
+  let merged = left.merge(&right);
+
+  assert_eq!(merged.get(&1), None);
+  assert!(!merged.contains_key(&1));
+  assert_eq!(merged.entries(), Default::default());
+  assert_eq!(merged.len(), 0);
+  assert!(merged.is_empty());
+}
+
+#[test]
 fn merge_is_order_independent() {
   let node_a = self_address(0);
   let node_b = self_address(1);

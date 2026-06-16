@@ -3,7 +3,9 @@ use alloc::collections::BTreeSet;
 use fraktor_remote_core_rs::address::{Address, UniqueAddress};
 use proptest::prelude::*;
 
-use crate::ddata::{Key, LWWRegister, LWWRegisterKey, RemovedNodePruning, ReplicatedData, SelfUniqueAddress};
+use crate::ddata::{
+  CounterArithmeticError, Key, LWWRegister, LWWRegisterKey, RemovedNodePruning, ReplicatedData, SelfUniqueAddress,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct Payload(&'static str);
@@ -199,6 +201,15 @@ fn prune_keeps_merge_order_independent_when_collapse_node_has_same_timestamp() {
 
   assert_eq!(pruned.merge(&collapse_register), pruned);
   assert_eq!(collapse_register.merge(&pruned), pruned);
+}
+
+#[test]
+fn prune_reports_overflow_at_max_timestamp() {
+  let removed = self_address(0);
+  let collapse = unique_address(1);
+  let register = register_at(&removed, "alpha", i64::MAX);
+
+  assert_eq!(register.prune(removed.unique_address(), &collapse), Err(CounterArithmeticError::Overflow));
 }
 
 #[test]

@@ -209,14 +209,15 @@ where
     let mut pruned: BTreeMap<A, VersionVector> = BTreeMap::new();
     for (element, dots) in &self.elements {
       if dots.contains_node(removed_node) {
-        pruned.insert(element.clone(), prune_version_vector(dots, removed_node, collapse_into));
+        pruned.insert(element.clone(), cleanup_version_vector(dots, removed_node));
       }
     }
 
-    let vvector = prune_version_vector(&self.vvector, removed_node, collapse_into);
+    let vvector = cleanup_version_vector(&self.vvector, removed_node);
 
     if pruned.is_empty() {
-      return Ok(Self { elements: self.elements.clone(), vvector, delta_dirty: self.delta_dirty });
+      let delta_dirty = self.delta_dirty || vvector != self.vvector;
+      return Ok(Self { elements: self.elements.clone(), vvector, delta_dirty });
     }
 
     let mut elements = self.elements.clone();
@@ -233,7 +234,7 @@ where
         elements.insert(element.clone(), current.merge(&collapse_dot));
       }
     }
-    Ok(Self { elements, vvector, delta_dirty: self.delta_dirty })
+    Ok(Self { elements, vvector, delta_dirty: true })
   }
 
   fn pruning_cleanup(&self, removed_node: &UniqueAddress) -> Self {
@@ -245,7 +246,9 @@ where
       }
     }
 
-    Self { elements, vvector: cleanup_version_vector(&self.vvector, removed_node), delta_dirty: self.delta_dirty }
+    let vvector = cleanup_version_vector(&self.vvector, removed_node);
+    let delta_dirty = self.delta_dirty || elements != self.elements || vvector != self.vvector;
+    Self { elements, vvector, delta_dirty }
   }
 }
 
@@ -290,29 +293,6 @@ fn unique_dots(dots: &VersionVector, other: &VersionVector) -> VersionVector {
       entries.push((node.clone(), version));
     }
   }
-  VersionVector::from_entries(entries)
-}
-
-fn prune_version_vector(
-  vvector: &VersionVector,
-  removed_node: &UniqueAddress,
-  collapse_into: &UniqueAddress,
-) -> VersionVector {
-  if vvector.version_at(removed_node) == 0 {
-    return vvector.clone();
-  }
-
-  let mut entries: Vec<(UniqueAddress, u64)> = Vec::new();
-  for (node, version) in vvector.entries() {
-    if node != removed_node && node != collapse_into {
-      entries.push((node.clone(), version));
-    }
-  }
-
-  if removed_node != collapse_into {
-    entries.push((collapse_into.clone(), vvector.version_at(collapse_into).saturating_add(1)));
-  }
-
   VersionVector::from_entries(entries)
 }
 

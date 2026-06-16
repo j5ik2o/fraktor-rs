@@ -212,35 +212,43 @@ where
       | Ok(keys) => keys,
       | Err(never) => match never {},
     };
+    let mut delta_dirty = self.delta_dirty || keys != self.keys;
 
     let mut values = BTreeMap::new();
     for (key, value) in &self.values {
       if value.need_pruning_from(removed_node) {
         values.insert(key.clone(), value.prune(removed_node, collapse_into)?);
+        if removed_node != collapse_into {
+          delta_dirty = true;
+        }
       } else {
         values.insert(key.clone(), value.clone());
       }
     }
 
-    Ok(Self { keys, values, delta_dirty: self.delta_dirty })
+    Ok(Self { keys, values, delta_dirty })
   }
 
   fn pruning_cleanup(&self, removed_node: &UniqueAddress) -> Self {
     let keys = self.keys.pruning_cleanup(removed_node);
 
     let mut values = BTreeMap::new();
+    let mut values_dirty = false;
     for (key, value) in &self.values {
       if !keys.contains(key) {
+        values_dirty = true;
         continue;
       }
       if value.need_pruning_from(removed_node) {
         values.insert(key.clone(), value.pruning_cleanup(removed_node));
+        values_dirty = true;
       } else {
         values.insert(key.clone(), value.clone());
       }
     }
 
-    Self { keys, values, delta_dirty: self.delta_dirty }
+    let delta_dirty = self.delta_dirty || keys != self.keys || values_dirty;
+    Self { keys, values, delta_dirty }
   }
 }
 

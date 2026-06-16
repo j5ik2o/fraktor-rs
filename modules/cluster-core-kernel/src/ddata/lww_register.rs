@@ -5,11 +5,10 @@
 mod tests;
 
 use alloc::collections::BTreeSet;
-use core::convert::Infallible;
 
 use fraktor_remote_core_rs::address::UniqueAddress;
 
-use crate::ddata::{RemovedNodePruning, ReplicatedData, SelfUniqueAddress};
+use crate::ddata::{CounterArithmeticError, RemovedNodePruning, ReplicatedData, SelfUniqueAddress};
 
 /// Last-writer-wins register CRDT using timestamp and node ordering.
 ///
@@ -131,7 +130,7 @@ impl<T> RemovedNodePruning for LWWRegister<T>
 where
   T: Clone,
 {
-  type PruneError = Infallible;
+  type PruneError = CounterArithmeticError;
 
   fn modified_by_nodes(&self) -> BTreeSet<UniqueAddress> {
     BTreeSet::from([self.updated_by.clone()])
@@ -149,7 +148,7 @@ where
       Ok(Self {
         updated_by: collapse_into.clone(),
         value:      self.value.clone(),
-        timestamp:  self.timestamp.saturating_add(1),
+        timestamp:  self.timestamp.checked_add(1).ok_or(CounterArithmeticError::Overflow)?,
       })
     } else {
       Ok(self.clone())

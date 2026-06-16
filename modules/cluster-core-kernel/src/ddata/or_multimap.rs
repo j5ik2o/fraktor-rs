@@ -63,31 +63,37 @@ where
   /// Returns the set of values bound to `key`, or `None` when absent.
   #[must_use]
   pub fn get(&self, key: &A) -> Option<BTreeSet<B>> {
-    self.underlying.get(key).map(ORSet::elements)
+    self.underlying.get(key).filter(|set| !set.is_empty()).map(ORSet::elements)
   }
 
   /// Returns the visible entries with their value sets.
   #[must_use]
   pub fn entries(&self) -> BTreeMap<A, BTreeSet<B>> {
-    self.underlying.entries().iter().map(|(key, set)| (key.clone(), set.elements())).collect()
+    self
+      .underlying
+      .entries()
+      .iter()
+      .filter(|(_, set)| !set.is_empty())
+      .map(|(key, set)| (key.clone(), set.elements()))
+      .collect()
   }
 
   /// Returns true when `key` has a visible value set.
   #[must_use]
   pub fn contains_key(&self, key: &A) -> bool {
-    self.underlying.contains_key(key)
+    self.get(key).is_some()
   }
 
   /// Returns true when the multi-map has no visible entries.
   #[must_use]
   pub fn is_empty(&self) -> bool {
-    self.underlying.is_empty()
+    self.underlying.entries().values().all(ORSet::is_empty)
   }
 
   /// Returns the number of visible keys.
   #[must_use]
   pub fn len(&self) -> usize {
-    self.underlying.len()
+    self.underlying.entries().values().filter(|set| !set.is_empty()).count()
   }
 }
 

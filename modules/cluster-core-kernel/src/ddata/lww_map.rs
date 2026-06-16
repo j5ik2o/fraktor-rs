@@ -5,12 +5,11 @@
 mod tests;
 
 use alloc::collections::{BTreeMap, BTreeSet};
-use core::convert::Infallible;
 
 use fraktor_remote_core_rs::address::UniqueAddress;
 
 use super::{
-  DeltaReplicatedData, LWWRegister, ORMap, RemovedNodePruning, ReplicatedData, ReplicatedDelta,
+  CounterArithmeticError, DeltaReplicatedData, LWWRegister, ORMap, RemovedNodePruning, ReplicatedData, ReplicatedDelta,
   RequiresCausalDeliveryOfDeltas, SelfUniqueAddress,
 };
 
@@ -147,7 +146,7 @@ where
   A: Clone + Ord,
   B: Clone,
 {
-  type PruneError = Infallible;
+  type PruneError = CounterArithmeticError;
 
   fn modified_by_nodes(&self) -> BTreeSet<UniqueAddress> {
     self.underlying.modified_by_nodes()
@@ -158,10 +157,7 @@ where
   }
 
   fn prune(&self, removed_node: &UniqueAddress, collapse_into: &UniqueAddress) -> Result<Self, Self::PruneError> {
-    match self.underlying.prune(removed_node, collapse_into) {
-      | Ok(underlying) => Ok(Self { underlying }),
-      | Err(never) => match never {},
-    }
+    self.underlying.prune(removed_node, collapse_into).map(|underlying| Self { underlying })
   }
 
   fn pruning_cleanup(&self, removed_node: &UniqueAddress) -> Self {

@@ -170,7 +170,23 @@ fn pruning_preserves_existing_element_dots() {
   let dots = pruned.dots_for(&"x").expect("element stays visible");
 
   assert_eq!(dots.version_at(survivor_node.unique_address()), 1);
-  assert_eq!(dots.version_at(&collapse), 2);
+  assert_eq!(dots.version_at(&collapse), 1);
+}
+
+#[test]
+fn pruning_tombstone_history_does_not_hide_collapse_node_add() {
+  let removed_node = self_address(0);
+  let collapse_node = self_address(1);
+  let tombstone_only = ORSet::new().add(&removed_node, "x").remove(&"x").reset_delta();
+
+  let pruned = tombstone_only
+    .prune(removed_node.unique_address(), collapse_node.unique_address())
+    .expect("set pruning is infallible");
+  let collapse_add = ORSet::new().add(&collapse_node, "x");
+
+  assert!(pruned.delta().is_some());
+  assert!(pruned.merge(&collapse_add).contains(&"x"));
+  assert!(collapse_add.merge(&pruned).contains(&"x"));
 }
 
 #[test]
