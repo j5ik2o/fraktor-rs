@@ -4,9 +4,9 @@
 #[path = "lww_register_test.rs"]
 mod tests;
 
-use alloc::collections::BTreeSet;
+use alloc::{collections::BTreeSet, format};
 
-use fraktor_remote_core_rs::address::UniqueAddress;
+use fraktor_remote_core_rs::address::{Address, UniqueAddress};
 
 use crate::ddata::{CounterArithmeticError, RemovedNodePruning, ReplicatedData, SelfUniqueAddress};
 
@@ -161,5 +161,9 @@ where
 }
 
 fn pruning_node_for(removed_node: &UniqueAddress) -> UniqueAddress {
-  UniqueAddress::new(removed_node.address().clone(), 0)
+  let address = removed_node.address();
+  UniqueAddress::new(
+    Address::new(address.system(), format!("{}#pruned-{}", address.host(), removed_node.uid()), address.port()),
+    0,
+  )
 }

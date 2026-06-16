@@ -1,4 +1,4 @@
-use alloc::collections::BTreeSet;
+use alloc::{collections::BTreeSet, format};
 
 use fraktor_remote_core_rs::address::{Address, UniqueAddress};
 use proptest::prelude::*;
@@ -26,7 +26,11 @@ fn register_at<T>(node: &SelfUniqueAddress, value: T, timestamp: i64) -> LWWRegi
 }
 
 fn pruning_node_for(removed_node: &UniqueAddress) -> UniqueAddress {
-  UniqueAddress::new(removed_node.address().clone(), 0)
+  let address = removed_node.address();
+  UniqueAddress::new(
+    Address::new(address.system(), format!("{}#pruned-{}", address.host(), removed_node.uid()), address.port()),
+    0,
+  )
 }
 
 fn register_from_parts(node_index: usize, value: i64, timestamp: i64) -> LWWRegister<i64> {
@@ -204,6 +208,20 @@ fn prune_keeps_merge_order_independent_when_collapse_node_has_next_timestamp() {
 
   assert_eq!(pruned.merge(&collapse_register), collapse_register);
   assert_eq!(collapse_register.merge(&pruned), collapse_register);
+}
+
+#[test]
+fn prune_keeps_same_address_reincarnations_order_independent() {
+  let address = Address::new("sys", "node-a", 2552);
+  let first = SelfUniqueAddress::new(UniqueAddress::new(address.clone(), 1));
+  let second = SelfUniqueAddress::new(UniqueAddress::new(address, 2));
+  let collapse = unique_address(1);
+  let first_pruned =
+    register_at(&first, "first", 10).prune(first.unique_address(), &collapse).expect("pruning is infallible");
+  let second_pruned =
+    register_at(&second, "second", 10).prune(second.unique_address(), &collapse).expect("pruning is infallible");
+
+  assert_eq!(first_pruned.merge(&second_pruned), second_pruned.merge(&first_pruned));
 }
 
 #[test]

@@ -1,4 +1,7 @@
-use alloc::collections::{BTreeMap, BTreeSet};
+use alloc::{
+  collections::{BTreeMap, BTreeSet},
+  format,
+};
 
 use fraktor_remote_core_rs::address::{Address, UniqueAddress};
 use proptest::prelude::*;
@@ -16,6 +19,14 @@ fn unique_address(index: usize) -> UniqueAddress {
 
 fn self_address(index: usize) -> SelfUniqueAddress {
   SelfUniqueAddress::new(unique_address(index))
+}
+
+fn pruning_node_for(removed_node: &UniqueAddress) -> UniqueAddress {
+  let address = removed_node.address();
+  UniqueAddress::new(
+    Address::new(address.system(), format!("{}#pruned-{}", address.host(), removed_node.uid()), address.port()),
+    0,
+  )
 }
 
 fn build_replica(node_index: usize, ops: &[(bool, u8)]) -> ORSet<u8> {
@@ -46,9 +57,10 @@ fn add_makes_element_visible() {
 fn add_panics_instead_of_reusing_max_dot() {
   let node = unique_address(0);
   let set: ORSet<&'static str> = ORSet {
-    elements:    BTreeMap::new(),
-    vvector:     VersionVector::from_entries([(node.clone(), u64::MAX)]),
-    delta_dirty: false,
+    elements:     BTreeMap::new(),
+    removed_dots: BTreeMap::new(),
+    vvector:      VersionVector::from_entries([(node.clone(), u64::MAX)]),
+    delta_dirty:  false,
   };
 
   let _ = set.add_at(&node, "x");
@@ -181,9 +193,11 @@ fn pruning_preserves_existing_element_dots() {
 
   let pruned = merged.prune(removed_node.unique_address(), &collapse).expect("set pruning is infallible");
   let dots = pruned.dots_for(&"x").expect("element stays visible");
+  let pruning_node = pruning_node_for(removed_node.unique_address());
 
   assert_eq!(dots.version_at(survivor_node.unique_address()), 1);
-  assert_eq!(dots.version_at(removed_node.unique_address()), 1);
+  assert_eq!(dots.version_at(removed_node.unique_address()), 0);
+  assert_eq!(dots.version_at(&pruning_node), 1);
   assert_eq!(dots.version_at(&collapse), 0);
   assert!(!pruned.need_pruning_from(removed_node.unique_address()));
 }
@@ -199,6 +213,50 @@ fn pruning_does_not_resurrect_observed_remove() {
 
   assert!(!pruned.merge(&removed).contains(&"x"));
   assert!(!removed.merge(&pruned).contains(&"x"));
+}
+
+#[test]
+fn pruned_tombstone_suppresses_stale_removed_node_add() {
+  let removed_node = self_address(0);
+  let collapse = unique_address(1);
+  let stale_add = ORSet::new().add(&removed_node, "x").reset_delta();
+  let tombstone_only = stale_add.remove(&"x").reset_delta();
+
+  let pruned = tombstone_only.prune(removed_node.unique_address(), &collapse).expect("set pruning is infallible");
+
+  assert!(!pruned.merge(&stale_add).contains(&"x"));
+  assert!(!stale_add.merge(&pruned).contains(&"x"));
+}
+
+#[test]
+fn pruned_tombstone_cleanup_suppresses_stale_removed_node_add() {
+  let removed_node = self_address(0);
+  let collapse = unique_address(1);
+  let stale_add = ORSet::new().add(&removed_node, "x").reset_delta();
+  let tombstone_only = stale_add.remove(&"x").reset_delta();
+
+  let cleaned = tombstone_only
+    .prune(removed_node.unique_address(), &collapse)
+    .expect("set pruning is infallible")
+    .pruning_cleanup(removed_node.unique_address());
+
+  assert!(!cleaned.merge(&stale_add).contains(&"x"));
+  assert!(!stale_add.merge(&cleaned).contains(&"x"));
+}
+
+#[test]
+fn pruning_cleanup_preserves_pruned_visible_element() {
+  let removed_node = self_address(0);
+  let collapse = unique_address(1);
+  let set = ORSet::new().add(&removed_node, "x");
+
+  let cleaned = set
+    .prune(removed_node.unique_address(), &collapse)
+    .expect("set pruning is infallible")
+    .pruning_cleanup(removed_node.unique_address());
+
+  assert!(cleaned.contains(&"x"));
+  assert!(!cleaned.need_pruning_from(removed_node.unique_address()));
 }
 
 #[test]
