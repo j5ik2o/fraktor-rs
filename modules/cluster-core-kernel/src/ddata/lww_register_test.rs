@@ -1,7 +1,9 @@
+use alloc::collections::BTreeSet;
+
 use fraktor_remote_core_rs::address::{Address, UniqueAddress};
 use proptest::prelude::*;
 
-use crate::ddata::{Key, LWWRegister, LWWRegisterKey, ReplicatedData, SelfUniqueAddress};
+use crate::ddata::{Key, LWWRegister, LWWRegisterKey, RemovedNodePruning, ReplicatedData, SelfUniqueAddress};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct Payload(&'static str);
@@ -168,6 +170,43 @@ fn merge_can_model_first_write_wins_with_descending_timestamps() {
 
   assert_eq!(first.merge(&later_candidate), first);
   assert_eq!(later_candidate.merge(&first), first);
+}
+
+#[test]
+fn prune_moves_writer_to_collapse_node() {
+  let removed = self_address(0);
+  let collapse = unique_address(1);
+  let register = register_at(&removed, "alpha", 10);
+
+  assert!(register.need_pruning_from(removed.unique_address()));
+
+  let pruned = register.prune(removed.unique_address(), &collapse).expect("pruning is infallible");
+
+  assert_eq!(pruned.updated_by(), &collapse);
+  assert_eq!(pruned.value(), &"alpha");
+  assert_eq!(pruned.timestamp(), 10);
+}
+
+#[test]
+fn prune_leaves_register_written_by_other_node() {
+  let writer = self_address(0);
+  let removed = unique_address(2);
+  let collapse = unique_address(1);
+  let register = register_at(&writer, "alpha", 10);
+
+  assert!(!register.need_pruning_from(&removed));
+
+  let pruned = register.prune(&removed, &collapse).expect("pruning is infallible");
+
+  assert_eq!(&pruned, &register);
+}
+
+#[test]
+fn modified_by_nodes_reports_single_writer() {
+  let writer = self_address(0);
+  let register = register_at(&writer, "alpha", 10);
+
+  assert_eq!(register.modified_by_nodes(), BTreeSet::from([writer.unique_address().clone()]));
 }
 
 #[test]

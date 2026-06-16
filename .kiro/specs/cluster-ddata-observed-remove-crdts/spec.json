@@ -1,0 +1,22 @@
+{
+  "feature_name": "cluster-ddata-observed-remove-crdts",
+  "created_at": "2026-06-16T14:56:44Z",
+  "updated_at": "2026-06-16T16:45:38Z",
+  "language": "ja",
+  "phase": "implemented",
+  "approvals": {
+    "requirements": {
+      "generated": true,
+      "approved": true
+    },
+    "design": {
+      "generated": true,
+      "approved": true
+    },
+    "tasks": {
+      "generated": true,
+      "approved": true
+    }
+  },
+  "ready_for_implementation": true
+}

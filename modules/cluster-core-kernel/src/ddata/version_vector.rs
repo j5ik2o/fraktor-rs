@@ -136,6 +136,22 @@ impl VersionVector {
     self.compare(other) == VersionVectorOrdering::Concurrent
   }
 
+  /// Returns the dots in this vector that are not observed by `vvector`.
+  ///
+  /// An entry `(node, version)` is retained when `vvector` has not observed it, that is when
+  /// `vvector.version_at(node) < version`. Observed-remove collections use this to keep concurrent
+  /// additions while merging.
+  #[must_use]
+  pub fn subtract_dots(&self, vvector: &Self) -> Self {
+    let mut versions = BTreeMap::new();
+    for (node, version) in &self.versions {
+      if vvector.version_at(node) < *version {
+        versions.insert(node.clone(), *version);
+      }
+    }
+    Self { versions }
+  }
+
   fn increment_unique_address(&self, node: &UniqueAddress) -> Result<Self, CounterArithmeticError> {
     let next = self.version_at(node).checked_add(1).ok_or(CounterArithmeticError::Overflow)?;
     let mut versions = self.versions.clone();

@@ -144,6 +144,26 @@ fn version_vector_key_is_typed() {
   assert_eq!(key.id(), "versions");
 }
 
+#[test]
+fn subtract_dots_retains_only_unobserved_entries() {
+  let dot = vector_from_entries(&[(0, 3), (1, 2), (2, 4)]);
+  let observed = vector_from_entries(&[(0, 3), (1, 1)]);
+
+  let remaining = dot.subtract_dots(&observed);
+
+  assert_eq!(remaining.version_at(&unique_address(0)), 0);
+  assert_eq!(remaining.version_at(&unique_address(1)), 2);
+  assert_eq!(remaining.version_at(&unique_address(2)), 4);
+}
+
+#[test]
+fn subtract_dots_returns_empty_when_fully_observed() {
+  let dot = vector_from_entries(&[(0, 2), (1, 3)]);
+  let observed = vector_from_entries(&[(0, 5), (1, 3)]);
+
+  assert!(dot.subtract_dots(&observed).is_empty());
+}
+
 proptest! {
   #[test]
   fn merge_is_commutative(left_entries in entry_strategy(), right_entries in entry_strategy()) {

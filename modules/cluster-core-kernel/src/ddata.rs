@@ -12,7 +12,11 @@ mod get;
 mod get_replica_count;
 mod get_response;
 mod key;
+mod lww_map;
 mod lww_register;
+mod or_map;
+mod or_multimap;
+mod or_set;
 mod pn_counter;
 mod pn_counter_map;
 mod read_consistency;
@@ -44,8 +48,15 @@ pub use g_counter::GCounter;
 pub use get::Get;
 pub use get_replica_count::GetReplicaCount;
 pub use get_response::GetResponse;
-pub use key::{FlagKey, GCounterKey, Key, LWWRegisterKey, PNCounterKey, PNCounterMapKey, VersionVectorKey};
+pub use key::{
+  FlagKey, GCounterKey, Key, LWWMapKey, LWWRegisterKey, ORMapKey, ORMultiMapKey, ORSetKey, PNCounterKey,
+  PNCounterMapKey, VersionVectorKey,
+};
+pub use lww_map::LWWMap;
 pub use lww_register::LWWRegister;
+pub use or_map::ORMap;
+pub use or_multimap::ORMultiMap;
+pub use or_set::ORSet;
 pub use pn_counter::PNCounter;
 pub use pn_counter_map::PNCounterMap;
 pub use read_consistency::ReadConsistency;
