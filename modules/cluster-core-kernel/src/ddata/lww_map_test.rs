@@ -71,6 +71,19 @@ fn remove_hides_entry() {
 }
 
 #[test]
+fn rejected_clock_update_does_not_readd_removed_key() {
+  let node = self_address(0);
+  let shared = LWWMap::new().put_with_clock(&node, 1_u8, 10_i64, |_, _| 5);
+  let removed = shared.remove(&1);
+
+  let rejected = shared.put_with_clock(&node, 1_u8, 20_i64, |timestamp, _| timestamp);
+
+  assert_eq!(rejected.get(&1), Some(&10));
+  assert!(!removed.merge(&rejected).contains_key(&1));
+  assert!(!rejected.merge(&removed).contains_key(&1));
+}
+
+#[test]
 fn merge_is_order_independent() {
   let node_a = self_address(0);
   let node_b = self_address(1);

@@ -10,7 +10,7 @@ use fraktor_remote_core_rs::address::UniqueAddress;
 
 use super::{
   DeltaReplicatedData, ORSet, RemovedNodePruning, ReplicatedData, ReplicatedDelta, RequiresCausalDeliveryOfDeltas,
-  SelfUniqueAddress,
+  SelfUniqueAddress, VersionVector,
 };
 
 /// Observed-remove map CRDT, also known as OR-Map.
@@ -120,17 +120,19 @@ where
     let mut values = BTreeMap::new();
 
     for key in keys.elements() {
-      match (self.values.get(&key), other.values.get(&key)) {
-        | (Some(left), Some(right)) => {
+      let left_contributes = key_contributes(&self.keys, &key, &keys);
+      let right_contributes = key_contributes(&other.keys, &key, &keys);
+      match (self.values.get(&key), other.values.get(&key), left_contributes, right_contributes) {
+        | (Some(left), Some(right), true, true) => {
           values.insert(key, left.merge(right));
         },
-        | (Some(left), None) => {
+        | (Some(left), _, true, _) => {
           values.insert(key, left.clone());
         },
-        | (None, Some(right)) => {
+        | (_, Some(right), _, true) => {
           values.insert(key, right.clone());
         },
-        | (None, None) => {},
+        | _ => {},
       }
     }
 
@@ -224,6 +226,9 @@ where
 
     let mut values = BTreeMap::new();
     for (key, value) in &self.values {
+      if !keys.contains(key) {
+        continue;
+      }
       if value.need_pruning_from(removed_node) {
         values.insert(key.clone(), value.pruning_cleanup(removed_node));
       } else {
@@ -260,4 +265,20 @@ where
   A: Ord,
   B: Eq,
 {
+}
+
+fn key_contributes<A>(side_keys: &ORSet<A>, key: &A, merged_keys: &ORSet<A>) -> bool
+where
+  A: Clone + Ord, {
+  let Some(side_dots) = side_keys.dots_for(key) else {
+    return false;
+  };
+  let Some(merged_dots) = merged_keys.dots_for(key) else {
+    return false;
+  };
+  has_matching_dot(side_dots, merged_dots)
+}
+
+fn has_matching_dot(left: &VersionVector, right: &VersionVector) -> bool {
+  left.entries().any(|(node, version)| right.version_at(node) == version)
 }

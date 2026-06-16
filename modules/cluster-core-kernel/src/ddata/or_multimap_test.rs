@@ -60,6 +60,20 @@ fn removing_last_binding_removes_key() {
 }
 
 #[test]
+fn removing_absent_binding_does_not_readd_removed_key() {
+  let node_a = self_address(0);
+  let node_b = self_address(1);
+  let shared = ORMultiMap::new().add_binding(&node_a, 1_u8, 10_u8);
+  let removed = shared.remove_binding(&node_a, &1, &10);
+
+  let no_op_remove = shared.remove_binding(&node_b, &1, &20);
+
+  assert_eq!(no_op_remove.get(&1), Some(BTreeSet::from([10])));
+  assert_eq!(removed.merge(&no_op_remove).get(&1), None);
+  assert_eq!(no_op_remove.merge(&removed).get(&1), None);
+}
+
+#[test]
 fn concurrent_add_and_remove_binding_keeps_element() {
   let node_a = self_address(0);
   let node_b = self_address(1);

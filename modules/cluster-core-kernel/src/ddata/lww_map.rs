@@ -46,7 +46,10 @@ where
   #[must_use]
   pub fn put_with_clock(&self, node: &SelfUniqueAddress, key: A, value: B, clock: impl FnOnce(i64, &B) -> i64) -> Self {
     let register = match self.underlying.get(&key) {
-      | Some(existing) => existing.with_value_with_clock(node, value, clock).unwrap_or_else(|| existing.clone()),
+      | Some(existing) => match existing.with_value_with_clock(node, value, clock) {
+        | Some(next) => next,
+        | None => return self.clone(),
+      },
       | None => LWWRegister::new_with_clock(node, value, clock),
     };
     Self { underlying: self.underlying.put(node, key, register) }

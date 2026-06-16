@@ -93,6 +93,20 @@ fn remove_keeps_key_under_concurrent_update() {
 }
 
 #[test]
+fn merge_does_not_reintroduce_old_value_after_remove_and_readd() {
+  let node_a = self_address(0);
+  let node_b = self_address(1);
+  let old = ORMap::new().put(&node_a, 1_u8, counter(&node_b, 3));
+  let readded = old.remove(&1).put(&node_a, 1_u8, counter(&node_a, 5));
+
+  let left = readded.merge(&old);
+  let right = old.merge(&readded);
+
+  assert_eq!(left.get(&1).expect("value present").value().expect("counter fits"), 5);
+  assert_eq!(right.get(&1).expect("value present").value().expect("counter fits"), 5);
+}
+
+#[test]
 fn merge_is_order_independent() {
   let node_a = self_address(0);
   let node_b = self_address(1);

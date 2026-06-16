@@ -58,13 +58,13 @@ fraktor-rs 側はスキル指定の `pub` 系抽出で、型 359 件 (core-kerne
 | 指標 | 値 |
 |------|-----|
 | Pekko 固定スコープ対象公開契約グループ | 151 |
-| fraktor-rs 固定スコープ対応公開契約グループ（実装済み） | 111 |
-| 固定スコープカバレッジ | 111/151 (74%) |
+| fraktor-rs 固定スコープ対応公開契約グループ（実装済み） | 115 |
+| 固定スコープカバレッジ | 115/151 (76%) |
 | 部分実装 | 10 |
-| 未対応 | 30（カテゴリ9の未対応 protocol / CRDT 行は複数の公開契約グループを1行に集約） |
+| 未対応 | 26（カテゴリ9の未対応 protocol 行は複数の公開契約グループを1行に集約） |
 | raw public type declarations | 359 (core-kernel: 321, core-typed: 12, std: 26) |
 | raw public method declarations | 1058 (core-kernel: 910, core-typed: 57, std: 91) |
-| hard / medium / easy / trivial gap | 10 / 23 / 7 / 0 |
+| hard / medium / easy / trivial gap | 10 / 19 / 7 / 0 |
 | panic 系スタブ | 0 件 |
 | 機能 placeholder / TODO | 0 件 |
 
@@ -77,7 +77,7 @@ fraktor-rs 側はスキル指定の `pub` 系抽出で、型 359 件 (core-kerne
 
 - カテゴリ 1〜10 の実装済み / 部分実装 / 未対応の判定はすべて現行ツリーと一致（相違・幽霊エントリなし）。
 - 実装本体の `todo!()` / `unimplemented!()` スタブは 0 件を再確認（テスト内 `panic!` は期待動作のアサーション）。
-- raw 型宣言数のみ core-kernel が 314 → 321（+7）。増分は ddata の Replicator protocol core / `VersionVector` 系 / `LWWRegister` 系の新規公開型で、カテゴリ9 の実装済み拡大と整合する（parity 分母外の参考値であり判定に影響しない）。公開メソッド数 1058（910/57/91）はスキル指定正規表現で再計測し一致。
+- raw 型宣言数のみ core-kernel が 314 → 321（+7）。増分は ddata の Replicator protocol core / `VersionVector` 系 / `LWWRegister` 系 / observed-remove CRDT 群の新規公開型で、カテゴリ9 の実装済み拡大と整合する（parity 分母外の参考値であり判定に影響しない）。公開メソッド数 1058（910/57/91）はスキル指定正規表現で再計測し一致。
 - Pekko スコープの除外判定（ClusterClient 系の全面 `@deprecated` / SBR `DowningStrategy`・`SplitBrainResolverSettings` の `@InternalApi private[sbr]`・公開 SPI `SplitBrainResolverProvider` / typed `ClusterReceptionist` の `@InternalApi` / `cluster-metrics` 別ディレクトリ / `RemoveInternalClusterShardingData` migration utility）はすべて現行 Pekko ソースと整合。
 - 表現修正: カテゴリ10 の `JoinConfigCompatCheckSharding` は Pekko 側で `@InternalApi` 実装クラスのため、parity 対象を「公開 SPI `JoinConfigCompatChecker` に sharding 必須 config key を寄与させる挙動」として記述し直した（機能ギャップ自体は維持）。
 
@@ -106,7 +106,7 @@ fraktor-rs 側はスキル指定の `pub` 系抽出で、型 359 件 (core-kerne
 | core / downing | `DowningProvider`, `NoDowning`, `SplitBrainResolverProvider` | `DowningProvider`, `DowningDecisionContext`, `DowningStrategyDecision`, `DowningDecisionTrace`, `NoopDowningProvider`, `SplitBrainResolver`, `LeaseMajorityPort`, `SplitBrainResolverProviderHook` | decision model / settings / provider binding / target-aware runtime decision は完了。std 側の自動 down 発行ループも `TokioGossiper` opt-in で接続済み。concrete lease backend が未実装 |
 | core / typed | typed `Cluster`, command, subscription, singleton, sharding typed API | `Cluster` / `ClusterCommand` / `ClusterStateSubscription` / `ClusterEventSubscription` / `SelfUp` / `SelfRemoved` / `ClusterSetup` | typed Cluster facade（subscribe / unsubscribe / current_state / `PrepareForFullClusterShutdown` command 含む）は完備。singleton / sharding typed API が未実装 |
 | core / virtual actor | `ClusterSharding`, `EntityRef`, `EntityTypeKey`, `ShardRegion`, coordinator | `GrainRef`, `GrainKey`, `GrainTypeKey`, typed `GrainRef`, `ShardingEnvelope`, `ShardingMessageExtractor`, `ShardingRouter`, `VirtualActorRegistry`, `PlacementCoordinatorCore`, `PartitionIdentityLookup`, `RendezvousHasher`, `PidCache`, `GrainReadinessSnapshot` | protoactor-go style の同等機能は強いが、Pekko public API 形態（typed Entity / `ClusterSharding.init` / `EntityRef` / `askWithStatus`）、rebalance / remembered entities / query protocol が不足 |
-| core / distributed state | `DistributedData`, `Replicator`, CRDT 型群 | `ReplicatedData`, `DeltaReplicatedData`, `RemovedNodePruning`, `Key`, `SelfUniqueAddress`, `Flag`, `GCounter`, `PNCounter`, `PNCounterMap`（increment / decrement / get / entries / remove）, `VersionVector`, `LWWRegister`, read/write consistency 語彙, `Get` / `Update` / `Delete` / `Subscribe` protocol core | CRDT 基底 SPI と scalar counter 型、`PNCounterMap` の entries surface / observed-remove key deletion、`VersionVector` の causal ordering / merge / pruning、`LWWRegister` の timestamp / node-order / clock-valid same-writer timestamp contract / negated-time reverse clock、Replicator command / response / local entry evaluation protocol は実装済み。DistributedData / Replicator runtime、durable store、map/set 系 CRDT が不足 |
+| core / distributed state | `DistributedData`, `Replicator`, CRDT 型群 | `ReplicatedData`, `DeltaReplicatedData`, `RemovedNodePruning`, `Key`, `SelfUniqueAddress`, `Flag`, `GCounter`, `PNCounter`, `PNCounterMap`（increment / decrement / get / entries / remove）, `VersionVector`, `LWWRegister`, `ORSet`, `ORMap`, `ORMultiMap`, `LWWMap`, read/write consistency 語彙, `Get` / `Update` / `Delete` / `Subscribe` protocol core | CRDT 基底 SPI と scalar counter 型、`PNCounterMap` の entries surface / observed-remove key deletion、`VersionVector` の causal ordering / merge / pruning、`LWWRegister` の timestamp / node-order / clock-valid same-writer timestamp contract / negated-time reverse clock、observed-remove set/map/multimap と LWW map、Replicator command / response / local entry evaluation protocol は実装済み。DistributedData / Replicator runtime、durable store、typed adapter が不足 |
 | std / adapter | gossip transport, provider, discovery adapter | `TokioGossipTransport`, `TokioGossiper`, `LocalClusterProvider`, `StaticClusterProvider`, `AwsEcsClusterProvider`, `GenericDiscoveryAdapter`, `ProviderLifecycleBridge`, `ClusterWireCodec`, `ConfiguredPhiAccrualDetectorFactory` | Rust adapter、logical envelope handoff、seed/discovery provider boundary、cluster message serializer contract、failure detector factory、SBR down execution loop はある。sharding/singleton 系 setup と、sharding 設定不一致で join を拒否する required 比較が不足 |
 
 ## カテゴリ別ギャップ
@@ -191,9 +191,9 @@ n/a へ移動: `ClusterClient` / `ClusterClientReceptionist` / `ClusterClientSet
 
 実装済みとして扱うもの: `GrainRef`、`GrainKey`、typed `GrainTypeKey<M>`、typed `GrainRef<M>`、`GrainCodec`、`ShardingEnvelope`、`ShardingMessageExtractor` SPI、Pekko 互換 `HashCodeMessageExtractor` / `HashCodeNoEnvelopeMessageExtractor`、Kafka 互換 `Murmur2MessageExtractor`、`ShardingRouter`、`VirtualActorRegistry`、`PlacementCoordinatorCore`、`PartitionIdentityLookup`、`RendezvousHasher`、`PidCache`、remote/local placement decision、passivation（基本機構）、RPC router（`GrainRpcRouter`）、`ClusterShardingHealthCheck` 相当の grain readiness 契約（`GrainReadinessSnapshot` / `GrainReadiness` / `GrainUnreadyReason` + `ClusterExtension::grain_readiness_snapshot`）。
 
-### 9. Distributed Data / CRDT　✅ 実装済み 13/27 (48%)
+### 9. Distributed Data / CRDT　✅ 実装済み 17/27 (63%)
 
-このカテゴリの `13/27` は raw 型数ではなく、(1) CRDT 基底 SPI、(2) Key 階層、(3) SelfUniqueAddress、(4) scalar state / counter CRDT 群（`Flag` / `GCounter` / `PNCounter`）、(5) read/write consistency 語彙、(6) 補助 protocol 語彙、(7) `PNCounterMap` の entries surface / observed-remove key deletion、(8) `VersionVector` の causal ordering / merge / removed-node pruning、(9) `LWWRegister` の timestamp / node-order / clock-valid same-writer timestamp contract、(10) Get protocol、(11) Update protocol、(12) Subscribe protocol、(13) Delete protocol、という公開契約グループ単位で数える。
+このカテゴリの `17/27` は raw 型数ではなく、(1) CRDT 基底 SPI、(2) Key 階層、(3) SelfUniqueAddress、(4) scalar state / counter CRDT 群（`Flag` / `GCounter` / `PNCounter`）、(5) read/write consistency 語彙、(6) 補助 protocol 語彙、(7) `PNCounterMap` の entries surface / observed-remove key deletion、(8) `VersionVector` の causal ordering / merge / removed-node pruning、(9) `LWWRegister` の timestamp / node-order / clock-valid same-writer timestamp contract、(10) Get protocol、(11) Update protocol、(12) Subscribe protocol、(13) Delete protocol、(14) `ORSet`、(15) `ORMap`、(16) `ORMultiMap`、(17) `LWWMap`、という公開契約グループ単位で数える。
 
 | Pekko API / 契約 | Pekko 参照 | fraktor-rs 対応 | 実装先層 | 難易度 | 備考 |
 |------------------|------------|-----------------|----------|--------|------|
@@ -203,10 +203,8 @@ n/a へ移動: `ClusterClient` / `ClusterClientReceptionist` / `ClusterClientSet
 | `Replicator` / `ReplicatorSettings` | `Replicator.scala:73`, `Replicator.scala:162` | 未対応 | core + std | hard | gossip-based CRDT replication 基盤（write/read repair、delta propagation、pruning 実行体）がない |
 | `DurableStore` SPI（`Store` / `LoadAll` / `LoadData` protocol） | `DurableStore.scala:64-86` | 未対応 | core/ddata | medium | durable storage の port 契約がない |
 | durable store std adapter（`LmdbDurableStore` 相当） | `DurableStore.scala:112` | 未対応 | std | medium | LMDB 完全互換ではなく、embedded KV による std 実装が対象 |
-| `LWWMap` | `LWWMap.scala:21` | 未対応 | core/ddata | medium | `ORMap` 相当の observed-remove map と `LWWRegister` entry 合成が必要 |
-| `ORSet` / `ORMap` / `ORMultiMap` | `ORSet.scala:43`, `ORMap.scala:24`, `ORMultiMap.scala:21` | 未対応 | core/ddata | medium | dot / tombstone / delta semantics が必要 |
 
-実装済みとして扱うもの: CRDT merge / delta / pruning 基底 SPI（`ReplicatedData` / `DeltaReplicatedData` / `ReplicatedDelta` / `RequiresCausalDeliveryOfDeltas` / `RemovedNodePruning`）、`Key<T>` と基本 key alias、`SelfUniqueAddress`、`Flag`、`GCounter`、`PNCounter`、`PNCounterMap`（increment / decrement / get / entries / remove、delta / pruning）、`VersionVector`（increment / compare / merge / removed-node pruning）、`LWWRegister`（signed timestamp / `UniqueAddress` ordering / clock-valid same-writer timestamp contract / caller-supplied current millis default clock / negated supplied millis reverse clock update）、read/write consistency 語彙（`ReadConsistency` / `WriteConsistency`）、補助 protocol 語彙（`GetReplicaCount` / `ReplicaCount` / `FlushChanges`）、Replicator protocol core（`ReplicatorEntry` に対する `Get::respond_from`、`Update::evaluate`、`Delete::evaluate`、`Subscribe` / `Unsubscribe` と `SubscribeResponse`）。
+実装済みとして扱うもの: CRDT merge / delta / pruning 基底 SPI（`ReplicatedData` / `DeltaReplicatedData` / `ReplicatedDelta` / `RequiresCausalDeliveryOfDeltas` / `RemovedNodePruning`）、`Key<T>` と基本 key alias、`SelfUniqueAddress`、`Flag`、`GCounter`、`PNCounter`、`PNCounterMap`（increment / decrement / get / entries / remove、delta / pruning）、`VersionVector`（increment / compare / merge / removed-node pruning）、`LWWRegister`（signed timestamp / `UniqueAddress` ordering / clock-valid same-writer timestamp contract / caller-supplied current millis default clock / negated supplied millis reverse clock update）、`ORSet`（add-wins observed-remove set / delta / pruning）、`ORMap`（observed-remove key set + recursive CRDT value merge / delta / pruning）、`ORMultiMap`（`ORMap<A, ORSet<B>>` による binding add/remove / delta / pruning）、`LWWMap`（`ORMap<A, LWWRegister<B>>` による timestamped entry merge / delta / pruning）、read/write consistency 語彙（`ReadConsistency` / `WriteConsistency`）、補助 protocol 語彙（`GetReplicaCount` / `ReplicaCount` / `FlushChanges`）、Replicator protocol core（`ReplicatorEntry` に対する `Get::respond_from`、`Update::evaluate`、`Delete::evaluate`、`Subscribe` / `Unsubscribe` と `SubscribeResponse`）。
 
 ### 10. std adapter / discovery / wire integration　✅ 実装済み 9/11 (82%)
 

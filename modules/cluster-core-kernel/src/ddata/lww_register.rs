@@ -143,7 +143,14 @@ where
 
   fn prune(&self, removed_node: &UniqueAddress, collapse_into: &UniqueAddress) -> Result<Self, Self::PruneError> {
     if &self.updated_by == removed_node {
-      Ok(Self { updated_by: collapse_into.clone(), value: self.value.clone(), timestamp: self.timestamp })
+      if removed_node == collapse_into {
+        return Ok(self.clone());
+      }
+      Ok(Self {
+        updated_by: collapse_into.clone(),
+        value:      self.value.clone(),
+        timestamp:  self.timestamp.saturating_add(1),
+      })
     } else {
       Ok(self.clone())
     }

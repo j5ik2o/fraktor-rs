@@ -98,6 +98,10 @@ where
   pub fn len(&self) -> usize {
     self.elements.len()
   }
+
+  pub(super) fn dots_for(&self, element: &A) -> Option<&VersionVector> {
+    self.elements.get(element)
+  }
 }
 
 impl<A> ReplicatedData for ORSet<A>
@@ -197,6 +201,10 @@ where
   }
 
   fn prune(&self, removed_node: &UniqueAddress, collapse_into: &UniqueAddress) -> Result<Self, Self::PruneError> {
+    if removed_node == collapse_into {
+      return Ok(self.clone());
+    }
+
     let mut pruned: BTreeMap<A, VersionVector> = BTreeMap::new();
     for (element, dots) in &self.elements {
       if dots.contains_node(removed_node) {
@@ -215,17 +223,25 @@ where
       elements.insert(element.clone(), dots.clone());
     }
 
-    let mut set = Self { elements, vvector, delta_dirty: self.delta_dirty };
+    let mut vvector = vvector;
     for element in pruned.keys() {
-      set = set.add_at(collapse_into, element.clone());
+      let next = vvector.version_at(collapse_into).saturating_add(1);
+      let collapse_dot = single_dot(collapse_into, next);
+      vvector = vvector.merge(&collapse_dot);
+      if let Some(current) = elements.get(element).cloned() {
+        elements.insert(element.clone(), current.merge(&collapse_dot));
+      }
     }
-    Ok(set)
+    Ok(Self { elements, vvector, delta_dirty: self.delta_dirty })
   }
 
   fn pruning_cleanup(&self, removed_node: &UniqueAddress) -> Self {
     let mut elements = BTreeMap::new();
     for (element, dots) in &self.elements {
-      elements.insert(element.clone(), cleanup_version_vector(dots, removed_node));
+      let cleaned = cleanup_version_vector(dots, removed_node);
+      if !cleaned.is_empty() {
+        elements.insert(element.clone(), cleaned);
+      }
     }
 
     Self { elements, vvector: cleanup_version_vector(&self.vvector, removed_node), delta_dirty: self.delta_dirty }

@@ -184,7 +184,21 @@ fn prune_moves_writer_to_collapse_node() {
 
   assert_eq!(pruned.updated_by(), &collapse);
   assert_eq!(pruned.value(), &"alpha");
-  assert_eq!(pruned.timestamp(), 10);
+  assert_eq!(pruned.timestamp(), 11);
+}
+
+#[test]
+fn prune_keeps_merge_order_independent_when_collapse_node_has_same_timestamp() {
+  let removed = self_address(0);
+  let collapse = self_address(1);
+  let removed_register = register_at(&removed, "removed", 10);
+  let collapse_register = register_at(&collapse, "collapse", 10);
+
+  let pruned =
+    removed_register.prune(removed.unique_address(), collapse.unique_address()).expect("pruning is infallible");
+
+  assert_eq!(pruned.merge(&collapse_register), pruned);
+  assert_eq!(collapse_register.merge(&pruned), pruned);
 }
 
 #[test]

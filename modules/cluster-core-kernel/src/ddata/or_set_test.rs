@@ -146,6 +146,32 @@ fn pruning_preserves_surviving_elements() {
   assert!(pruned.contains(&"y"));
 }
 
+#[test]
+fn pruning_preserves_existing_element_dots() {
+  let removed_node = self_address(0);
+  let survivor_node = self_address(1);
+  let collapse = unique_address(2);
+  let merged = ORSet::new().add(&removed_node, "x").merge(&ORSet::new().add(&survivor_node, "x"));
+
+  let pruned = merged.prune(removed_node.unique_address(), &collapse).expect("set pruning is infallible");
+  let dots = pruned.dots_for(&"x").expect("element stays visible");
+
+  assert_eq!(dots.version_at(survivor_node.unique_address()), 1);
+  assert_eq!(dots.version_at(&collapse), 2);
+}
+
+#[test]
+fn pruning_cleanup_drops_element_when_all_dots_belong_to_removed_node() {
+  let removed_node = self_address(0);
+  let set = ORSet::new().add(&removed_node, "x");
+
+  let cleaned = set.pruning_cleanup(removed_node.unique_address());
+
+  assert!(!cleaned.contains(&"x"));
+  assert!(cleaned.is_empty());
+  assert!(!cleaned.need_pruning_from(removed_node.unique_address()));
+}
+
 proptest! {
   #[test]
   fn merge_is_commutative(left in op_strategy(), right in op_strategy()) {

@@ -47,6 +47,13 @@ where
   /// When the set becomes empty the key is removed from the visible entries.
   #[must_use]
   pub fn remove_binding(&self, node: &SelfUniqueAddress, key: &A, element: &B) -> Self {
+    let Some(existing) = self.underlying.get(key) else {
+      return self.clone();
+    };
+    if !existing.contains(element) {
+      return self.clone();
+    }
+
     let updated = self.underlying.update(node, key.clone(), ORSet::new(), |set| set.remove(element));
     let now_empty = updated.get(key).is_some_and(|set| set.is_empty());
     let underlying = if now_empty { updated.remove(key) } else { updated };
