@@ -21,10 +21,10 @@ fn delete_present_entry_creates_tombstone_and_success_response() {
 fn delete_missing_entry_still_creates_tombstone() {
   let command = Delete::<Flag>::new(flag_key(), WriteConsistency::Local);
 
-  let (next, response) = command.evaluate(&ReplicatorEntry::missing(), DeleteWriteOutcome::ReplicationFailure);
+  let (next, response) = command.evaluate(&ReplicatorEntry::missing(), DeleteWriteOutcome::Timeout);
 
   assert!(next.is_deleted());
-  assert!(matches!(response, DeleteResponse::ReplicationFailure { .. }));
+  assert!(matches!(response, DeleteResponse::Timeout { .. }));
   assert!(response.is_locally_deleted());
 }
 

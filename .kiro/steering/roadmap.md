@@ -50,13 +50,13 @@
 - [x] cluster-grain-typed-entity-facade -- GrainKey / GrainRef の typed wrapper（EntityTypeKey / EntityRef 相当）と typed ActorSystem setup 統合を定義する。Dependencies: none
 - [x] cluster-sharding-extractor-contract -- ShardingEnvelope / ShardingMessageExtractor SPI と HashCode / Murmur2 標準実装群を定義する。Dependencies: cluster-grain-typed-entity-facade（2026-06-13 完了、PR #1990）
 - [x] cluster-sharding-health-and-join-compat -- grain/placement の readiness check（core 完結の純粋判定 + 公開アクセサ）と sharding join compatibility の除外キー整備（required key の追加は config 所有化とともに後続スペックへ委譲）を定義する。Dependencies: cluster-active-compatibility-baseline（2026-06-13 完了、PR #1993）
-- [ ] cluster-ddata-core-types -- ReplicatedData 基底 SPI、Key、SelfUniqueAddress、基本 CRDT（Flag / GCounter / PNCounter / PNCounterMap）、consistency levels、補助 protocol 型を新設 ddata モジュールに定義する。Dependencies: none
+- [x] cluster-ddata-core-types -- ReplicatedData 基底 SPI、Key、SelfUniqueAddress、基本 CRDT（Flag / GCounter / PNCounter / PNCounterMap）、consistency levels、補助 protocol 型を新設 ddata モジュールに定義する。Dependencies: none
 
 ## Existing Spec Updates
 
-- [ ] configure-cluster-failure-detector -- Multi-DC failure detector 設定 namespace（`CrossDcFailureDetectorSettings` / `MultiDataCenter` 相当）を既存の FailureDetectorConfig / validation / join compatibility 構造に追加する。Dependencies: none
+- [x] configure-cluster-failure-detector -- Multi-DC failure detector 設定 namespace（`CrossDcFailureDetectorSettings` / `MultiDataCenter` 相当）を既存の FailureDetectorConfig / validation / join compatibility 構造に追加する。Dependencies: none
 
 ## Direct Implementation Candidates
 
-- [ ] cluster-router routee 更新の std 配線 -- core policy（`ClusterRouterPool::update_from_members`）は実装済みで、ClusterEvent 購読 → routee 更新の std 配線 1 本 + 統合テストのみ。spec を立てる規模ではない
-- [ ] pubsub mediator 全体 `Count` query -- `MediatorQuery` への variant 1 つ追加 + 集計 + テストで閉じる trivial 変更
+- [x] cluster-router routee 更新の std 配線 -- core policy（`ClusterRouterPool::update_from_members`）は実装済みで、ClusterEvent 購読 → routee 更新の std 配線 1 本 + 統合テストのみ。spec を立てる規模ではない
+- [x] pubsub mediator 全体 `Count` query -- `MediatorQuery` への variant 1 つ追加 + 集計 + テストで閉じる trivial 変更

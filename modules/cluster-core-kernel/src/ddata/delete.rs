@@ -68,8 +68,8 @@ impl<D: ReplicatedData, C: Clone> Delete<D, C> {
       | DeleteWriteOutcome::Success => {
         DeleteResponse::Success { key: self.key.clone(), request: self.request.clone() }
       },
-      | DeleteWriteOutcome::ReplicationFailure => {
-        DeleteResponse::ReplicationFailure { key: self.key.clone(), request: self.request.clone() }
+      | DeleteWriteOutcome::Timeout => {
+        DeleteResponse::Timeout { key: self.key.clone(), request: self.request.clone() }
       },
       | DeleteWriteOutcome::StoreFailure => {
         DeleteResponse::StoreFailure { key: self.key.clone(), request: self.request.clone() }
