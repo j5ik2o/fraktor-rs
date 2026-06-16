@@ -225,10 +225,11 @@ where
       elements.insert(element.clone(), dots.clone());
     }
 
+    let pruning_node = pruning_node_for(collapse_into);
     let mut vvector = vvector;
     for element in pruned.keys() {
-      let next = vvector.version_at(collapse_into).saturating_add(1);
-      let collapse_dot = single_dot(collapse_into, next);
+      let next = vvector.version_at(&pruning_node).saturating_add(1);
+      let collapse_dot = single_dot(&pruning_node, next);
       vvector = vvector.merge(&collapse_dot);
       if let Some(current) = elements.get(element).cloned() {
         elements.insert(element.clone(), current.merge(&collapse_dot));
@@ -294,6 +295,11 @@ fn unique_dots(dots: &VersionVector, other: &VersionVector) -> VersionVector {
     }
   }
   VersionVector::from_entries(entries)
+}
+
+fn pruning_node_for(collapse_into: &UniqueAddress) -> UniqueAddress {
+  // UID 0 is reserved, so pruning dots do not collide with live collapse-node writes.
+  UniqueAddress::new(collapse_into.address().clone(), 0)
 }
 
 fn cleanup_version_vector(vvector: &VersionVector, removed_node: &UniqueAddress) -> VersionVector {

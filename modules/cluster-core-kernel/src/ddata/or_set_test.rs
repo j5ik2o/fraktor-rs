@@ -168,9 +168,27 @@ fn pruning_preserves_existing_element_dots() {
 
   let pruned = merged.prune(removed_node.unique_address(), &collapse).expect("set pruning is infallible");
   let dots = pruned.dots_for(&"x").expect("element stays visible");
+  let pruning_node = UniqueAddress::new(collapse.address().clone(), 0);
 
   assert_eq!(dots.version_at(survivor_node.unique_address()), 1);
-  assert_eq!(dots.version_at(&collapse), 1);
+  assert_eq!(dots.version_at(&collapse), 0);
+  assert_eq!(dots.version_at(&pruning_node), 1);
+}
+
+#[test]
+fn pruning_visible_element_does_not_hide_collapse_node_add() {
+  let removed_node = self_address(0);
+  let collapse_node = self_address(1);
+  let removed_element = ORSet::new().add(&removed_node, "x");
+
+  let pruned = removed_element
+    .prune(removed_node.unique_address(), collapse_node.unique_address())
+    .expect("set pruning is infallible");
+  let collapse_add = ORSet::new().add(&collapse_node, "z");
+  let merged = pruned.merge(&collapse_add);
+
+  assert!(merged.contains(&"x"));
+  assert!(merged.contains(&"z"));
 }
 
 #[test]

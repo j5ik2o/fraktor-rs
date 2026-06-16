@@ -60,6 +60,16 @@ fn removing_last_binding_removes_key() {
 }
 
 #[test]
+fn removing_last_binding_keeps_tombstone_for_merge() {
+  let node = self_address(0);
+  let shared = ORMultiMap::new().add_binding(&node, 1_u8, 10_u8);
+  let removed = shared.remove_binding(&node, &1, &10);
+
+  assert_eq!(removed.merge(&shared).get(&1), None);
+  assert_eq!(shared.merge(&removed).get(&1), None);
+}
+
+#[test]
 fn removing_absent_binding_does_not_readd_removed_key() {
   let node_a = self_address(0);
   let node_b = self_address(1);
@@ -83,6 +93,19 @@ fn concurrent_add_and_remove_binding_keeps_element() {
   let concurrently_added = shared.add_binding(&node_b, 1_u8, 10_u8);
 
   assert_eq!(removed.merge(&concurrently_added).get(&1), Some(BTreeSet::from([10])));
+}
+
+#[test]
+fn concurrent_last_remove_and_add_keeps_only_added_binding() {
+  let node_a = self_address(0);
+  let node_b = self_address(1);
+  let shared = ORMultiMap::new().add_binding(&node_a, 1_u8, 10_u8).reset_delta();
+
+  let removed = shared.remove_binding(&node_a, &1, &10);
+  let added = shared.add_binding(&node_b, 1_u8, 20_u8);
+
+  assert_eq!(removed.merge(&added).get(&1), Some(BTreeSet::from([20])));
+  assert_eq!(added.merge(&removed).get(&1), Some(BTreeSet::from([20])));
 }
 
 #[test]

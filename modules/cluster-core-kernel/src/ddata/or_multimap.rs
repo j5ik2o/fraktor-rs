@@ -55,9 +55,7 @@ where
     }
 
     let updated = self.underlying.update(node, key.clone(), ORSet::new(), |set| set.remove(element));
-    let now_empty = updated.get(key).is_some_and(|set| set.is_empty());
-    let underlying = if now_empty { updated.remove(key) } else { updated };
-    Self { underlying }
+    Self { underlying: updated }
   }
 
   /// Returns the set of values bound to `key`, or `None` when absent.

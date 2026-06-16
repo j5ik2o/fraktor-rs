@@ -45,7 +45,11 @@ where
   /// value, and `ORMultiMap` for set-valued maps.
   #[must_use]
   pub fn put(&self, node: &SelfUniqueAddress, key: A, value: B) -> Self {
-    let keys = self.keys.add(node, key.clone());
+    let keys = if self.keys.contains(&key) {
+      self.keys.remove(&key).add(node, key.clone())
+    } else {
+      self.keys.add(node, key.clone())
+    };
     let mut values = self.values.clone();
     values.insert(key, value);
     Self { keys, values, delta_dirty: true }
