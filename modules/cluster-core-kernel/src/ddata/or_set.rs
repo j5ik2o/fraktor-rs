@@ -120,8 +120,8 @@ where
     self.elements.get(element)
   }
 
-  fn observed_dots_for(&self, element: &A) -> VersionVector {
-    self.removed_dots.get(element).map_or_else(|| self.vvector.clone(), |removed_dots| self.vvector.merge(removed_dots))
+  fn removed_dots_for(&self, element: &A) -> Option<&VersionVector> {
+    self.removed_dots.get(element)
   }
 }
 
@@ -137,8 +137,10 @@ where
         continue;
       };
       let common = common_dots(lhs_dots, rhs_dots);
-      let lhs_keep = subtract_observed_dots(&unique_dots(lhs_dots, rhs_dots), &other.observed_dots_for(element));
-      let rhs_keep = subtract_observed_dots(&unique_dots(rhs_dots, lhs_dots), &self.observed_dots_for(element));
+      let lhs_keep =
+        subtract_observed_dots(&unique_dots(lhs_dots, rhs_dots), &other.vvector, other.removed_dots_for(element));
+      let rhs_keep =
+        subtract_observed_dots(&unique_dots(rhs_dots, lhs_dots), &self.vvector, self.removed_dots_for(element));
       let merged = lhs_keep.merge(&rhs_keep).merge(&common);
       if !merged.is_empty() {
         elements.insert(element.clone(), merged);
@@ -149,7 +151,7 @@ where
       if other.elements.contains_key(element) {
         continue;
       }
-      let kept = subtract_observed_dots(lhs_dots, &other.observed_dots_for(element));
+      let kept = subtract_observed_dots(lhs_dots, &other.vvector, other.removed_dots_for(element));
       if !kept.is_empty() {
         elements.insert(element.clone(), kept);
       }
@@ -159,7 +161,7 @@ where
       if self.elements.contains_key(element) {
         continue;
       }
-      let kept = subtract_observed_dots(rhs_dots, &self.observed_dots_for(element));
+      let kept = subtract_observed_dots(rhs_dots, &self.vvector, self.removed_dots_for(element));
       if !kept.is_empty() {
         elements.insert(element.clone(), kept);
       }
@@ -333,23 +335,30 @@ fn unique_dots(dots: &VersionVector, other: &VersionVector) -> VersionVector {
   VersionVector::from_entries(entries)
 }
 
-fn subtract_observed_dots(dots: &VersionVector, observed: &VersionVector) -> VersionVector {
+fn subtract_observed_dots(
+  dots: &VersionVector,
+  observed_vvector: &VersionVector,
+  observed_removed_dots: Option<&VersionVector>,
+) -> VersionVector {
   let mut entries: Vec<(UniqueAddress, u64)> = Vec::new();
   for (node, version) in dots.entries() {
-    if !observes_dot(observed, node, version) {
+    if observed_vvector.version_at(node) < version && !observes_removed_dot(observed_removed_dots, node, version) {
       entries.push((node.clone(), version));
     }
   }
   VersionVector::from_entries(entries)
 }
 
-fn observes_dot(observed: &VersionVector, node: &UniqueAddress, version: u64) -> bool {
-  if observed.version_at(node) >= version {
+fn observes_removed_dot(observed_removed_dots: Option<&VersionVector>, node: &UniqueAddress, version: u64) -> bool {
+  let Some(observed_removed_dots) = observed_removed_dots else {
+    return false;
+  };
+  if observed_removed_dots.version_at(node) >= version {
     return true;
   }
 
   let pruned_node = pruning_node_for(node);
-  observed.entries().any(|(observed_node, observed_version)| {
+  observed_removed_dots.entries().any(|(observed_node, observed_version)| {
     observed_version >= version && (*observed_node == pruned_node || pruning_node_for(observed_node) == *node)
   })
 }

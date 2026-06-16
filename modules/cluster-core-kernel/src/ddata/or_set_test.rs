@@ -245,6 +245,20 @@ fn pruned_tombstone_cleanup_suppresses_stale_removed_node_add() {
 }
 
 #[test]
+fn pruned_visible_add_merges_with_unpruned_visible_add() {
+  let removed_node = self_address(0);
+  let collapse = unique_address(1);
+  let unpruned = ORSet::new().add(&removed_node, "x").reset_delta();
+  let pruned = unpruned.prune(removed_node.unique_address(), &collapse).expect("set pruning is infallible");
+
+  let left = pruned.merge(&unpruned);
+  let right = unpruned.merge(&pruned);
+
+  assert_eq!(left, right);
+  assert!(left.contains(&"x"));
+}
+
+#[test]
 fn pruning_cleanup_preserves_pruned_visible_element() {
   let removed_node = self_address(0);
   let collapse = unique_address(1);
