@@ -208,7 +208,7 @@ proptest! {
   fn merge_delta_matches_full_state_merge(base_ops in op_strategy(), delta_ops in op_strategy()) {
     let base = counter_from_ops(&base_ops);
     let full_with_delta = counter_from_ops(&delta_ops);
-    let delta = full_with_delta.delta().unwrap_or_else(GCounter::new);
+    let delta = full_with_delta.delta().unwrap_or_default();
 
     prop_assert_eq!(base.merge_delta(&delta), base.merge(&full_with_delta));
   }

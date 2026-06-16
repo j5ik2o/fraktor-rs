@@ -54,5 +54,6 @@ fn concrete_key_aliases_are_constructible() {
   let _pn_counter_map: PNCounterMapKey<String> = Key::new("pn-counter-map");
   let _lww_register: LWWRegisterKey<String> = Key::new("lww-register");
   let _version_vector: VersionVectorKey = Key::new("version-vector");
-  let _: BTreeMap<String, i128> = BTreeMap::new();
+  let empty_entries: BTreeMap<String, i128> = BTreeMap::new();
+  assert!(empty_entries.is_empty());
 }
