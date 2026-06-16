@@ -71,6 +71,16 @@ fn remove_hides_entry() {
 }
 
 #[test]
+fn remove_absent_key_is_noop_without_delta() {
+  let map = LWWMap::<u8, i64>::new();
+
+  let removed = map.remove(&1);
+
+  assert_eq!(removed, map);
+  assert!(removed.delta().is_none());
+}
+
+#[test]
 fn rejected_clock_update_does_not_readd_removed_key() {
   let node = self_address(0);
   let shared = LWWMap::new().put_with_clock(&node, 1_u8, 10_i64, |_, _| 5);

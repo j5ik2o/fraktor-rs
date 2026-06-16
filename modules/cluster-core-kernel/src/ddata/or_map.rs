@@ -73,6 +73,10 @@ where
   /// after a later merge.
   #[must_use]
   pub fn remove(&self, key: &A) -> Self {
+    if !self.values.contains_key(key) {
+      return self.clone();
+    }
+
     let keys = self.keys.remove(key);
     let mut values = self.values.clone();
     values.remove(key);

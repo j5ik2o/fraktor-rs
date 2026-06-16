@@ -67,6 +67,16 @@ fn remove_hides_entry() {
 }
 
 #[test]
+fn remove_absent_key_is_noop_without_delta() {
+  let map = ORMap::<u8, GCounter>::new();
+
+  let removed = map.remove(&1);
+
+  assert_eq!(removed, map);
+  assert!(removed.delta().is_none());
+}
+
+#[test]
 fn concurrent_value_updates_merge() {
   let node_a = self_address(0);
   let node_b = self_address(1);
