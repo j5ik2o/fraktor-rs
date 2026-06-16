@@ -58,18 +58,18 @@ fraktor-rs 側はスキル指定の `pub` 系抽出で、型 352 件 (core-kerne
 | 指標 | 値 |
 |------|-----|
 | Pekko 固定スコープ対象公開契約グループ | 151 |
-| fraktor-rs 固定スコープ対応公開契約グループ（実装済み） | 110 |
-| 固定スコープカバレッジ | 110/151 (73%) |
-| 部分実装 | 9 |
-| 未対応 | 32（ギャップ表上は26行。カテゴリ9の8行が14未対応公開契約グループを集約） |
+| fraktor-rs 固定スコープ対応公開契約グループ（実装済み） | 111 |
+| 固定スコープカバレッジ | 111/151 (74%) |
+| 部分実装 | 10 |
+| 未対応 | 30（ギャップ表上は28行。カテゴリ9の未対応 protocol / CRDT 行は複数の公開契約グループを1行に集約） |
 | raw public type declarations | 352 (core-kernel: 314, core-typed: 12, std: 26) |
 | raw public method declarations | 1058 (core-kernel: 910, core-typed: 57, std: 91) |
-| hard / medium / easy / trivial gap | 10 / 23 / 8 / 0 |
+| hard / medium / easy / trivial gap | 10 / 23 / 7 / 0 |
 | panic 系スタブ | 0 件 |
 | 機能 placeholder / TODO | 0 件 |
 
 注: `raw public` は `pub(crate)` など内部到達可能な `pub` を含む参考値であり、crate 外から到達可能な外部公開 API 数ではない。
-注: `実装済み` / `部分実装` / `未対応` / 難易度内訳は、この台帳で定義した公開契約グループ単位で数える。ギャップ表は39行（部分実装9行、未対応30行）だが、カテゴリ9の protocol / CRDT 行は複数の公開契約グループを1行に集約している。raw 型名やメソッド名の個数を個別加算するものではない。
+注: `実装済み` / `部分実装` / `未対応` / 難易度内訳は、この台帳で定義した公開契約グループ単位で数える。ギャップ表は38行（部分実装10行、未対応28行）だが、カテゴリ9の protocol / CRDT 行は複数の公開契約グループを1行に集約している。raw 型名やメソッド名の個数を個別加算するものではない。
 
 ### 前回 (2026-06-05) からの判定変更
 
@@ -255,21 +255,20 @@ n/a へ移動: `ClusterClient` / `ClusterClientReceptionist` / `ClusterClientSet
 
 ### Phase 1: 結線・実動作を閉じる小粒変更（単独 PR 可）
 
-2026-06-11: cluster-membership-event-surface スペックで `Member.ordering` 公開契約、`ClusterLogMarker`（構造化 tracing field 契約）、`MemberPreparingForShutdown` / `MemberReadyForShutdown` event variant、`DataCenterReachabilityEvent` の 4 項目が実装完了し、本リストから除去した。
-2026-06-14: Phase 1 の routee 更新 std 配線、mediator 全体 `Count`、Pekko 互換 hash-code extractor、`prepareForFullClusterShutdown` command path は実装完了。
+Phase 1 は完了済み。
 
-| 項目 | 実装先層 | 根拠カテゴリ | 完了条件 |
-|------|----------|--------------|----------|
-| membership-driven routee add/remove の std 配線 | std | カテゴリ4 | 実装済み（`ClusterRouterPoolRouteeSubscriber` + event stream テスト） |
-| mediator 全体 `Count` query | core/pub_sub | カテゴリ7 | 実装済み（`MediatorQuery::Count` + 集計ロジック + テスト） |
-| `HashCodeMessageExtractor` / `HashCodeNoEnvelopeMessageExtractor` の Pekko shard 配置互換 | core/grain | カテゴリ8 | 実装済み（JVM `String.hashCode` 互換ベクタテスト） |
-| `prepareForFullClusterShutdown` command path（kernel + typed） | core + core/typed + std | カテゴリ1 / 5 | 実装済み（kernel API + typed command + event 発火テスト） |
+- 2026-06-11: cluster-membership-event-surface スペックで `Member.ordering` 公開契約、`ClusterLogMarker`（構造化 tracing field 契約）、`MemberPreparingForShutdown` / `MemberReadyForShutdown` event variant、`DataCenterReachabilityEvent` の 4 項目を実装。
+- 2026-06-14: membership-driven routee add/remove の std 配線、mediator 全体 `Count`、`HashCodeMessageExtractor` / `HashCodeNoEnvelopeMessageExtractor` の Pekko shard 配置互換、`prepareForFullClusterShutdown` command path（kernel + typed）を実装。
 
 注: Phase 1 は「単独で見ても未結線を増やさない」ことを条件にする。設定だけ、wrapper だけ、setup だけの変更はここに置かない。
 
 ### Phase 2: 既存境界で本体ロジックと表層契約を同時に閉じるもの
 
-2026-06-15: `VersionVector` の core/ddata causal clock（increment / compare / merge / removed-node pruning）は実装完了。
+未対応・部分実装の項目は以下の表の通り。
+
+- 2026-06-15: `VersionVector` の core/ddata causal clock（increment / compare / merge / removed-node pruning）を実装。
+- 2026-06-16: Replicator protocol core（`Get` / `Update` / `Subscribe` / `Delete`）と `PNCounterMap` の entries surface / observed-remove key removal、`LWWRegister` の timestamp / node-order / clock contract を実装。
+- 2026-06-16: `ClusterShardingHealthCheck` 相当の grain runtime readiness 判定契約（`GrainReadinessSnapshot` / `GrainReadiness` / `GrainUnreadyReason`）と `ClusterExtension::grain_readiness_snapshot` アクセサ、`IdentityLookup::placement_state` port クエリを実装。`JoinConfigCompatCheckSharding` 相当の grain / placement 互換キー目録整備（`cluster.sharding.identity-lookup.choice` / `cluster.sharding.identity-lookup.tuning` の除外キー追加）を実装。
 
 | 項目 | 実装先層 | 根拠カテゴリ | 備考 |
 |------|----------|--------------|------|
@@ -279,24 +278,16 @@ n/a へ移動: `ClusterClient` / `ClusterClientReceptionist` / `ClusterClientSet
 | classic `ClusterSharding.start/startProxy` API | core/grain + std | カテゴリ8 | - |
 | typed `ClusterSharding` extension + Pekko 形態の `EntityTypeKey[M]` / typed `EntityRef[M]` API と `askWithStatus` 統合 | core/typed + grain | カテゴリ8 | typed facade は extension / lookup 経路と一緒に閉じる |
 | `Entity[M, E]` / `EntityContext` | core/typed + grain | カテゴリ8 | - |
-| `ClusterShardingSettings` 契約（classic + typed）+ `JoinConfigCompatCheckSharding` | core/config | カテゴリ8 / 10 | sharding 設定の所有化と互換性判定を同じ境界で扱う |
+| `ClusterShardingSettings` 契約（classic + typed） | core/config | カテゴリ8 / 10 | 包括的な sharding settings 契約は未対応。`JoinConfigCompatCheckSharding` 相当の grain / placement 除外キー目録整備は完了 |
 | sharding query protocol（classic + typed） | core/grain + core/typed | カテゴリ8 | - |
-| `ClusterShardingHealthCheck` | core/grain + std | カテゴリ8 | region / placement readiness の入力契約と std adapter を同じ change で閉じる |
 | passivation strategy settings（LRU / MRU / LFU / admission） | core/config + grain | カテゴリ8 | passivation runtime の strategy 選択と一緒に扱う |
 | external shard allocation | core/placement + std | カテゴリ8 | - |
 | typed `DistributedData` extension | core/typed | カテゴリ9 | - |
 | `ReplicatorMessageAdapter[A, B]` | core/typed | カテゴリ9 | - |
-| Get protocol | core/ddata | カテゴリ9 | 実装済み（`Get` / `GetResponse` + `ReplicatorEntry::Missing` / `Present` / `Deleted` の読み取り評価） |
-| Update protocol | core/ddata | カテゴリ9 | 実装済み（`Update` / `UpdateResponse` / `UpdateWriteOutcome` + deleted rejection / modify failure / local-apply outcome 評価） |
-| Subscribe protocol | core/ddata | カテゴリ9 | 実装済み（`Subscribe` / `Unsubscribe` / `SubscribeResponse`、runtime actor ref 非依存の subscriber 識別子 generic） |
-| Delete protocol | core/ddata | カテゴリ9 | 実装済み（`Delete` / `DeleteResponse` / `DeleteWriteOutcome` + missing tombstone / already-deleted response 評価） |
 | `DurableStore` SPI | core/ddata | カテゴリ9 | - |
 | durable store std adapter | std | カテゴリ9 | - |
 | `LWWMap` | core/ddata | カテゴリ9 | `LWWRegister` entry CRDT は実装済み。map composition は未対応 |
 | `ORSet` / `ORMap` / `ORMultiMap` | core/ddata | カテゴリ9 | - |
-| `PNCounterMap` key removal / entries surface | core/ddata | カテゴリ9 | 実装済み（`PNCounterMap::entries` / `contains_key` / `len` / `is_empty` + observed-remove `remove` + full/delta merge テスト） |
-| `VersionVector` | core/ddata | カテゴリ9 | 実装済み（`VersionVector::increment` / `compare` / `merge` / removed-node pruning + property tests） |
-| `LWWRegister` | core/ddata | カテゴリ9 | 実装済み（`LWWRegister::merge` / `with_value_with_clock` / caller-supplied current millis `default_clock` / negated supplied millis `reverse_clock` / `LWWRegisterKey<T>` + timestamp / node-order / clock contract tests） |
 
 ### Phase 3: hard（新しい基盤・アーキテクチャ変更を要するもの）
 
@@ -324,9 +315,9 @@ ClusterClient 系（deprecated）、`@InternalApi` 型、JMX / HOCON / JFR / Jav
 
 ## まとめ
 
-cluster は membership / gossip / heartbeat / reachability / downing decision model / SBR runtime down execution loop / typed Cluster facade / Grain runtime / PubSub / discovery provider / message serializer contract という基礎契約は強く、カテゴリ 1, 2, 3, 4, 5, 7, 10 は 80〜100% のカバレッジに達している。全体カバレッジは 110/151 (73%) で、未実装の大半は Cluster Singleton（30%）、Distributed Data / CRDT（48%）、Pekko sharding public API 形態（48%）の 3 領域に集中している。
+cluster は membership / gossip / heartbeat / reachability / downing decision model / SBR runtime down execution loop / typed Cluster facade / Grain runtime / PubSub / discovery provider / message serializer contract / grain readiness / grain placement join compatibility key という基礎契約は強く、カテゴリ 1, 2, 3, 4, 5, 7, 10 は 80〜100% のカバレッジに達している。全体カバレッジは 111/151 (74%) で、未実装の大半は Cluster Singleton（30%）、Distributed Data / CRDT（48%）、Pekko sharding public API 形態（48%）の 3 領域に集中している。
 
-Phase 1 は完了済み。次に進めるなら、`CrossDcFailureDetectorSettings`、typed singleton settings wrapper、setup integration、`JoinConfigCompatCheckSharding` のような config / wrapper / setup / compatibility key は単独で切らず、対象本体を触る change に同梱する。
+Phase 1 は完了済み。次に進めるなら、`CrossDcFailureDetectorSettings`、typed singleton settings wrapper、setup integration のような config / wrapper / setup は単独で切らず、対象本体を触る change に同梱する。
 
 parity 上の主要ギャップは Phase 3 に集約される: concrete lease coordination backend、Cluster Singleton（manager / proxy / typed extension）、sharding の rebalance / remembered entities / delivery controllers、そして Distributed Data の Replicator 基盤である。
 
