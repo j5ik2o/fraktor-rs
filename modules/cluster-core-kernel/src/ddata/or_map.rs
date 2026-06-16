@@ -10,7 +10,7 @@ use fraktor_remote_core_rs::address::UniqueAddress;
 
 use super::{
   DeltaReplicatedData, ORSet, RemovedNodePruning, ReplicatedData, ReplicatedDelta, RequiresCausalDeliveryOfDeltas,
-  SelfUniqueAddress, VersionVector,
+  SelfUniqueAddress, VersionVector, or_set::pruning_node_for,
 };
 
 /// Observed-remove map CRDT, also known as OR-Map.
@@ -128,11 +128,20 @@ where
     let mut values = BTreeMap::new();
 
     for key in keys.elements() {
-      let left_contributes = key_contributes(&self.keys, &key, &keys);
-      let right_contributes = key_contributes(&other.keys, &key, &keys);
+      let left_dots = contributing_key_dots(&self.keys, &key, &keys);
+      let right_dots = contributing_key_dots(&other.keys, &key, &keys);
+      let left_contributes = !left_dots.is_empty();
+      let right_contributes = !right_dots.is_empty();
       match (self.values.get(&key), other.values.get(&key), left_contributes, right_contributes) {
         | (Some(left), Some(right), true, true) => {
-          values.insert(key, left.merge(right));
+          let value = if covered_by_pruned_aliases(&right_dots, &left_dots) {
+            left.clone()
+          } else if covered_by_pruned_aliases(&left_dots, &right_dots) {
+            right.clone()
+          } else {
+            left.merge(right)
+          };
+          values.insert(key, value);
         },
         | (Some(left), _, true, _) => {
           values.insert(key, left.clone());
@@ -281,18 +290,33 @@ where
 {
 }
 
-fn key_contributes<A>(side_keys: &ORSet<A>, key: &A, merged_keys: &ORSet<A>) -> bool
+fn contributing_key_dots<A>(side_keys: &ORSet<A>, key: &A, merged_keys: &ORSet<A>) -> VersionVector
 where
   A: Clone + Ord, {
   let Some(side_dots) = side_keys.dots_for(key) else {
-    return false;
+    return VersionVector::new();
   };
   let Some(merged_dots) = merged_keys.dots_for(key) else {
-    return false;
+    return VersionVector::new();
   };
-  has_matching_dot(side_dots, merged_dots)
+  matching_dots(side_dots, merged_dots)
 }
 
-fn has_matching_dot(left: &VersionVector, right: &VersionVector) -> bool {
-  left.entries().any(|(node, version)| right.version_at(node) == version)
+fn matching_dots(left: &VersionVector, right: &VersionVector) -> VersionVector {
+  VersionVector::from_entries(
+    left
+      .entries()
+      .filter(|(node, version)| right.version_at(node) == *version)
+      .map(|(node, version)| (node.clone(), version)),
+  )
+}
+
+fn covered_by_pruned_aliases(dots: &VersionVector, pruned_dots: &VersionVector) -> bool {
+  !dots.is_empty() && dots.entries().all(|(node, version)| has_pruned_alias(node, version, pruned_dots))
+}
+
+fn has_pruned_alias(node: &UniqueAddress, version: u64, pruned_dots: &VersionVector) -> bool {
+  pruned_dots
+    .entries()
+    .any(|(pruned_node, pruned_version)| pruning_node_for(node) == *pruned_node && pruned_version >= version)
 }

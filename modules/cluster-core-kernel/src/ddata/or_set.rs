@@ -382,7 +382,7 @@ where
   merged
 }
 
-fn pruning_node_for(removed_node: &UniqueAddress) -> UniqueAddress {
+pub(super) fn pruning_node_for(removed_node: &UniqueAddress) -> UniqueAddress {
   let address = removed_node.address();
   UniqueAddress::new(
     Address::new(address.system(), format!("{}#pruned-{}", address.host(), removed_node.uid()), address.port()),
