@@ -632,7 +632,7 @@ proptest! {
   ) {
     let base = map_from_ops(&base_ops);
     let full_with_delta = map_from_ops(&delta_ops);
-    let delta = full_with_delta.delta().unwrap_or_else(PNCounterMap::new);
+    let delta = full_with_delta.delta().unwrap_or_default();
 
     prop_assert_eq!(base.merge_delta(&delta), base.merge(&full_with_delta));
   }

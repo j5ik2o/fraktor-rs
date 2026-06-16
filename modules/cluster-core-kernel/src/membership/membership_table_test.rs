@@ -345,7 +345,12 @@ fn active_member_can_be_marked_dead() {
       | NodeStatus::Suspect => {
         table.mark_suspect(authority).expect("suspect succeeds");
       },
-      | _ => unreachable!("test covers active statuses only"),
+      | NodeStatus::Leaving
+      | NodeStatus::Exiting
+      | NodeStatus::PreparingForShutdown
+      | NodeStatus::ReadyForShutdown
+      | NodeStatus::Removed
+      | NodeStatus::Dead => {},
     }
 
     let dead_delta = table.mark_dead(authority).expect("active member can be downed").expect("delta");
