@@ -13,7 +13,7 @@ pub enum DeleteResponse<D: ReplicatedData, C = ()> {
     request: Option<C>,
   },
   /// The delete was accepted locally, but requested replication did not complete in time.
-  ReplicationFailure {
+  Timeout {
     /// Key that was deleted.
     key:     Key<D>,
     /// Caller-provided request context.
@@ -41,7 +41,7 @@ impl<D: ReplicatedData, C> DeleteResponse<D, C> {
   pub const fn key(&self) -> &Key<D> {
     match self {
       | Self::Success { key, .. }
-      | Self::ReplicationFailure { key, .. }
+      | Self::Timeout { key, .. }
       | Self::DataDeleted { key, .. }
       | Self::StoreFailure { key, .. } => key,
     }
@@ -52,7 +52,7 @@ impl<D: ReplicatedData, C> DeleteResponse<D, C> {
   pub const fn request(&self) -> Option<&C> {
     match self {
       | Self::Success { request, .. }
-      | Self::ReplicationFailure { request, .. }
+      | Self::Timeout { request, .. }
       | Self::DataDeleted { request, .. }
       | Self::StoreFailure { request, .. } => request.as_ref(),
     }
@@ -61,6 +61,6 @@ impl<D: ReplicatedData, C> DeleteResponse<D, C> {
   /// Returns true when this response means that a local tombstone was accepted.
   #[must_use]
   pub const fn is_locally_deleted(&self) -> bool {
-    matches!(self, Self::Success { .. } | Self::ReplicationFailure { .. } | Self::StoreFailure { .. })
+    matches!(self, Self::Success { .. } | Self::Timeout { .. } | Self::StoreFailure { .. })
   }
 }

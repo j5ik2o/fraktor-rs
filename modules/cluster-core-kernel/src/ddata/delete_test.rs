@@ -24,7 +24,7 @@ fn delete_missing_entry_still_creates_tombstone() {
   let (next, response) = command.evaluate(&ReplicatorEntry::missing(), DeleteWriteOutcome::Timeout);
 
   assert!(next.is_deleted());
-  assert!(matches!(response, DeleteResponse::ReplicationFailure { .. }));
+  assert!(matches!(response, DeleteResponse::Timeout { .. }));
   assert!(response.is_locally_deleted());
 }
 
