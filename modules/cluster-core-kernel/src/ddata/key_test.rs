@@ -1,4 +1,4 @@
-use alloc::{collections::BTreeMap, string::String};
+use alloc::string::String;
 use core::hash::{Hash, Hasher};
 
 use crate::ddata::{FlagKey, GCounterKey, Key, LWWRegisterKey, PNCounterKey, PNCounterMapKey, VersionVectorKey};
@@ -54,6 +54,4 @@ fn concrete_key_aliases_are_constructible() {
   let _pn_counter_map: PNCounterMapKey<String> = Key::new("pn-counter-map");
   let _lww_register: LWWRegisterKey<String> = Key::new("lww-register");
   let _version_vector: VersionVectorKey = Key::new("version-vector");
-  let empty_entries: BTreeMap<String, i128> = BTreeMap::new();
-  assert!(empty_entries.is_empty());
 }

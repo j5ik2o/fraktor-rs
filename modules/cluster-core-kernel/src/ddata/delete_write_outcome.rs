@@ -6,7 +6,7 @@ pub enum DeleteWriteOutcome {
   /// The local delete and requested write policy completed.
   Success,
   /// The local delete was accepted, but requested replication did not complete in time.
-  ReplicationFailure,
+  Timeout,
   /// The local delete was accepted, but durable storage failed.
   StoreFailure,
 }
