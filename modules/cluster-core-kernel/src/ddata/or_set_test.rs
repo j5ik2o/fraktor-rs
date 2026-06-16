@@ -1,9 +1,9 @@
-use alloc::collections::BTreeSet;
+use alloc::collections::{BTreeMap, BTreeSet};
 
 use fraktor_remote_core_rs::address::{Address, UniqueAddress};
 use proptest::prelude::*;
 
-use crate::ddata::{DeltaReplicatedData, ORSet, RemovedNodePruning, ReplicatedData, SelfUniqueAddress};
+use crate::ddata::{DeltaReplicatedData, ORSet, RemovedNodePruning, ReplicatedData, SelfUniqueAddress, VersionVector};
 
 fn unique_address(index: usize) -> UniqueAddress {
   match index % 4 {
@@ -39,6 +39,19 @@ fn add_makes_element_visible() {
   assert!(set.contains(&"x"));
   assert_eq!(set.elements(), BTreeSet::from(["x"]));
   assert_eq!(set.len(), 1);
+}
+
+#[test]
+#[should_panic(expected = "ORSet dot version overflow")]
+fn add_panics_instead_of_reusing_max_dot() {
+  let node = unique_address(0);
+  let set: ORSet<&'static str> = ORSet {
+    elements:    BTreeMap::new(),
+    vvector:     VersionVector::from_entries([(node.clone(), u64::MAX)]),
+    delta_dirty: false,
+  };
+
+  let _ = set.add_at(&node, "x");
 }
 
 #[test]
@@ -168,11 +181,24 @@ fn pruning_preserves_existing_element_dots() {
 
   let pruned = merged.prune(removed_node.unique_address(), &collapse).expect("set pruning is infallible");
   let dots = pruned.dots_for(&"x").expect("element stays visible");
-  let pruning_node = UniqueAddress::new(collapse.address().clone(), 0);
 
   assert_eq!(dots.version_at(survivor_node.unique_address()), 1);
+  assert_eq!(dots.version_at(removed_node.unique_address()), 1);
   assert_eq!(dots.version_at(&collapse), 0);
-  assert_eq!(dots.version_at(&pruning_node), 1);
+  assert!(!pruned.need_pruning_from(removed_node.unique_address()));
+}
+
+#[test]
+fn pruning_does_not_resurrect_observed_remove() {
+  let removed_node = self_address(0);
+  let collapse = unique_address(1);
+  let added = ORSet::new().add(&removed_node, "x").reset_delta();
+  let removed = added.remove(&"x").reset_delta();
+
+  let pruned = added.prune(removed_node.unique_address(), &collapse).expect("set pruning is infallible");
+
+  assert!(!pruned.merge(&removed).contains(&"x"));
+  assert!(!removed.merge(&pruned).contains(&"x"));
 }
 
 #[test]

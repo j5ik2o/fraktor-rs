@@ -146,9 +146,9 @@ where
         return Ok(self.clone());
       }
       Ok(Self {
-        updated_by: collapse_into.clone(),
+        updated_by: pruning_node_for(removed_node),
         value:      self.value.clone(),
-        timestamp:  self.timestamp.checked_add(1).ok_or(CounterArithmeticError::Overflow)?,
+        timestamp:  self.timestamp,
       })
     } else {
       Ok(self.clone())
@@ -158,4 +158,8 @@ where
   fn pruning_cleanup(&self, _removed_node: &UniqueAddress) -> Self {
     self.clone()
   }
+}
+
+fn pruning_node_for(removed_node: &UniqueAddress) -> UniqueAddress {
+  UniqueAddress::new(removed_node.address().clone(), 0)
 }

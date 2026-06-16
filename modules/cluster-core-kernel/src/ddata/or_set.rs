@@ -47,7 +47,7 @@ where
   }
 
   fn add_at(&self, node: &UniqueAddress, element: A) -> Self {
-    let next = self.vvector.version_at(node).saturating_add(1);
+    let next = next_dot_version(&self.vvector, node);
     let dot = single_dot(node, next);
     let vvector = self.vvector.merge(&dot);
     let mut elements = self.elements.clone();
@@ -206,36 +206,9 @@ where
       return Ok(self.clone());
     }
 
-    let mut pruned: BTreeMap<A, VersionVector> = BTreeMap::new();
-    for (element, dots) in &self.elements {
-      if dots.contains_node(removed_node) {
-        pruned.insert(element.clone(), cleanup_version_vector(dots, removed_node));
-      }
-    }
-
     let vvector = cleanup_version_vector(&self.vvector, removed_node);
-
-    if pruned.is_empty() {
-      let delta_dirty = self.delta_dirty || vvector != self.vvector;
-      return Ok(Self { elements: self.elements.clone(), vvector, delta_dirty });
-    }
-
-    let mut elements = self.elements.clone();
-    for (element, dots) in &pruned {
-      elements.insert(element.clone(), dots.clone());
-    }
-
-    let pruning_node = pruning_node_for(collapse_into);
-    let mut vvector = vvector;
-    for element in pruned.keys() {
-      let next = vvector.version_at(&pruning_node).saturating_add(1);
-      let collapse_dot = single_dot(&pruning_node, next);
-      vvector = vvector.merge(&collapse_dot);
-      if let Some(current) = elements.get(element).cloned() {
-        elements.insert(element.clone(), current.merge(&collapse_dot));
-      }
-    }
-    Ok(Self { elements, vvector, delta_dirty: true })
+    let delta_dirty = self.delta_dirty || vvector != self.vvector;
+    Ok(Self { elements: self.elements.clone(), vvector, delta_dirty })
   }
 
   fn pruning_cleanup(&self, removed_node: &UniqueAddress) -> Self {
@@ -277,6 +250,13 @@ fn single_dot(node: &UniqueAddress, version: u64) -> VersionVector {
   VersionVector::from_entries([(node.clone(), version)])
 }
 
+fn next_dot_version(vvector: &VersionVector, node: &UniqueAddress) -> u64 {
+  match vvector.version_at(node).checked_add(1) {
+    | Some(next) => next,
+    | None => panic!("ORSet dot version overflow"),
+  }
+}
+
 fn common_dots(lhs: &VersionVector, rhs: &VersionVector) -> VersionVector {
   let mut entries: Vec<(UniqueAddress, u64)> = Vec::new();
   for (node, version) in lhs.entries() {
@@ -295,11 +275,6 @@ fn unique_dots(dots: &VersionVector, other: &VersionVector) -> VersionVector {
     }
   }
   VersionVector::from_entries(entries)
-}
-
-fn pruning_node_for(collapse_into: &UniqueAddress) -> UniqueAddress {
-  // UID 0 is reserved, so pruning dots do not collide with live collapse-node writes.
-  UniqueAddress::new(collapse_into.address().clone(), 0)
 }
 
 fn cleanup_version_vector(vvector: &VersionVector, removed_node: &UniqueAddress) -> VersionVector {

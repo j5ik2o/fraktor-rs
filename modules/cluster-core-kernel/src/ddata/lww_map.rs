@@ -46,7 +46,8 @@ where
   pub fn put_with_clock(&self, node: &SelfUniqueAddress, key: A, value: B, clock: impl FnOnce(i64, &B) -> i64) -> Self {
     let register = match self.underlying.get(&key) {
       | Some(existing) => match existing.with_value_with_clock(node, value, clock) {
-        | Some(next) => next,
+        | Some(next) if register_wins(&next, existing) => next,
+        | Some(_) => return self.clone(),
         | None => return self.clone(),
       },
       | None => LWWRegister::new_with_clock(node, value, clock),
@@ -190,4 +191,9 @@ where
   A: Ord,
   B: Eq,
 {
+}
+
+fn register_wins<T>(candidate: &LWWRegister<T>, current: &LWWRegister<T>) -> bool {
+  candidate.timestamp() > current.timestamp()
+    || (candidate.timestamp() == current.timestamp() && candidate.updated_by() < current.updated_by())
 }

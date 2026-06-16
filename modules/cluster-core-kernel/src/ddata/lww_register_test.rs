@@ -3,9 +3,7 @@ use alloc::collections::BTreeSet;
 use fraktor_remote_core_rs::address::{Address, UniqueAddress};
 use proptest::prelude::*;
 
-use crate::ddata::{
-  CounterArithmeticError, Key, LWWRegister, LWWRegisterKey, RemovedNodePruning, ReplicatedData, SelfUniqueAddress,
-};
+use crate::ddata::{Key, LWWRegister, LWWRegisterKey, RemovedNodePruning, ReplicatedData, SelfUniqueAddress};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct Payload(&'static str);
@@ -25,6 +23,10 @@ fn self_address(index: usize) -> SelfUniqueAddress {
 
 fn register_at<T>(node: &SelfUniqueAddress, value: T, timestamp: i64) -> LWWRegister<T> {
   LWWRegister::new_with_clock(node, value, |_, _| timestamp)
+}
+
+fn pruning_node_for(removed_node: &UniqueAddress) -> UniqueAddress {
+  UniqueAddress::new(removed_node.address().clone(), 0)
 }
 
 fn register_from_parts(node_index: usize, value: i64, timestamp: i64) -> LWWRegister<i64> {
@@ -175,7 +177,7 @@ fn merge_can_model_first_write_wins_with_descending_timestamps() {
 }
 
 #[test]
-fn prune_moves_writer_to_collapse_node() {
+fn prune_moves_writer_to_pruning_node() {
   let removed = self_address(0);
   let collapse = unique_address(1);
   let register = register_at(&removed, "alpha", 10);
@@ -184,23 +186,24 @@ fn prune_moves_writer_to_collapse_node() {
 
   let pruned = register.prune(removed.unique_address(), &collapse).expect("pruning is infallible");
 
-  assert_eq!(pruned.updated_by(), &collapse);
+  assert_eq!(pruned.updated_by(), &pruning_node_for(removed.unique_address()));
   assert_eq!(pruned.value(), &"alpha");
-  assert_eq!(pruned.timestamp(), 11);
+  assert_eq!(pruned.timestamp(), 10);
+  assert!(!pruned.need_pruning_from(removed.unique_address()));
 }
 
 #[test]
-fn prune_keeps_merge_order_independent_when_collapse_node_has_same_timestamp() {
+fn prune_keeps_merge_order_independent_when_collapse_node_has_next_timestamp() {
   let removed = self_address(0);
   let collapse = self_address(1);
   let removed_register = register_at(&removed, "removed", 10);
-  let collapse_register = register_at(&collapse, "collapse", 10);
+  let collapse_register = register_at(&collapse, "collapse", 11);
 
   let pruned =
     removed_register.prune(removed.unique_address(), collapse.unique_address()).expect("pruning is infallible");
 
-  assert_eq!(pruned.merge(&collapse_register), pruned);
-  assert_eq!(collapse_register.merge(&pruned), pruned);
+  assert_eq!(pruned.merge(&collapse_register), collapse_register);
+  assert_eq!(collapse_register.merge(&pruned), collapse_register);
 }
 
 #[test]
@@ -216,12 +219,15 @@ fn prune_is_noop_when_collapse_into_same_node() {
 }
 
 #[test]
-fn prune_reports_overflow_at_max_timestamp() {
+fn prune_keeps_max_timestamp_without_overflow() {
   let removed = self_address(0);
   let collapse = unique_address(1);
   let register = register_at(&removed, "alpha", i64::MAX);
 
-  assert_eq!(register.prune(removed.unique_address(), &collapse), Err(CounterArithmeticError::Overflow));
+  let pruned = register.prune(removed.unique_address(), &collapse).expect("pruning does not increment timestamp");
+
+  assert_eq!(pruned.timestamp(), i64::MAX);
+  assert_eq!(pruned.updated_by(), &pruning_node_for(removed.unique_address()));
 }
 
 #[test]

@@ -222,9 +222,7 @@ where
     for (key, value) in &self.values {
       if value.need_pruning_from(removed_node) {
         values.insert(key.clone(), value.prune(removed_node, collapse_into)?);
-        if removed_node != collapse_into {
-          delta_dirty = true;
-        }
+        delta_dirty = true;
       } else {
         values.insert(key.clone(), value.clone());
       }

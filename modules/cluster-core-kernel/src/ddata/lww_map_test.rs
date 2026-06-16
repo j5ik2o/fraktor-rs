@@ -94,6 +94,18 @@ fn rejected_clock_update_does_not_readd_removed_key() {
 }
 
 #[test]
+fn lower_timestamp_put_keeps_existing_value_and_delta_clean() {
+  let node = self_address(0);
+  let existing = LWWMap::new().put_with_clock(&node, 1_u8, 10_i64, |_, _| 10).reset_delta();
+
+  let rejected = existing.put_with_clock(&node, 1_u8, 20_i64, |timestamp, _| timestamp - 1);
+
+  assert_eq!(rejected.get(&1), Some(&10));
+  assert_eq!(rejected, existing);
+  assert!(rejected.delta().is_none());
+}
+
+#[test]
 fn merge_is_order_independent() {
   let node_a = self_address(0);
   let node_b = self_address(1);

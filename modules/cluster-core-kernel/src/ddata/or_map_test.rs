@@ -195,6 +195,18 @@ fn pruning_clean_map_emits_delta_when_value_changes() {
   assert!(pruned.delta().is_some());
 }
 
+#[test]
+fn same_node_pruning_clean_map_emits_delta_when_value_changes() {
+  let key_node = self_address(1);
+  let removed_node = self_address(0);
+  let map = ORMap::new().put(&key_node, 1_u8, counter(&removed_node, 5)).reset_delta();
+
+  let pruned = map.prune(removed_node.unique_address(), removed_node.unique_address()).expect("counter collapse fits");
+
+  assert!(pruned.delta().is_some());
+  assert_eq!(pruned.get(&1).expect("value present").value().expect("counter fits"), 0);
+}
+
 proptest! {
   #[test]
   fn merge_is_commutative(left in op_strategy(), right in op_strategy()) {
