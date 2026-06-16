@@ -68,10 +68,6 @@ where
   /// A concurrent add on another replica that this replica has not observed survives a later merge.
   #[must_use]
   pub fn remove(&self, element: &A) -> Self {
-    if !self.elements.contains_key(element) {
-      return self.clone();
-    }
-
     let Some(observed_dots) = self.elements.get(element).cloned() else {
       return self.clone();
     };
