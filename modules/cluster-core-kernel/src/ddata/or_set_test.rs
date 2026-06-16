@@ -75,6 +75,19 @@ fn readd_after_remove_survives_merge() {
 }
 
 #[test]
+fn add_preserves_existing_element_dots_after_merge() {
+  let node_a = self_address(0);
+  let node_b = self_address(1);
+  let merged = ORSet::new().add(&node_a, "x").merge(&ORSet::new().add(&node_b, "x"));
+
+  let added = merged.add(&node_a, "x");
+  let dots = added.dots_for(&"x").expect("element stays visible");
+
+  assert_eq!(dots.version_at(node_a.unique_address()), 2);
+  assert_eq!(dots.version_at(node_b.unique_address()), 1);
+}
+
+#[test]
 fn pure_remove_wins_without_concurrent_add() {
   let node = self_address(0);
   let shared = ORSet::new().add(&node, "x");

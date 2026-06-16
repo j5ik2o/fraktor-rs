@@ -51,7 +51,8 @@ where
     let dot = single_dot(node, next);
     let vvector = self.vvector.merge(&dot);
     let mut elements = self.elements.clone();
-    elements.insert(element, dot);
+    let dots = elements.get(&element).map_or_else(|| dot.clone(), |current| current.merge(&dot));
+    elements.insert(element, dots);
     Self { elements, vvector, delta_dirty: true }
   }
 
