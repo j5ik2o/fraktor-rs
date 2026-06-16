@@ -1,7 +1,9 @@
+use alloc::{collections::BTreeSet, format};
+
 use fraktor_remote_core_rs::address::{Address, UniqueAddress};
 use proptest::prelude::*;
 
-use crate::ddata::{Key, LWWRegister, LWWRegisterKey, ReplicatedData, SelfUniqueAddress};
+use crate::ddata::{Key, LWWRegister, LWWRegisterKey, RemovedNodePruning, ReplicatedData, SelfUniqueAddress};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct Payload(&'static str);
@@ -21,6 +23,14 @@ fn self_address(index: usize) -> SelfUniqueAddress {
 
 fn register_at<T>(node: &SelfUniqueAddress, value: T, timestamp: i64) -> LWWRegister<T> {
   LWWRegister::new_with_clock(node, value, |_, _| timestamp)
+}
+
+fn pruning_node_for(removed_node: &UniqueAddress) -> UniqueAddress {
+  let address = removed_node.address();
+  UniqueAddress::new(
+    Address::new(address.system(), format!("{}#pruned-{}", address.host(), removed_node.uid()), address.port()),
+    0,
+  )
 }
 
 fn register_from_parts(node_index: usize, value: i64, timestamp: i64) -> LWWRegister<i64> {
@@ -168,6 +178,96 @@ fn merge_can_model_first_write_wins_with_descending_timestamps() {
 
   assert_eq!(first.merge(&later_candidate), first);
   assert_eq!(later_candidate.merge(&first), first);
+}
+
+#[test]
+fn prune_moves_writer_to_pruning_node() {
+  let removed = self_address(0);
+  let collapse = unique_address(1);
+  let register = register_at(&removed, "alpha", 10);
+
+  assert!(register.need_pruning_from(removed.unique_address()));
+
+  let pruned = register.prune(removed.unique_address(), &collapse).expect("pruning is infallible");
+
+  assert_eq!(pruned.updated_by(), &pruning_node_for(removed.unique_address()));
+  assert_eq!(pruned.value(), &"alpha");
+  assert_eq!(pruned.timestamp(), 10);
+  assert!(!pruned.need_pruning_from(removed.unique_address()));
+}
+
+#[test]
+fn prune_keeps_merge_order_independent_when_collapse_node_has_next_timestamp() {
+  let removed = self_address(0);
+  let collapse = self_address(1);
+  let removed_register = register_at(&removed, "removed", 10);
+  let collapse_register = register_at(&collapse, "collapse", 11);
+
+  let pruned =
+    removed_register.prune(removed.unique_address(), collapse.unique_address()).expect("pruning is infallible");
+
+  assert_eq!(pruned.merge(&collapse_register), collapse_register);
+  assert_eq!(collapse_register.merge(&pruned), collapse_register);
+}
+
+#[test]
+fn prune_keeps_same_address_reincarnations_order_independent() {
+  let address = Address::new("sys", "node-a", 2552);
+  let first = SelfUniqueAddress::new(UniqueAddress::new(address.clone(), 1));
+  let second = SelfUniqueAddress::new(UniqueAddress::new(address, 2));
+  let collapse = unique_address(1);
+  let first_pruned =
+    register_at(&first, "first", 10).prune(first.unique_address(), &collapse).expect("pruning is infallible");
+  let second_pruned =
+    register_at(&second, "second", 10).prune(second.unique_address(), &collapse).expect("pruning is infallible");
+
+  assert_eq!(first_pruned.merge(&second_pruned), second_pruned.merge(&first_pruned));
+}
+
+#[test]
+fn prune_is_noop_when_collapse_into_same_node() {
+  let removed = self_address(0);
+  let register = register_at(&removed, "alpha", 10);
+
+  let pruned =
+    register.prune(removed.unique_address(), removed.unique_address()).expect("same-node pruning is infallible");
+
+  assert_eq!(pruned, register);
+  assert_eq!(pruned.timestamp(), 10);
+}
+
+#[test]
+fn prune_keeps_max_timestamp_without_overflow() {
+  let removed = self_address(0);
+  let collapse = unique_address(1);
+  let register = register_at(&removed, "alpha", i64::MAX);
+
+  let pruned = register.prune(removed.unique_address(), &collapse).expect("pruning does not increment timestamp");
+
+  assert_eq!(pruned.timestamp(), i64::MAX);
+  assert_eq!(pruned.updated_by(), &pruning_node_for(removed.unique_address()));
+}
+
+#[test]
+fn prune_leaves_register_written_by_other_node() {
+  let writer = self_address(0);
+  let removed = unique_address(2);
+  let collapse = unique_address(1);
+  let register = register_at(&writer, "alpha", 10);
+
+  assert!(!register.need_pruning_from(&removed));
+
+  let pruned = register.prune(&removed, &collapse).expect("pruning is infallible");
+
+  assert_eq!(&pruned, &register);
+}
+
+#[test]
+fn modified_by_nodes_reports_single_writer() {
+  let writer = self_address(0);
+  let register = register_at(&writer, "alpha", 10);
+
+  assert_eq!(register.modified_by_nodes(), BTreeSet::from([writer.unique_address().clone()]));
 }
 
 #[test]

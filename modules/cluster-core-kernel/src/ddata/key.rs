@@ -10,7 +10,7 @@ use core::{
   marker::PhantomData,
 };
 
-use super::{Flag, GCounter, LWWRegister, PNCounter, PNCounterMap, VersionVector};
+use super::{Flag, GCounter, LWWMap, LWWRegister, ORMap, ORMultiMap, ORSet, PNCounter, PNCounterMap, VersionVector};
 
 /// Typed key that identifies a CRDT value by string id.
 #[derive(Debug)]
@@ -70,3 +70,15 @@ pub type LWWRegisterKey<T> = Key<LWWRegister<T>>;
 
 /// Key for [`VersionVector`] values.
 pub type VersionVectorKey = Key<VersionVector>;
+
+/// Key for [`ORSet`] values.
+pub type ORSetKey<A> = Key<ORSet<A>>;
+
+/// Key for [`ORMap`] values.
+pub type ORMapKey<A, B> = Key<ORMap<A, B>>;
+
+/// Key for [`ORMultiMap`] values.
+pub type ORMultiMapKey<A, B> = Key<ORMultiMap<A, B>>;
+
+/// Key for [`LWWMap`] values.
+pub type LWWMapKey<A, B> = Key<LWWMap<A, B>>;
