@@ -68,12 +68,6 @@ If any of these cannot be determined from the spec — the requirements are too 
 - Do NOT stop at a mock, stub, placeholder, fake, or TODO-only implementation unless the task explicitly requires it
 - Prefer the minimal implementation that satisfies the Task Brief and tests
 
-## Turn Discipline (MANDATORY)
-
-- Your final message MUST end with the `## Status Report` block. Ending your turn with a narration of intent (e.g., "次に実装します", "I will now add the method") is a protocol violation — perform the action instead of announcing it, and keep working until the report can be emitted.
-- PostToolUse hooks in this repository run long validation (several minutes of fmt/lint/clippy) after each file edit and inject their results as feedback. This is normal and expected. Treat hook output as input: read it, fix any reported errors, and CONTINUE working in the same turn. Hook feedback is never a reason to stop.
-- If you genuinely cannot finish (missing context, hard blocker), still end with the `## Status Report` block using `NEEDS_CONTEXT` or `BLOCKED` — never end without the block.
-
 ## Status Report
 
 End your response with this structured status block:
