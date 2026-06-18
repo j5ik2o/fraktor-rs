@@ -1,1 +1,0 @@
-{extends:ai-antipattern-review}
