@@ -85,7 +85,8 @@ use crate::{
   extension::{
     ClusterApi, ClusterApiError, ClusterCore, ClusterError, ClusterExtension, ClusterExtensionConfig,
     ClusterExtensionId, ClusterProviderError, ClusterProviderShared, ClusterRequestError, ClusterResolveError,
-    ClusterRouterGroupConfig, ClusterRouterPoolConfig, ClusterSubscriptionInitialStateMode, MetricsError, StartupMode,
+    ClusterRouterGroupConfig, ClusterRouterPoolConfig, ClusterShardingStateStoreMode,
+    ClusterSubscriptionInitialStateMode, MetricsError, StartupMode,
   },
   topology::{
     BlockListProvider, ClusterEvent, ClusterEventType, ClusterMetrics, ClusterMetricsSnapshot, ClusterTopology,

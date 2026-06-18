@@ -8,7 +8,7 @@ use alloc::{string::String, vec::Vec};
 use core::time::Duration;
 
 use crate::{
-  ClusterTopology, ConfigValidation, JoinConfigCompatChecker,
+  ClusterShardingStateStoreMode, ClusterTopology, ConfigValidation, JoinConfigCompatChecker,
   downing_provider::DowningProviderCompatibility,
   failure_detector::{FailureDetectorConfig, FailureDetectorConfigError},
   pub_sub::PubSubConfig,
@@ -25,12 +25,19 @@ const PUBSUB_SUSPENDED_TTL_KEY: &str = "fraktor.cluster.pubsub.suspended-ttl";
 const DOWNING_PROVIDER_KEY: &str = "fraktor.cluster.downing-provider.provider-key";
 const FAILURE_DETECTOR_KEY: &str = ClusterCompatibilityKeyCatalog::FAILURE_DETECTOR.name();
 const SINGLETON_KEY: &str = ClusterCompatibilityKeyCatalog::SINGLETON.name();
+const SHARDING_STATE_STORE_MODE_KEY: &str = ClusterCompatibilityKeyCatalog::SHARDING_STATE_STORE_MODE.name();
 const SBR_STABLE_AFTER_KEY: &str = "fraktor.cluster.downing-provider.split-brain-resolver.stable-after";
 const SBR_ACTIVE_STRATEGY_KEY: &str = "fraktor.cluster.downing-provider.split-brain-resolver.active-strategy";
 const SBR_DOWN_ALL_WHEN_UNSTABLE_KEY: &str =
   "fraktor.cluster.downing-provider.split-brain-resolver.down-all-when-unstable";
-const REQUIRED_JOIN_COMPATIBILITY_KEYS: &[&str] =
-  &[PUBSUB_SUBSCRIBER_TIMEOUT_KEY, PUBSUB_SUSPENDED_TTL_KEY, DOWNING_PROVIDER_KEY, FAILURE_DETECTOR_KEY, SINGLETON_KEY];
+const REQUIRED_JOIN_COMPATIBILITY_KEYS: &[&str] = &[
+  PUBSUB_SUBSCRIBER_TIMEOUT_KEY,
+  PUBSUB_SUSPENDED_TTL_KEY,
+  DOWNING_PROVIDER_KEY,
+  FAILURE_DETECTOR_KEY,
+  SINGLETON_KEY,
+  SHARDING_STATE_STORE_MODE_KEY,
+];
 const CONDITIONAL_JOIN_COMPATIBILITY_KEYS: &[&str] =
   &[SBR_STABLE_AFTER_KEY, SBR_ACTIVE_STRATEGY_KEY, SBR_DOWN_ALL_WHEN_UNSTABLE_KEY];
 const SENSITIVE_JOIN_COMPATIBILITY_KEYS: &[&str] = &[];
@@ -61,21 +68,26 @@ const JOIN_COMPATIBILITY_CHECKS: &[JoinCompatibilityCheck] = &[
     failure_detector_config_mismatch_detail,
   ),
   JoinCompatibilityCheck::new(ClusterCompatibilityKeyCatalog::SINGLETON, singleton_config_mismatch_detail),
+  JoinCompatibilityCheck::new(
+    ClusterCompatibilityKeyCatalog::SHARDING_STATE_STORE_MODE,
+    sharding_state_store_mode_mismatch_detail,
+  ),
 ];
 
 /// Configuration applied when installing the cluster extension.
 #[derive(Clone, Debug, PartialEq)]
 pub struct ClusterExtensionConfig {
-  advertised_address:       String,
-  metrics_enabled:          bool,
-  static_topology:          Option<ClusterTopology>,
-  pubsub_config:            PubSubConfig,
-  failure_detector_config:  FailureDetectorConfig,
-  app_version:              String,
-  roles:                    Vec<String>,
-  downing_provider:         DowningProviderCompatibility,
-  singleton_manager_config: ClusterSingletonManagerConfig,
-  singleton_proxy_config:   ClusterSingletonProxyConfig,
+  advertised_address:        String,
+  metrics_enabled:           bool,
+  static_topology:           Option<ClusterTopology>,
+  pubsub_config:             PubSubConfig,
+  failure_detector_config:   FailureDetectorConfig,
+  app_version:               String,
+  roles:                     Vec<String>,
+  downing_provider:          DowningProviderCompatibility,
+  singleton_manager_config:  ClusterSingletonManagerConfig,
+  singleton_proxy_config:    ClusterSingletonProxyConfig,
+  sharding_state_store_mode: ClusterShardingStateStoreMode,
 }
 
 impl ClusterExtensionConfig {
@@ -87,16 +99,17 @@ impl ClusterExtensionConfig {
   #[must_use]
   pub fn new() -> Self {
     Self {
-      advertised_address:       String::new(),
-      metrics_enabled:          false,
-      static_topology:          None,
-      pubsub_config:            PubSubConfig::new(Duration::from_secs(3), Duration::from_secs(60)),
-      failure_detector_config:  FailureDetectorConfig::new(),
-      app_version:              String::from(env!("CARGO_PKG_VERSION")),
-      roles:                    Vec::new(),
-      downing_provider:         DowningProviderCompatibility::noop(),
-      singleton_manager_config: ClusterSingletonManagerConfig::new(),
-      singleton_proxy_config:   ClusterSingletonProxyConfig::new(),
+      advertised_address:        String::new(),
+      metrics_enabled:           false,
+      static_topology:           None,
+      pubsub_config:             PubSubConfig::new(Duration::from_secs(3), Duration::from_secs(60)),
+      failure_detector_config:   FailureDetectorConfig::new(),
+      app_version:               String::from(env!("CARGO_PKG_VERSION")),
+      roles:                     Vec::new(),
+      downing_provider:          DowningProviderCompatibility::noop(),
+      singleton_manager_config:  ClusterSingletonManagerConfig::new(),
+      singleton_proxy_config:    ClusterSingletonProxyConfig::new(),
+      sharding_state_store_mode: ClusterShardingStateStoreMode::default(),
     }
   }
 
@@ -256,6 +269,13 @@ impl ClusterExtensionConfig {
     self
   }
 
+  /// Sets the sharding state-store mode advertised for join compatibility.
+  #[must_use]
+  pub const fn with_sharding_state_store_mode(mut self, mode: ClusterShardingStateStoreMode) -> Self {
+    self.sharding_state_store_mode = mode;
+    self
+  }
+
   /// Returns the singleton manager configuration.
   #[must_use]
   pub const fn singleton_manager_config(&self) -> &ClusterSingletonManagerConfig {
@@ -266,6 +286,12 @@ impl ClusterExtensionConfig {
   #[must_use]
   pub const fn singleton_proxy_config(&self) -> &ClusterSingletonProxyConfig {
     &self.singleton_proxy_config
+  }
+
+  /// Returns the sharding state-store mode advertised for join compatibility.
+  #[must_use]
+  pub const fn sharding_state_store_mode(&self) -> ClusterShardingStateStoreMode {
+    self.sharding_state_store_mode
   }
 
   /// Validates singleton-related configuration values.
@@ -393,6 +419,17 @@ fn singleton_config_mismatch_detail(
   let mut all_fields = manager_fields;
   all_fields.extend(proxy_fields);
   if all_fields.is_empty() { None } else { Some(all_fields.join(", ")) }
+}
+
+fn sharding_state_store_mode_mismatch_detail(
+  local: &ClusterExtensionConfig,
+  joining: &ClusterExtensionConfig,
+) -> Option<String> {
+  if local.sharding_state_store_mode == joining.sharding_state_store_mode {
+    None
+  } else {
+    Some(String::from("state_store_mode"))
+  }
 }
 
 fn normalize_roles(mut roles: Vec<String>) -> Vec<String> {
