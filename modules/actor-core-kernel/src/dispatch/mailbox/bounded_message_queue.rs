@@ -54,7 +54,7 @@ impl MessageQueue for BoundedMessageQueue {
     envelope: Envelope,
     clock: Option<&MailboxClock>,
   ) -> Result<EnqueueOutcome, EnqueueError> {
-    if let Some(timeout) = self.push_timeout {
+    if let (Some(timeout), Some(clock)) = (self.push_timeout, clock) {
       return self.offer_with_push_timeout(envelope, timeout, clock);
     }
     match self.overflow {
@@ -105,7 +105,7 @@ impl BoundedMessageQueue {
     &self,
     mut envelope: Envelope,
     timeout: Duration,
-    clock: Option<&MailboxClock>,
+    clock: &MailboxClock,
   ) -> Result<EnqueueOutcome, EnqueueError> {
     let deadline = push_timeout::push_timeout_deadline(clock, timeout);
     loop {
@@ -114,7 +114,7 @@ impl BoundedMessageQueue {
         | Err(QueueError::Full(rejected) | QueueError::OfferError(rejected)) => {
           envelope = rejected;
           if !push_timeout::should_retry_after_full(clock, deadline) {
-            return Ok(EnqueueOutcome::Rejected(envelope));
+            return Err(push_timeout::enqueue_timeout(envelope));
           }
           push_timeout::spin_before_push_timeout_retry();
         },

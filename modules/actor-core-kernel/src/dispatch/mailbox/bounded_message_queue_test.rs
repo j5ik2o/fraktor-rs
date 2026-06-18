@@ -1,12 +1,20 @@
+use alloc::boxed::Box;
 use core::{num::NonZeroUsize, time::Duration};
 
+use fraktor_utils_core_rs::sync::ArcShared;
+
 use crate::{
-  actor::messaging::AnyMessage,
+  actor::{error::SendError, messaging::AnyMessage},
   dispatch::mailbox::{
-    EnqueueOutcome, bounded_message_queue::BoundedMessageQueue, envelope::Envelope, message_queue::MessageQueue,
-    overflow_strategy::MailboxOverflowStrategy,
+    EnqueueOutcome, MailboxClock, bounded_message_queue::BoundedMessageQueue, envelope::Envelope,
+    message_queue::MessageQueue, overflow_strategy::MailboxOverflowStrategy,
   },
 };
+
+fn fixed_zero_clock() -> MailboxClock {
+  let closure: Box<dyn Fn() -> Duration + Send + Sync> = Box::new(|| Duration::ZERO);
+  ArcShared::from_boxed(closure)
+}
 
 #[test]
 fn should_enqueue_and_dequeue_within_capacity() {
@@ -106,15 +114,35 @@ fn push_timeout_rejects_full_queue_without_drop_oldest_eviction() {
 
   queue.enqueue(Envelope::new(AnyMessage::new(1_u32))).expect("enqueue first");
 
-  let result = queue.enqueue_with_mailbox_clock(Envelope::new(AnyMessage::new(2_u32)), None);
-  let Ok(EnqueueOutcome::Rejected(rejected)) = result else {
-    panic!("zero push timeout must reject the incoming envelope without eviction, got {result:?}");
+  let clock = fixed_zero_clock();
+  let result = queue.enqueue_with_mailbox_clock(Envelope::new(AnyMessage::new(2_u32)), Some(&clock));
+  let Err(error) = result else {
+    panic!("zero push timeout must time out the incoming envelope without eviction, got {result:?}");
   };
-  assert_eq!(rejected.payload().downcast_ref::<u32>().copied(), Some(2_u32));
+  assert!(matches!(error.error(), SendError::Timeout(_)));
+  assert_eq!(error.error().message().payload().downcast_ref::<u32>().copied(), Some(2_u32));
 
   let retained = queue.dequeue().expect("dequeue retained");
   assert_eq!(retained.payload().downcast_ref::<u32>().copied(), Some(1_u32));
   assert!(queue.dequeue().is_none());
+}
+
+#[test]
+fn push_timeout_without_clock_falls_back_to_overflow_strategy() {
+  let cap = NonZeroUsize::new(1).unwrap();
+  let queue =
+    BoundedMessageQueue::new_with_push_timeout(cap, MailboxOverflowStrategy::DropOldest, Duration::from_secs(1));
+
+  queue.enqueue(Envelope::new(AnyMessage::new(1_u32))).expect("enqueue first");
+
+  let result = queue.enqueue(Envelope::new(AnyMessage::new(2_u32)));
+  let Ok(EnqueueOutcome::Evicted(evicted)) = result else {
+    panic!("clock-less push timeout must use normal DropOldest overflow, got {result:?}");
+  };
+  assert_eq!(evicted.payload().downcast_ref::<u32>().copied(), Some(1_u32));
+
+  let retained = queue.dequeue().expect("dequeue retained");
+  assert_eq!(retained.payload().downcast_ref::<u32>().copied(), Some(2_u32));
 }
 
 #[test]

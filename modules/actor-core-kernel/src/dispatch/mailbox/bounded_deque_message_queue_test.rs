@@ -1,12 +1,20 @@
+use alloc::boxed::Box;
 use core::{num::NonZeroUsize, time::Duration};
+
+use fraktor_utils_core_rs::sync::ArcShared;
 
 use crate::{
   actor::{error::SendError, messaging::AnyMessage},
   dispatch::mailbox::{
-    EnqueueOutcome, bounded_deque_message_queue::BoundedDequeMessageQueue, envelope::Envelope,
+    EnqueueOutcome, MailboxClock, bounded_deque_message_queue::BoundedDequeMessageQueue, envelope::Envelope,
     message_queue::MessageQueue, overflow_strategy::MailboxOverflowStrategy,
   },
 };
+
+fn fixed_zero_clock() -> MailboxClock {
+  let closure: Box<dyn Fn() -> Duration + Send + Sync> = Box::new(|| Duration::ZERO);
+  ArcShared::from_boxed(closure)
+}
 
 /// spec Requirement 1 Scenario "Grow strategy で capacity を超えた enqueue も受理する":
 /// Grow 戦略では capacity を超過しても `Accepted` を返す。
@@ -153,11 +161,13 @@ fn push_timeout_rejects_full_back_enqueue_without_drop_oldest_eviction() {
 
   queue.enqueue(Envelope::new(AnyMessage::new(1_u32))).expect("enqueue first");
 
-  let result = queue.enqueue_with_mailbox_clock(Envelope::new(AnyMessage::new(2_u32)), None);
-  let Ok(EnqueueOutcome::Rejected(rejected)) = result else {
-    panic!("zero push timeout must reject back enqueue without eviction, got {result:?}");
+  let clock = fixed_zero_clock();
+  let result = queue.enqueue_with_mailbox_clock(Envelope::new(AnyMessage::new(2_u32)), Some(&clock));
+  let Err(error) = result else {
+    panic!("zero push timeout must time out back enqueue without eviction, got {result:?}");
   };
-  assert_eq!(rejected.payload().downcast_ref::<u32>().copied(), Some(2_u32));
+  assert!(matches!(error.error(), SendError::Timeout(_)));
+  assert_eq!(error.error().message().payload().downcast_ref::<u32>().copied(), Some(2_u32));
 
   let retained = queue.dequeue().expect("dequeue retained");
   assert_eq!(retained.payload().downcast_ref::<u32>().copied(), Some(1_u32));
@@ -172,7 +182,8 @@ fn push_timeout_times_out_full_front_enqueue() {
   queue.enqueue(Envelope::new(AnyMessage::new(1_u32))).expect("enqueue first");
   let deque = queue.as_deque().expect("deque capability");
 
-  let result = deque.enqueue_first_with_mailbox_clock(Envelope::new(AnyMessage::new(2_u32)), None);
+  let clock = fixed_zero_clock();
+  let result = deque.enqueue_first_with_mailbox_clock(Envelope::new(AnyMessage::new(2_u32)), Some(&clock));
   let Err(SendError::Timeout(payload)) = result else {
     panic!("zero push timeout must return SendError::Timeout for front enqueue, got {result:?}");
   };

@@ -72,7 +72,7 @@ impl MessageQueue for BoundedStablePriorityMessageQueue {
     clock: Option<&MailboxClock>,
   ) -> Result<EnqueueOutcome, EnqueueError> {
     let priority = self.generator.priority(envelope.payload());
-    if let Some(timeout) = self.push_timeout {
+    if let (Some(timeout), Some(clock)) = (self.push_timeout, clock) {
       return self.enqueue_with_push_timeout(envelope, priority, timeout, clock);
     }
     self.state_shared.with_write(|state| {
@@ -133,7 +133,7 @@ impl BoundedStablePriorityMessageQueue {
     mut envelope: Envelope,
     priority: i32,
     timeout: Duration,
-    clock: Option<&MailboxClock>,
+    clock: &MailboxClock,
   ) -> Result<EnqueueOutcome, EnqueueError> {
     let deadline = push_timeout::push_timeout_deadline(clock, timeout);
     loop {
@@ -151,7 +151,7 @@ impl BoundedStablePriorityMessageQueue {
         | Ok(EnqueueOutcome::Rejected(rejected)) => {
           envelope = rejected;
           if !push_timeout::should_retry_after_full(clock, deadline) {
-            return Ok(EnqueueOutcome::Rejected(envelope));
+            return Err(push_timeout::enqueue_timeout(envelope));
           }
           push_timeout::spin_before_push_timeout_retry();
         },

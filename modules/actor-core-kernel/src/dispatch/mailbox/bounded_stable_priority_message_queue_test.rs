@@ -1,15 +1,21 @@
+use alloc::boxed::Box;
 use core::{num::NonZeroUsize, time::Duration};
 
 use fraktor_utils_core_rs::sync::ArcShared;
 
 use super::*;
 use crate::{
-  actor::messaging::AnyMessage,
+  actor::{error::SendError, messaging::AnyMessage},
   dispatch::mailbox::{
-    BoundedStablePriorityMessageQueueState, BoundedStablePriorityMessageQueueStateShared, EnqueueOutcome,
+    BoundedStablePriorityMessageQueueState, BoundedStablePriorityMessageQueueStateShared, EnqueueOutcome, MailboxClock,
     MailboxOverflowStrategy, MessagePriorityGenerator, envelope::Envelope, message_queue::MessageQueue,
   },
 };
+
+fn fixed_zero_clock() -> MailboxClock {
+  let closure: Box<dyn Fn() -> Duration + Send + Sync> = Box::new(|| Duration::ZERO);
+  ArcShared::from_boxed(closure)
+}
 
 /// Priority generator that assigns priority based on the i32 payload value.
 struct PayloadPriorityGenerator;
@@ -209,11 +215,13 @@ fn push_timeout_rejects_full_queue_without_drop_oldest_eviction() {
 
   queue.enqueue(Envelope::new(AnyMessage::new(10_i32))).expect("enqueue first");
 
-  let result = queue.enqueue_with_mailbox_clock(Envelope::new(AnyMessage::new(5_i32)), None);
-  let Ok(EnqueueOutcome::Rejected(rejected)) = result else {
-    panic!("zero push timeout must reject the incoming stable-priority envelope without eviction, got {result:?}");
+  let clock = fixed_zero_clock();
+  let result = queue.enqueue_with_mailbox_clock(Envelope::new(AnyMessage::new(5_i32)), Some(&clock));
+  let Err(error) = result else {
+    panic!("zero push timeout must time out the incoming stable-priority envelope without eviction, got {result:?}");
   };
-  assert_eq!(rejected.payload().downcast_ref::<i32>().copied(), Some(5_i32));
+  assert!(matches!(error.error(), SendError::Timeout(_)));
+  assert_eq!(error.error().message().payload().downcast_ref::<i32>().copied(), Some(5_i32));
 
   let retained = queue.dequeue().expect("dequeue retained").into_payload();
   assert_eq!(retained.payload().downcast_ref::<i32>().copied(), Some(10_i32));

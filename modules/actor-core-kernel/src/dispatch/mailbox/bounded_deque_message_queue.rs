@@ -65,7 +65,7 @@ impl MessageQueue for BoundedDequeMessageQueue {
     envelope: Envelope,
     clock: Option<&MailboxClock>,
   ) -> Result<EnqueueOutcome, EnqueueError> {
-    if let Some(timeout) = self.push_timeout {
+    if let (Some(timeout), Some(clock)) = (self.push_timeout, clock) {
       return self.enqueue_back_with_push_timeout(envelope, timeout, clock);
     }
     self.inner.with_write(|inner| match self.overflow {
@@ -130,7 +130,7 @@ impl DequeMessageQueue for BoundedDequeMessageQueue {
     envelope: Envelope,
     clock: Option<&MailboxClock>,
   ) -> Result<(), SendError> {
-    if let Some(timeout) = self.push_timeout {
+    if let (Some(timeout), Some(clock)) = (self.push_timeout, clock) {
       return self.enqueue_front_with_push_timeout(envelope, timeout, clock);
     }
     self.inner.with_write(|inner| match self.overflow {
@@ -158,7 +158,7 @@ impl BoundedDequeMessageQueue {
     &self,
     mut envelope: Envelope,
     timeout: Duration,
-    clock: Option<&MailboxClock>,
+    clock: &MailboxClock,
   ) -> Result<EnqueueOutcome, EnqueueError> {
     let deadline = push_timeout::push_timeout_deadline(clock, timeout);
     loop {
@@ -175,7 +175,7 @@ impl BoundedDequeMessageQueue {
         | Ok(EnqueueOutcome::Rejected(rejected)) => {
           envelope = rejected;
           if !push_timeout::should_retry_after_full(clock, deadline) {
-            return Ok(EnqueueOutcome::Rejected(envelope));
+            return Err(push_timeout::enqueue_timeout(envelope));
           }
           push_timeout::spin_before_push_timeout_retry();
         },
@@ -189,7 +189,7 @@ impl BoundedDequeMessageQueue {
     &self,
     mut envelope: Envelope,
     timeout: Duration,
-    clock: Option<&MailboxClock>,
+    clock: &MailboxClock,
   ) -> Result<(), SendError> {
     let deadline = push_timeout::push_timeout_deadline(clock, timeout);
     loop {
@@ -206,7 +206,7 @@ impl BoundedDequeMessageQueue {
         | Err(rejected) => {
           envelope = rejected;
           if !push_timeout::should_retry_after_full(clock, deadline) {
-            return Err(SendError::timeout(envelope.into_payload()));
+            return Err(push_timeout::send_timeout(envelope));
           }
           push_timeout::spin_before_push_timeout_retry();
         },

@@ -126,18 +126,29 @@ fn try_create_shared_mailbox_returns_sharing_mailbox() {
 
 #[test]
 fn factory_rejects_single_consumer_mailbox_contract() {
+  use core::num::NonZeroUsize;
+
   use crate::{
     actor::props::{MailboxConfig, MailboxRequirement},
-    dispatch::dispatcher::BalancingDispatcherFactory,
+    dispatch::{
+      dispatcher::BalancingDispatcherFactory,
+      mailbox::{MailboxOverflowStrategy, MailboxPolicy},
+    },
   };
 
   let settings = DispatcherConfig::new("balancing-checked", nz(5), None, Duration::from_secs(1));
   let executor = ExecutorShared::new(Box::new(NoopExecutor), TrampolineState::new());
   let shared_queue = SharedMessageQueue::new();
   let single_consumer = MailboxConfig::default();
+  let bounded_single_consumer = MailboxConfig::new(MailboxPolicy::bounded(
+    NonZeroUsize::new(1).expect("capacity"),
+    MailboxOverflowStrategy::DropNewest,
+    None,
+  ));
   let multiple_consumer = MailboxConfig::default().with_requirement(MailboxRequirement::requires_multiple_consumer());
 
   assert!(!BalancingDispatcherFactory::is_mailbox_compatible(&single_consumer));
+  assert!(!BalancingDispatcherFactory::is_mailbox_compatible(&bounded_single_consumer));
   assert!(BalancingDispatcherFactory::is_mailbox_compatible(&multiple_consumer));
   assert!(BalancingDispatcherFactory::new_checked(&settings, executor, shared_queue, &multiple_consumer).is_some());
 }

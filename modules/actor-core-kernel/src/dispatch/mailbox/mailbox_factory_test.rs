@@ -124,5 +124,6 @@ fn mailbox_config_advertises_push_timeout_semantics_for_bounded_policy() {
   let semantics = config.produced_queue_semantics();
 
   assert!(semantics.has_push_timeout());
+  assert!(!semantics.is_multiple_consumer());
   assert!(semantics.satisfies(MailboxRequirement::none().with_blocking_future()));
 }

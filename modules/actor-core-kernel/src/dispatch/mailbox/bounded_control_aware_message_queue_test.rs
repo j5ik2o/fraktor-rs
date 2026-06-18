@@ -1,12 +1,20 @@
+use alloc::boxed::Box;
 use core::{num::NonZeroUsize, time::Duration};
 
+use fraktor_utils_core_rs::sync::ArcShared;
+
 use crate::{
-  actor::messaging::AnyMessage,
+  actor::{error::SendError, messaging::AnyMessage},
   dispatch::mailbox::{
-    EnqueueOutcome, bounded_control_aware_message_queue::BoundedControlAwareMessageQueue, envelope::Envelope,
-    message_queue::MessageQueue, overflow_strategy::MailboxOverflowStrategy,
+    EnqueueOutcome, MailboxClock, bounded_control_aware_message_queue::BoundedControlAwareMessageQueue,
+    envelope::Envelope, message_queue::MessageQueue, overflow_strategy::MailboxOverflowStrategy,
   },
 };
+
+fn fixed_zero_clock() -> MailboxClock {
+  let closure: Box<dyn Fn() -> Duration + Send + Sync> = Box::new(|| Duration::ZERO);
+  ArcShared::from_boxed(closure)
+}
 
 /// spec Requirement 2 Scenario "control envelope が normal より先に dequeue される":
 /// control envelope は normal より優先的に dequeue される。
@@ -152,12 +160,14 @@ fn push_timeout_rejects_full_queue_without_drop_oldest_eviction() {
 
   queue.enqueue(Envelope::new(AnyMessage::new(1_u32))).expect("enqueue normal");
 
-  let result = queue.enqueue_with_mailbox_clock(Envelope::new(AnyMessage::control(2_u32)), None);
-  let Ok(EnqueueOutcome::Rejected(rejected)) = result else {
-    panic!("zero push timeout must reject the incoming control-aware envelope without eviction, got {result:?}");
+  let clock = fixed_zero_clock();
+  let result = queue.enqueue_with_mailbox_clock(Envelope::new(AnyMessage::control(2_u32)), Some(&clock));
+  let Err(error) = result else {
+    panic!("zero push timeout must time out the incoming control-aware envelope without eviction, got {result:?}");
   };
-  assert!(rejected.payload().is_control());
-  assert_eq!(rejected.payload().downcast_ref::<u32>().copied(), Some(2_u32));
+  assert!(matches!(error.error(), SendError::Timeout(_)));
+  assert!(error.error().message().is_control());
+  assert_eq!(error.error().message().payload().downcast_ref::<u32>().copied(), Some(2_u32));
 
   let retained = queue.dequeue().expect("dequeue retained").into_payload();
   assert!(!retained.is_control());

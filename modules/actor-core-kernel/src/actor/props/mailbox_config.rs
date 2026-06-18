@@ -190,9 +190,9 @@ impl MailboxFactory for MailboxConfig {
 
   fn produced_queue_semantics(&self) -> MessageQueueSemantics {
     let mut semantics = match self.policy.capacity() {
-      | MailboxCapacity::Bounded { .. } => MessageQueueSemantics::bounded()
-        .with_multiple_consumer(true)
-        .with_push_timeout(self.policy.push_timeout().is_some()),
+      | MailboxCapacity::Bounded { .. } => {
+        MessageQueueSemantics::bounded().with_push_timeout(self.policy.push_timeout().is_some())
+      },
       | MailboxCapacity::Unbounded => {
         if self.priority_generator.is_some() || self.requirement.needs_deque() || self.requirement.needs_control_aware()
         {

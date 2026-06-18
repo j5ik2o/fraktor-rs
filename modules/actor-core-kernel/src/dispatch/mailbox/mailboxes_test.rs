@@ -1,3 +1,4 @@
+use alloc::boxed::Box;
 use core::{num::NonZeroUsize, time::Duration};
 
 use fraktor_utils_core_rs::sync::ArcShared;
@@ -9,9 +10,15 @@ use crate::{
     props::{MailboxConfigError, MailboxRequirement},
   },
   dispatch::mailbox::{
-    EnqueueOutcome, Envelope, MailboxOverflowStrategy, MailboxPolicy, MailboxRegistryError, MailboxSelection,
+    EnqueueOutcome, Envelope, MailboxClock, MailboxOverflowStrategy, MailboxPolicy, MailboxRegistryError,
+    MailboxSelection,
   },
 };
+
+fn fixed_zero_clock() -> MailboxClock {
+  let closure: Box<dyn Fn() -> Duration + Send + Sync> = Box::new(|| Duration::ZERO);
+  ArcShared::from_boxed(closure)
+}
 
 struct ConstantPriority;
 
@@ -30,11 +37,13 @@ fn assert_push_timeout_rejects_without_eviction(config: MailboxConfig, label: &s
   let queue = create_message_queue_from_config(&config).expect(label);
   queue.enqueue(Envelope::new(AnyMessage::new(1_u32))).expect("fill queue");
 
-  let result = queue.enqueue(Envelope::new(AnyMessage::new(2_u32)));
-  let Ok(EnqueueOutcome::Rejected(rejected)) = result else {
-    panic!("{label} must reject incoming envelope after zero push timeout, got {result:?}");
+  let clock = fixed_zero_clock();
+  let result = queue.enqueue_with_mailbox_clock(Envelope::new(AnyMessage::new(2_u32)), Some(&clock));
+  let Err(error) = result else {
+    panic!("{label} must time out incoming envelope after zero push timeout, got {result:?}");
   };
-  assert_eq!(rejected.payload().downcast_ref::<u32>().copied(), Some(2_u32), "{label}");
+  assert!(matches!(error.error(), crate::actor::error::SendError::Timeout(_)), "{label}");
+  assert_eq!(error.error().message().payload().downcast_ref::<u32>().copied(), Some(2_u32), "{label}");
 
   let retained = queue.dequeue().expect("dequeue retained").into_payload();
   assert_eq!(
