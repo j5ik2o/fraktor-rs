@@ -23,6 +23,6 @@
     "kiro:validate:impl": "node scripts/kiro-staged.mjs kiro-validate-impl --default-task \".kiro/specs から完了タスクのある spec を検出し、実装の統合検証を実行する\" --pipeline --skip-git -t"
   },
   "devDependencies": {
-    "takt": "^0.46.0"
+    "takt": "^0.47.0"
   }
 }
