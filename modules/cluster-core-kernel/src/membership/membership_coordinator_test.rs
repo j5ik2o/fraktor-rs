@@ -9,7 +9,7 @@ use fraktor_utils_core_rs::time::TimerInstant;
 
 use super::MembershipCoordinator;
 use crate::{
-  ClusterEvent, ClusterExtensionConfig,
+  ClusterEvent, ClusterExtensionConfig, ClusterShardingStateStoreMode,
   failure_detector::{
     DefaultFailureDetectorRegistry, FailureDetector, FailureDetectorConfig, FailureDetectorConfigError,
   },
@@ -539,6 +539,26 @@ fn join_rejects_incompatible_cluster_config() {
     err,
     MembershipCoordinatorError::Membership(MembershipError::IncompatibleConfig { reason })
     if reason == "cluster.pubsub mismatch: pubsub configuration mismatch"
+  ));
+}
+
+#[test]
+fn join_rejects_incompatible_sharding_state_store_mode() {
+  let table = MembershipTable::new(3);
+  let config = base_config();
+  let local = ClusterExtensionConfig::new().with_sharding_state_store_mode(ClusterShardingStateStoreMode::DData);
+  let joining =
+    ClusterExtensionConfig::new().with_sharding_state_store_mode(ClusterShardingStateStoreMode::Persistence);
+  let mut coordinator = MembershipCoordinator::new(config, local, table, registry(1.0));
+  coordinator.start_member().unwrap();
+
+  let err = coordinator
+    .handle_join("node-1".to_string(), "node-a".to_string(), &joining, now(1))
+    .expect_err("incompatible sharding state store mode must be rejected");
+  assert!(matches!(
+    err,
+    MembershipCoordinatorError::Membership(MembershipError::IncompatibleConfig { reason })
+    if reason == "cluster.sharding.state-store-mode mismatch: state_store_mode"
   ));
 }
 

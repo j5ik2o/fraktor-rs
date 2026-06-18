@@ -60,9 +60,10 @@ const DEFAULT_PHASE_TIMEOUT: Duration = Duration::from_secs(5);
 /// 3. [`PHASE_SERVICE_REQUESTS_DONE`](Self::PHASE_SERVICE_REQUESTS_DONE)
 /// 4. [`PHASE_SERVICE_STOP`](Self::PHASE_SERVICE_STOP)
 /// 5. [`PHASE_BEFORE_CLUSTER_SHUTDOWN`](Self::PHASE_BEFORE_CLUSTER_SHUTDOWN)
-/// 6. [`PHASE_CLUSTER_SHUTDOWN`](Self::PHASE_CLUSTER_SHUTDOWN)
-/// 7. [`PHASE_BEFORE_ACTOR_SYSTEM_TERMINATE`](Self::PHASE_BEFORE_ACTOR_SYSTEM_TERMINATE)
-/// 8. [`PHASE_ACTOR_SYSTEM_TERMINATE`](Self::PHASE_ACTOR_SYSTEM_TERMINATE)
+/// 6. [`PHASE_CLUSTER_LEAVE`](Self::PHASE_CLUSTER_LEAVE)
+/// 7. [`PHASE_CLUSTER_SHUTDOWN`](Self::PHASE_CLUSTER_SHUTDOWN)
+/// 8. [`PHASE_BEFORE_ACTOR_SYSTEM_TERMINATE`](Self::PHASE_BEFORE_ACTOR_SYSTEM_TERMINATE)
+/// 9. [`PHASE_ACTOR_SYSTEM_TERMINATE`](Self::PHASE_ACTOR_SYSTEM_TERMINATE)
 pub struct CoordinatedShutdown {
   phases:         BTreeMap<String, CoordinatedShutdownPhase>,
   ordered:        Vec<String>,
@@ -83,6 +84,8 @@ impl CoordinatedShutdown {
   pub const PHASE_BEFORE_CLUSTER_SHUTDOWN: &'static str = "before-cluster-shutdown";
   /// Phase for application tasks before services are unbound.
   pub const PHASE_BEFORE_SERVICE_UNBIND: &'static str = "before-service-unbind";
+  /// Phase for gracefully leaving the cluster.
+  pub const PHASE_CLUSTER_LEAVE: &'static str = "cluster-leave";
   /// Phase for shutting down the cluster extension.
   pub const PHASE_CLUSTER_SHUTDOWN: &'static str = "cluster-shutdown";
   /// Phase that waits for in-progress requests to complete.
@@ -152,6 +155,10 @@ impl CoordinatedShutdown {
     );
     phases.insert(
       Self::PHASE_CLUSTER_SHUTDOWN.to_string(),
+      CoordinatedShutdownPhase::new(vec![Self::PHASE_CLUSTER_LEAVE.to_string()], DEFAULT_PHASE_TIMEOUT),
+    );
+    phases.insert(
+      Self::PHASE_CLUSTER_LEAVE.to_string(),
       CoordinatedShutdownPhase::new(vec![Self::PHASE_BEFORE_CLUSTER_SHUTDOWN.to_string()], DEFAULT_PHASE_TIMEOUT),
     );
     phases.insert(

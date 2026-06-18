@@ -15,6 +15,15 @@ fn singleton_key_is_in_required_keys() {
 }
 
 #[test]
+fn sharding_state_store_mode_key_is_required() {
+  let required = ClusterCompatibilityKeyCatalog::required_keys();
+  assert!(
+    required.iter().any(|k| k.name() == "cluster.sharding.state-store-mode"),
+    "cluster.sharding.state-store-mode が required_keys() に含まれていない"
+  );
+}
+
+#[test]
 fn sharding_identity_lookup_keys_have_stable_names() {
   assert_eq!(
     ClusterCompatibilityKeyCatalog::SHARDING_IDENTITY_LOOKUP_CHOICE.name(),

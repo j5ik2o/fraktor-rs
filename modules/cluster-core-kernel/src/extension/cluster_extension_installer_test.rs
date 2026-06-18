@@ -1,4 +1,9 @@
-use alloc::{boxed::Box, string::String};
+use alloc::{boxed::Box, string::String, vec, vec::Vec};
+use core::{
+  future::Future,
+  pin::Pin,
+  task::{Context, Poll, RawWaker, RawWakerVTable, Waker},
+};
 
 use fraktor_actor_adaptor_std_rs::tick_driver::TestTickDriver;
 use fraktor_actor_core_kernel_rs::{
@@ -6,15 +11,17 @@ use fraktor_actor_core_kernel_rs::{
     Actor, ActorContext, error::ActorError, extension::ExtensionInstallers, messaging::AnyMessageView, props::Props,
     setup::ActorSystemConfig,
   },
-  system::{ActorSystem, ActorSystemBuildError},
+  system::{
+    ActorSystem, ActorSystemBuildError, CoordinatedShutdown, CoordinatedShutdownInstaller, CoordinatedShutdownReason,
+  },
 };
 use fraktor_utils_core_rs::sync::{ArcShared, SpinSyncMutex};
 
 use super::ClusterExtensionInstaller;
 use crate::{
-  ClusterExtensionConfig, ClusterProviderError,
+  ClusterExtension, ClusterExtensionConfig, ClusterProviderError,
   activation::NoopIdentityLookup,
-  cluster_provider::NoopClusterProvider,
+  cluster_provider::{ClusterProvider, NoopClusterProvider},
   downing_provider::{DowningDecision, DowningInput, DowningProvider, DowningProviderCompatibility},
   failure_detector::FailureDetectorConfig,
   membership::NoopGossiper,
@@ -138,6 +145,58 @@ fn install_succeeds_with_default_singleton_settings() {
     ActorSystem::create_from_props(&props, config).expect("default singleton settings should allow install");
 }
 
+#[test]
+fn install_registers_coordinated_shutdown_leave_task() {
+  let observed_leaves = ArcShared::new(SpinSyncMutex::new(Vec::<String>::new()));
+  let observed_leaves_for_factory = observed_leaves.clone();
+  let cluster_config = ClusterExtensionConfig::new().with_advertised_address("node1:8080");
+  let cluster_installer =
+    ClusterExtensionInstaller::new(cluster_config, move |_event_stream, _block_list, _address| {
+      Box::new(RecordingLeaveProvider::new(observed_leaves_for_factory.clone()))
+    });
+  let props = Props::from_fn(|| TestGuardian);
+  let config = ActorSystemConfig::new(TestTickDriver::default()).with_extension_installers(
+    ExtensionInstallers::default()
+      .with_extension_installer(CoordinatedShutdownInstaller)
+      .with_extension_installer(cluster_installer),
+  );
+  let system = ActorSystem::create_from_props(&props, config).expect("build system");
+  let extension =
+    system.extended().extension_by_type::<ClusterExtension>().expect("cluster extension should be installed");
+  extension.start_member().expect("start member");
+  let coordinated_shutdown = CoordinatedShutdown::get(&system).expect("coordinated shutdown should be installed");
+
+  block_on_ready(coordinated_shutdown.run(CoordinatedShutdownReason::ActorSystemTerminate));
+
+  assert_eq!(observed_leaves.lock().clone(), vec![String::from("node1:8080")]);
+}
+
+#[test]
+fn install_registers_coordinated_shutdown_leave_task_before_shutdown_installer() {
+  let observed_leaves = ArcShared::new(SpinSyncMutex::new(Vec::<String>::new()));
+  let observed_leaves_for_factory = observed_leaves.clone();
+  let cluster_config = ClusterExtensionConfig::new().with_advertised_address("node1:8080");
+  let cluster_installer =
+    ClusterExtensionInstaller::new(cluster_config, move |_event_stream, _block_list, _address| {
+      Box::new(RecordingLeaveProvider::new(observed_leaves_for_factory.clone()))
+    });
+  let props = Props::from_fn(|| TestGuardian);
+  let config = ActorSystemConfig::new(TestTickDriver::default()).with_extension_installers(
+    ExtensionInstallers::default()
+      .with_extension_installer(cluster_installer)
+      .with_extension_installer(CoordinatedShutdownInstaller),
+  );
+  let system = ActorSystem::create_from_props(&props, config).expect("build system");
+  let extension =
+    system.extended().extension_by_type::<ClusterExtension>().expect("cluster extension should be installed");
+  extension.start_member().expect("start member");
+  let coordinated_shutdown = CoordinatedShutdown::get(&system).expect("coordinated shutdown should be installed");
+
+  block_on_ready(coordinated_shutdown.run(CoordinatedShutdownReason::ActorSystemTerminate));
+
+  assert_eq!(observed_leaves.lock().clone(), vec![String::from("node1:8080")]);
+}
+
 // buffer_size 10001 → BufferSizeOutOfRange（要件 4.2）
 #[test]
 fn install_rejects_singleton_proxy_with_buffer_size_out_of_range() {
@@ -165,6 +224,63 @@ impl DowningProvider for RecordingDowningProvider {
   fn decide(&mut self, _input: &DowningInput) -> Result<DowningDecision, ClusterProviderError> {
     Ok(DowningDecision::Keep)
   }
+}
+
+struct RecordingLeaveProvider {
+  observed_leaves: ArcShared<SpinSyncMutex<Vec<String>>>,
+}
+
+impl RecordingLeaveProvider {
+  const fn new(observed_leaves: ArcShared<SpinSyncMutex<Vec<String>>>) -> Self {
+    Self { observed_leaves }
+  }
+}
+
+impl ClusterProvider for RecordingLeaveProvider {
+  fn start_member(&mut self) -> Result<(), ClusterProviderError> {
+    Ok(())
+  }
+
+  fn start_client(&mut self) -> Result<(), ClusterProviderError> {
+    Ok(())
+  }
+
+  fn down(&mut self, _authority: &str) -> Result<(), ClusterProviderError> {
+    Ok(())
+  }
+
+  fn join(&mut self, _authority: &str) -> Result<(), ClusterProviderError> {
+    Ok(())
+  }
+
+  fn leave(&mut self, authority: &str) -> Result<(), ClusterProviderError> {
+    self.observed_leaves.lock().push(String::from(authority));
+    Ok(())
+  }
+
+  fn shutdown(&mut self, _graceful: bool) -> Result<(), ClusterProviderError> {
+    Ok(())
+  }
+}
+
+fn block_on_ready<F: Future>(mut future: F) -> F::Output {
+  // Safety: the future is pinned on the stack and not moved while being polled.
+  let mut future = unsafe { Pin::new_unchecked(&mut future) };
+  let waker = unsafe { Waker::from_raw(noop_raw_waker()) };
+  let mut context = Context::from_waker(&waker);
+  match future.as_mut().poll(&mut context) {
+    | Poll::Ready(value) => value,
+    | Poll::Pending => panic!("future returned Pending in synchronous test"),
+  }
+}
+
+fn noop_raw_waker() -> RawWaker {
+  fn no_op(_: *const ()) {}
+  fn clone(data: *const ()) -> RawWaker {
+    RawWaker::new(data, &VTABLE)
+  }
+  const VTABLE: RawWakerVTable = RawWakerVTable::new(clone, no_op, no_op, no_op);
+  RawWaker::new(core::ptr::null(), &VTABLE)
 }
 
 struct TestGuardian;

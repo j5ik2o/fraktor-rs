@@ -15,11 +15,12 @@ const SHARDING_IDENTITY_LOOKUP_CHOICE_REASON: &str = "sharding identity lookup i
 const SHARDING_IDENTITY_LOOKUP_TUNING_REASON: &str =
   "sharding identity lookup tuning values are local-only and need not match across nodes during join compatibility";
 
-static REQUIRED_KEYS: [ClusterCompatibilityKey; 4] = [
+static REQUIRED_KEYS: [ClusterCompatibilityKey; 5] = [
   ClusterCompatibilityKeyCatalog::PUBSUB,
   ClusterCompatibilityKeyCatalog::DOWNING_PROVIDER,
   ClusterCompatibilityKeyCatalog::FAILURE_DETECTOR,
   ClusterCompatibilityKeyCatalog::SINGLETON,
+  ClusterCompatibilityKeyCatalog::SHARDING_STATE_STORE_MODE,
 ];
 
 static CONDITIONAL_KEYS: [ClusterCompatibilityKey; 1] = [ClusterCompatibilityKeyCatalog::SPLIT_BRAIN_RESOLVER_CONFIG];
@@ -67,6 +68,9 @@ impl ClusterCompatibilityKeyCatalog {
     "cluster.sharding.identity-lookup.tuning",
     SHARDING_IDENTITY_LOOKUP_TUNING_REASON,
   );
+  /// Sharding state-store mode compatibility key.
+  pub const SHARDING_STATE_STORE_MODE: ClusterCompatibilityKey =
+    ClusterCompatibilityKey::required("cluster.sharding.state-store-mode");
   /// Singleton configuration compatibility key.
   pub const SINGLETON: ClusterCompatibilityKey = ClusterCompatibilityKey::required("cluster.singleton");
   /// Split Brain Resolver config compatibility key.

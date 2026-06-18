@@ -8,7 +8,8 @@ fn catalog_exposes_required_stable_key_names() {
     "cluster.pubsub",
     "cluster.downing-provider",
     "cluster.failure-detector",
-    "cluster.singleton"
+    "cluster.singleton",
+    "cluster.sharding.state-store-mode"
   ]);
 }
 

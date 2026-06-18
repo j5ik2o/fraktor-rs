@@ -9,7 +9,7 @@ use alloc::{boxed::Box, string::String, vec::Vec};
 use fraktor_actor_core_kernel_rs::{
   actor::extension::ExtensionInstaller,
   event::stream::EventStreamShared,
-  system::{ActorSystem, ActorSystemBuildError},
+  system::{ActorSystem, ActorSystemBuildError, CoordinatedShutdown, CoordinatedShutdownId},
 };
 use fraktor_utils_core_rs::sync::ArcShared;
 
@@ -21,6 +21,8 @@ use crate::{
   membership::{Gossiper, NoopGossiper},
   pub_sub::{NoopClusterPubSub, cluster_pub_sub::ClusterPubSub},
 };
+
+const COORDINATED_SHUTDOWN_CLUSTER_LEAVE_TASK: &str = "cluster-leave";
 
 /// Empty block list provider that never blocks any members.
 #[derive(Clone, Debug, Default)]
@@ -269,7 +271,9 @@ impl ClusterExtensionInstaller {
       pubsub,
       identity_lookup,
     );
-    Ok(system.extended().register_extension(&id))
+    let extension = system.extended().register_extension(&id);
+    register_coordinated_shutdown_leave(system)?;
+    Ok(extension)
   }
 }
 
@@ -278,4 +282,27 @@ impl ExtensionInstaller for ClusterExtensionInstaller {
     let _ = ClusterExtensionInstaller::install(self, system)?;
     Ok(())
   }
+}
+
+fn register_coordinated_shutdown_leave(system: &ActorSystem) -> Result<(), ActorSystemBuildError> {
+  let coordinated_shutdown = system.extended().register_extension(&CoordinatedShutdownId);
+  let extension = system
+    .extended()
+    .extension_by_type::<ClusterExtension>()
+    .ok_or_else(|| ActorSystemBuildError::Configuration(String::from("ClusterExtension not installed")))?;
+  let authority = extension.core_shared().with_lock(|core| core.startup_address());
+  coordinated_shutdown
+    .add_task(CoordinatedShutdown::PHASE_CLUSTER_LEAVE, COORDINATED_SHUTDOWN_CLUSTER_LEAVE_TASK, move || async move {
+      match extension.leave(authority.as_str()) {
+        | Ok(()) => {},
+        | Err(error) => {
+          tracing::warn!(
+            error = ?error,
+            authority = %authority,
+            "cluster leave failed during coordinated shutdown"
+          );
+        },
+      }
+    })
+    .map_err(|error| ActorSystemBuildError::Configuration(alloc::format!("{error:?}")))
 }

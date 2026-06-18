@@ -48,7 +48,8 @@ fn default_phases_are_topologically_ordered() {
   assert!(idx(CoordinatedShutdown::PHASE_SERVICE_UNBIND) < idx(CoordinatedShutdown::PHASE_SERVICE_REQUESTS_DONE));
   assert!(idx(CoordinatedShutdown::PHASE_SERVICE_REQUESTS_DONE) < idx(CoordinatedShutdown::PHASE_SERVICE_STOP));
   assert!(idx(CoordinatedShutdown::PHASE_SERVICE_STOP) < idx(CoordinatedShutdown::PHASE_BEFORE_CLUSTER_SHUTDOWN));
-  assert!(idx(CoordinatedShutdown::PHASE_BEFORE_CLUSTER_SHUTDOWN) < idx(CoordinatedShutdown::PHASE_CLUSTER_SHUTDOWN));
+  assert!(idx(CoordinatedShutdown::PHASE_BEFORE_CLUSTER_SHUTDOWN) < idx(CoordinatedShutdown::PHASE_CLUSTER_LEAVE));
+  assert!(idx(CoordinatedShutdown::PHASE_CLUSTER_LEAVE) < idx(CoordinatedShutdown::PHASE_CLUSTER_SHUTDOWN));
   assert!(
     idx(CoordinatedShutdown::PHASE_CLUSTER_SHUTDOWN) < idx(CoordinatedShutdown::PHASE_BEFORE_ACTOR_SYSTEM_TERMINATE)
   );

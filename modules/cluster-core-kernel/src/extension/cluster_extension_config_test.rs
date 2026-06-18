@@ -2,7 +2,7 @@ use core::time::Duration;
 
 use super::*;
 use crate::{
-  ClusterTopology, ConfigValidation, JoinConfigCompatChecker,
+  ClusterShardingStateStoreMode, ClusterTopology, ConfigValidation, JoinConfigCompatChecker,
   downing_provider::{DowningProviderCompatibility, SplitBrainResolverConfig, SplitBrainResolverStrategy},
   failure_detector::{FailureDetectorConfig, FailureDetectorConfigError},
   pub_sub::PubSubConfig,
@@ -132,6 +132,7 @@ fn join_compatibility_key_manifest_separates_required_and_conditional_non_sensit
     "fraktor.cluster.downing-provider.provider-key",
     "cluster.failure-detector",
     "cluster.singleton",
+    "cluster.sharding.state-store-mode",
   ]);
   assert_eq!(conditional_keys, &[
     "fraktor.cluster.downing-provider.split-brain-resolver.stable-after",
@@ -141,6 +142,7 @@ fn join_compatibility_key_manifest_separates_required_and_conditional_non_sensit
   assert!(ClusterExtensionConfig::is_required_join_compatibility_key("fraktor.cluster.downing-provider.provider-key"));
   assert!(ClusterExtensionConfig::is_required_join_compatibility_key("cluster.failure-detector"));
   assert!(ClusterExtensionConfig::is_required_join_compatibility_key("cluster.singleton"));
+  assert!(ClusterExtensionConfig::is_required_join_compatibility_key("cluster.sharding.state-store-mode"));
   assert!(!ClusterExtensionConfig::is_required_join_compatibility_key("cluster.failure-detector.choice"));
   assert!(!ClusterExtensionConfig::is_required_join_compatibility_key("cluster.failure-detector.phi-threshold"));
   assert!(!ClusterExtensionConfig::is_required_join_compatibility_key(
@@ -394,6 +396,20 @@ fn singleton_proxy_config_is_preserved_via_setter() {
   assert_eq!(config.singleton_proxy_config(), &custom);
 }
 
+#[test]
+fn sharding_state_store_mode_default_is_preserved() {
+  let config = ClusterExtensionConfig::new();
+
+  assert_eq!(config.sharding_state_store_mode(), ClusterShardingStateStoreMode::DData);
+}
+
+#[test]
+fn sharding_state_store_mode_is_preserved_via_setter() {
+  let config = ClusterExtensionConfig::new().with_sharding_state_store_mode(ClusterShardingStateStoreMode::Persistence);
+
+  assert_eq!(config.sharding_state_store_mode(), ClusterShardingStateStoreMode::Persistence);
+}
+
 // --- validate_singleton の委譲検証 ---
 
 #[test]
@@ -490,5 +506,29 @@ fn join_compatibility_reports_both_manager_and_proxy_mismatch_fields() {
 
   assert_eq!(validation, ConfigValidation::Incompatible {
     reason: "cluster.singleton mismatch: manager.singleton_name, proxy.buffer_size".to_string(),
+  });
+}
+
+#[test]
+fn join_compatibility_accepts_same_sharding_state_store_mode() {
+  let local = ClusterExtensionConfig::new().with_sharding_state_store_mode(ClusterShardingStateStoreMode::Persistence);
+  let joining =
+    ClusterExtensionConfig::new().with_sharding_state_store_mode(ClusterShardingStateStoreMode::Persistence);
+
+  let validation = local.check_join_compatibility(&joining);
+
+  assert_eq!(validation, ConfigValidation::Compatible);
+}
+
+#[test]
+fn join_compatibility_reports_sharding_state_store_mode_mismatch() {
+  let local = ClusterExtensionConfig::new().with_sharding_state_store_mode(ClusterShardingStateStoreMode::DData);
+  let joining =
+    ClusterExtensionConfig::new().with_sharding_state_store_mode(ClusterShardingStateStoreMode::Persistence);
+
+  let validation = local.check_join_compatibility(&joining);
+
+  assert_eq!(validation, ConfigValidation::Incompatible {
+    reason: "cluster.sharding.state-store-mode mismatch: state_store_mode".to_string(),
   });
 }
