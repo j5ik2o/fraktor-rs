@@ -293,8 +293,12 @@ fn register_coordinated_shutdown_leave(system: &ActorSystem) -> Result<(), Actor
     .add_task(CoordinatedShutdown::PHASE_CLUSTER_LEAVE, COORDINATED_SHUTDOWN_CLUSTER_LEAVE_TASK, move || async move {
       match cluster.leave(authority.as_str()) {
         | Ok(()) => {},
-        | Err(_error) => {
-          // CoordinatedShutdown tasks cannot propagate operation failures.
+        | Err(error) => {
+          tracing::warn!(
+            error = ?error,
+            authority = %authority,
+            "cluster leave failed during coordinated shutdown"
+          );
         },
       }
     })
