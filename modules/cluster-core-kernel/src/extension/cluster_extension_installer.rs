@@ -9,7 +9,7 @@ use alloc::{boxed::Box, string::String, vec::Vec};
 use fraktor_actor_core_kernel_rs::{
   actor::extension::ExtensionInstaller,
   event::stream::EventStreamShared,
-  system::{ActorSystem, ActorSystemBuildError, CoordinatedShutdown},
+  system::{ActorSystem, ActorSystemBuildError, CoordinatedShutdown, CoordinatedShutdownId},
 };
 use fraktor_utils_core_rs::sync::ArcShared;
 
@@ -285,9 +285,7 @@ impl ExtensionInstaller for ClusterExtensionInstaller {
 }
 
 fn register_coordinated_shutdown_leave(system: &ActorSystem) -> Result<(), ActorSystemBuildError> {
-  let Some(coordinated_shutdown) = CoordinatedShutdown::get(system) else {
-    return Ok(());
-  };
+  let coordinated_shutdown = system.extended().register_extension(&CoordinatedShutdownId);
   let cluster = ClusterApi::try_from_system(system)
     .map_err(|error| ActorSystemBuildError::Configuration(alloc::format!("{error:?}")))?;
   let authority = cluster.self_authority();

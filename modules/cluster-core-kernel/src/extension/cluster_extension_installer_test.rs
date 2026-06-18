@@ -171,6 +171,32 @@ fn install_registers_coordinated_shutdown_leave_task() {
   assert_eq!(observed_leaves.lock().clone(), vec![String::from("node1:8080")]);
 }
 
+#[test]
+fn install_registers_coordinated_shutdown_leave_task_before_shutdown_installer() {
+  let observed_leaves = ArcShared::new(SpinSyncMutex::new(Vec::<String>::new()));
+  let observed_leaves_for_factory = observed_leaves.clone();
+  let cluster_config = ClusterExtensionConfig::new().with_advertised_address("node1:8080");
+  let cluster_installer =
+    ClusterExtensionInstaller::new(cluster_config, move |_event_stream, _block_list, _address| {
+      Box::new(RecordingLeaveProvider::new(observed_leaves_for_factory.clone()))
+    });
+  let props = Props::from_fn(|| TestGuardian);
+  let config = ActorSystemConfig::new(TestTickDriver::default()).with_extension_installers(
+    ExtensionInstallers::default()
+      .with_extension_installer(cluster_installer)
+      .with_extension_installer(CoordinatedShutdownInstaller),
+  );
+  let system = ActorSystem::create_from_props(&props, config).expect("build system");
+  let extension =
+    system.extended().extension_by_type::<ClusterExtension>().expect("cluster extension should be installed");
+  extension.start_member().expect("start member");
+  let coordinated_shutdown = CoordinatedShutdown::get(&system).expect("coordinated shutdown should be installed");
+
+  block_on_ready(coordinated_shutdown.run(CoordinatedShutdownReason::ActorSystemTerminate));
+
+  assert_eq!(observed_leaves.lock().clone(), vec![String::from("node1:8080")]);
+}
+
 // buffer_size 10001 → BufferSizeOutOfRange（要件 4.2）
 #[test]
 fn install_rejects_singleton_proxy_with_buffer_size_out_of_range() {
