@@ -1,12 +1,12 @@
 use super::ClusterShardingStateStoreMode;
 
 #[test]
-fn default_is_in_memory() {
-  assert_eq!(ClusterShardingStateStoreMode::default(), ClusterShardingStateStoreMode::InMemory);
+fn default_is_ddata() {
+  assert_eq!(ClusterShardingStateStoreMode::default(), ClusterShardingStateStoreMode::DData);
 }
 
 #[test]
-fn as_str_returns_stable_configuration_value() {
-  assert_eq!(ClusterShardingStateStoreMode::InMemory.as_str(), "in-memory");
-  assert_eq!(ClusterShardingStateStoreMode::Durable.as_str(), "durable");
+fn as_str_returns_pekko_compatible_configuration_value() {
+  assert_eq!(ClusterShardingStateStoreMode::DData.as_str(), "ddata");
+  assert_eq!(ClusterShardingStateStoreMode::Persistence.as_str(), "persistence");
 }

@@ -7,11 +7,11 @@ mod tests;
 /// Advertised state-store mode used for sharding join compatibility.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub enum ClusterShardingStateStoreMode {
-  /// Keeps shard and placement state in the current runtime process.
+  /// Uses distributed data for shard state, matching Pekko's `ddata` mode.
   #[default]
-  InMemory,
-  /// Requires durable shard and placement state supplied by the embedding runtime.
-  Durable,
+  DData,
+  /// Uses durable persistence for shard state, matching Pekko's `persistence` mode.
+  Persistence,
 }
 
 impl ClusterShardingStateStoreMode {
@@ -19,8 +19,8 @@ impl ClusterShardingStateStoreMode {
   #[must_use]
   pub const fn as_str(self) -> &'static str {
     match self {
-      | Self::InMemory => "in-memory",
-      | Self::Durable => "durable",
+      | Self::DData => "ddata",
+      | Self::Persistence => "persistence",
     }
   }
 }

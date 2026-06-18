@@ -400,14 +400,14 @@ fn singleton_proxy_config_is_preserved_via_setter() {
 fn sharding_state_store_mode_default_is_preserved() {
   let config = ClusterExtensionConfig::new();
 
-  assert_eq!(config.sharding_state_store_mode(), ClusterShardingStateStoreMode::InMemory);
+  assert_eq!(config.sharding_state_store_mode(), ClusterShardingStateStoreMode::DData);
 }
 
 #[test]
 fn sharding_state_store_mode_is_preserved_via_setter() {
-  let config = ClusterExtensionConfig::new().with_sharding_state_store_mode(ClusterShardingStateStoreMode::Durable);
+  let config = ClusterExtensionConfig::new().with_sharding_state_store_mode(ClusterShardingStateStoreMode::Persistence);
 
-  assert_eq!(config.sharding_state_store_mode(), ClusterShardingStateStoreMode::Durable);
+  assert_eq!(config.sharding_state_store_mode(), ClusterShardingStateStoreMode::Persistence);
 }
 
 // --- validate_singleton の委譲検証 ---
@@ -511,8 +511,9 @@ fn join_compatibility_reports_both_manager_and_proxy_mismatch_fields() {
 
 #[test]
 fn join_compatibility_accepts_same_sharding_state_store_mode() {
-  let local = ClusterExtensionConfig::new().with_sharding_state_store_mode(ClusterShardingStateStoreMode::Durable);
-  let joining = ClusterExtensionConfig::new().with_sharding_state_store_mode(ClusterShardingStateStoreMode::Durable);
+  let local = ClusterExtensionConfig::new().with_sharding_state_store_mode(ClusterShardingStateStoreMode::Persistence);
+  let joining =
+    ClusterExtensionConfig::new().with_sharding_state_store_mode(ClusterShardingStateStoreMode::Persistence);
 
   let validation = local.check_join_compatibility(&joining);
 
@@ -521,8 +522,9 @@ fn join_compatibility_accepts_same_sharding_state_store_mode() {
 
 #[test]
 fn join_compatibility_reports_sharding_state_store_mode_mismatch() {
-  let local = ClusterExtensionConfig::new().with_sharding_state_store_mode(ClusterShardingStateStoreMode::InMemory);
-  let joining = ClusterExtensionConfig::new().with_sharding_state_store_mode(ClusterShardingStateStoreMode::Durable);
+  let local = ClusterExtensionConfig::new().with_sharding_state_store_mode(ClusterShardingStateStoreMode::DData);
+  let joining =
+    ClusterExtensionConfig::new().with_sharding_state_store_mode(ClusterShardingStateStoreMode::Persistence);
 
   let validation = local.check_join_compatibility(&joining);
 

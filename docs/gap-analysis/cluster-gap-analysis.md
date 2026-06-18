@@ -60,8 +60,8 @@ fraktor-rs 側はスキル指定の `pub` 系抽出で、型 368 件 (core-kerne
 | Pekko 固定スコープ対象公開契約グループ | 151 |
 | fraktor-rs 固定スコープ対応公開契約グループ（実装済み） | 117 |
 | 固定スコープカバレッジ | 117/151 (77%) |
-| 部分実装 | 9 |
-| 未対応 | 25（カテゴリ9の未対応 protocol 行は複数の公開契約グループを1行に集約） |
+| 部分実装 | 11 |
+| 未対応 | 23（カテゴリ9の未対応 protocol 行は複数の公開契約グループを1行に集約） |
 | raw public type declarations | 368 (core-kernel: 330, core-typed: 12, std: 26) |
 | raw public method declarations | 1098 (core-kernel: 950, core-typed: 57, std: 91) |
 | hard / medium / easy / trivial gap | 10 / 18 / 6 / 0 |

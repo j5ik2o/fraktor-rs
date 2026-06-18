@@ -14,7 +14,7 @@ use fraktor_actor_core_kernel_rs::{
 use fraktor_utils_core_rs::sync::ArcShared;
 
 use crate::{
-  BlockListProvider, ClusterApi, ClusterExtension, ClusterExtensionConfig, ClusterExtensionId,
+  BlockListProvider, ClusterExtension, ClusterExtensionConfig, ClusterExtensionId,
   activation::{IdentityLookup, NoopIdentityLookup},
   cluster_provider::{ClusterProvider, LocalClusterProvider},
   downing_provider::{DowningProvider, DowningProviderCompatibility, NoopDowningProvider},
@@ -286,12 +286,14 @@ impl ExtensionInstaller for ClusterExtensionInstaller {
 
 fn register_coordinated_shutdown_leave(system: &ActorSystem) -> Result<(), ActorSystemBuildError> {
   let coordinated_shutdown = system.extended().register_extension(&CoordinatedShutdownId);
-  let cluster = ClusterApi::try_from_system(system)
-    .map_err(|error| ActorSystemBuildError::Configuration(alloc::format!("{error:?}")))?;
-  let authority = cluster.self_authority();
+  let extension = system
+    .extended()
+    .extension_by_type::<ClusterExtension>()
+    .ok_or_else(|| ActorSystemBuildError::Configuration(String::from("ClusterExtension not installed")))?;
+  let authority = extension.core_shared().with_lock(|core| core.startup_address());
   coordinated_shutdown
     .add_task(CoordinatedShutdown::PHASE_CLUSTER_LEAVE, COORDINATED_SHUTDOWN_CLUSTER_LEAVE_TASK, move || async move {
-      match cluster.leave(authority.as_str()) {
+      match extension.leave(authority.as_str()) {
         | Ok(()) => {},
         | Err(error) => {
           tracing::warn!(

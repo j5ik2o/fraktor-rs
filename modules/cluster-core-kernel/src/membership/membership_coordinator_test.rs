@@ -546,8 +546,9 @@ fn join_rejects_incompatible_cluster_config() {
 fn join_rejects_incompatible_sharding_state_store_mode() {
   let table = MembershipTable::new(3);
   let config = base_config();
-  let local = ClusterExtensionConfig::new().with_sharding_state_store_mode(ClusterShardingStateStoreMode::InMemory);
-  let joining = ClusterExtensionConfig::new().with_sharding_state_store_mode(ClusterShardingStateStoreMode::Durable);
+  let local = ClusterExtensionConfig::new().with_sharding_state_store_mode(ClusterShardingStateStoreMode::DData);
+  let joining =
+    ClusterExtensionConfig::new().with_sharding_state_store_mode(ClusterShardingStateStoreMode::Persistence);
   let mut coordinator = MembershipCoordinator::new(config, local, table, registry(1.0));
   coordinator.start_member().unwrap();
 
