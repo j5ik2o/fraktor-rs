@@ -5,6 +5,7 @@
 //! For a thread-safe, clonable wrapper see
 //! [`CircuitBreakerShared`](super::CircuitBreakerShared).
 
+use alloc::{boxed::Box, vec::Vec};
 use core::{
   fmt::{Debug, Formatter, Result as FmtResult},
   time::Duration,
@@ -17,6 +18,8 @@ use super::{
 #[cfg(test)]
 #[path = "circuit_breaker_test.rs"]
 mod tests;
+
+type CircuitBreakerListener = dyn FnMut() + Send + 'static;
 
 /// Three-state circuit breaker (Closed / Open / HalfOpen).
 ///
@@ -31,12 +34,21 @@ mod tests;
 /// * **HalfOpen → Closed** — when a probe call succeeds.
 /// * **HalfOpen → Open** — when a probe call fails.
 pub struct CircuitBreaker<C: Clock> {
-  max_failures:  u32,
+  max_failures: u32,
   reset_timeout: Duration,
-  state:         CircuitBreakerState,
+  open_reset_timeout: Duration,
+  next_reset_timeout: Duration,
+  max_reset_timeout: Duration,
+  exponential_backoff_factor: f64,
+  random_factor: f64,
+  jitter_seed: u64,
+  state: CircuitBreakerState,
   failure_count: u32,
-  opened_at:     Option<C::Instant>,
-  clock:         C,
+  opened_at: Option<C::Instant>,
+  clock: C,
+  open_listeners: Vec<Box<CircuitBreakerListener>>,
+  half_open_listeners: Vec<Box<CircuitBreakerListener>>,
+  close_listeners: Vec<Box<CircuitBreakerListener>>,
 }
 
 impl<C: Clock> Debug for CircuitBreaker<C> {
@@ -44,6 +56,9 @@ impl<C: Clock> Debug for CircuitBreaker<C> {
     f.debug_struct("CircuitBreaker")
       .field("max_failures", &self.max_failures)
       .field("reset_timeout", &self.reset_timeout)
+      .field("open_reset_timeout", &self.open_reset_timeout)
+      .field("next_reset_timeout", &self.next_reset_timeout)
+      .field("max_reset_timeout", &self.max_reset_timeout)
       .field("state", &self.state)
       .field("failure_count", &self.failure_count)
       .finish_non_exhaustive()
@@ -65,7 +80,66 @@ impl<C: Clock> CircuitBreaker<C> {
   #[must_use]
   pub fn new_with_clock(max_failures: u32, reset_timeout: Duration, clock: C) -> Self {
     assert!(max_failures > 0, "max_failures must be greater than zero");
-    Self { max_failures, reset_timeout, clock, state: CircuitBreakerState::Closed, failure_count: 0, opened_at: None }
+    Self {
+      max_failures,
+      reset_timeout,
+      open_reset_timeout: reset_timeout,
+      next_reset_timeout: reset_timeout,
+      max_reset_timeout: Duration::MAX,
+      exponential_backoff_factor: 1.0,
+      random_factor: 0.0,
+      jitter_seed: 0x9e37_79b9_7f4a_7c15,
+      clock,
+      state: CircuitBreakerState::Closed,
+      failure_count: 0,
+      opened_at: None,
+      open_listeners: Vec::new(),
+      half_open_listeners: Vec::new(),
+      close_listeners: Vec::new(),
+    }
+  }
+
+  /// Returns a copy configured to exponentially increase the open reset timeout.
+  ///
+  /// The multiplier is `2.0`, matching Pekko `withExponentialBackoff`.
+  #[must_use]
+  pub const fn with_exponential_backoff(mut self, max_reset_timeout: Duration) -> Self {
+    self.max_reset_timeout = max_reset_timeout;
+    self.exponential_backoff_factor = 2.0;
+    self
+  }
+
+  /// Returns a copy configured with additional random jitter for reset backoff.
+  ///
+  /// # Panics
+  ///
+  /// Panics when `random_factor` is outside `0.0..=1.0` or NaN.
+  #[must_use]
+  pub fn with_random_factor(mut self, random_factor: f64) -> Self {
+    assert!((0.0..=1.0).contains(&random_factor) && !random_factor.is_nan(), "random_factor must be in [0.0, 1.0]");
+    self.random_factor = random_factor;
+    self
+  }
+
+  /// Adds a listener invoked when the breaker enters the open state.
+  pub fn on_open<F>(&mut self, listener: F)
+  where
+    F: FnMut() + Send + 'static, {
+    self.open_listeners.push(Box::new(listener));
+  }
+
+  /// Adds a listener invoked when the breaker enters the half-open state.
+  pub fn on_half_open<F>(&mut self, listener: F)
+  where
+    F: FnMut() + Send + 'static, {
+    self.half_open_listeners.push(Box::new(listener));
+  }
+
+  /// Adds a listener invoked when the breaker enters the closed state.
+  pub fn on_close<F>(&mut self, listener: F)
+  where
+    F: FnMut() + Send + 'static, {
+    self.close_listeners.push(Box::new(listener));
   }
 
   /// Returns the current state of the circuit breaker.
@@ -92,6 +166,24 @@ impl<C: Clock> CircuitBreaker<C> {
     self.reset_timeout
   }
 
+  /// Returns the configured upper bound for exponential reset timeout backoff.
+  #[must_use]
+  pub const fn max_reset_timeout(&self) -> Duration {
+    self.max_reset_timeout
+  }
+
+  /// Returns the configured reset timeout backoff multiplier.
+  #[must_use]
+  pub const fn exponential_backoff_factor(&self) -> f64 {
+    self.exponential_backoff_factor
+  }
+
+  /// Returns the configured random jitter factor for reset timeout backoff.
+  #[must_use]
+  pub const fn random_factor(&self) -> f64 {
+    self.random_factor
+  }
+
   /// Checks whether a call is currently permitted.
   ///
   /// * **Closed** — always permitted.
@@ -109,12 +201,12 @@ impl<C: Clock> CircuitBreaker<C> {
       | CircuitBreakerState::Open => {
         let opened_at = self.opened_at_or_now();
         let elapsed = self.clock.elapsed_since(opened_at);
-        if elapsed >= self.reset_timeout {
+        if elapsed >= self.open_reset_timeout {
           // HalfOpen に遷移してプローブ呼び出しを許可する
-          self.state = CircuitBreakerState::HalfOpen;
+          self.transition_to_half_open();
           Ok(())
         } else {
-          Err(CircuitBreakerOpenError::new(self.reset_timeout - elapsed))
+          Err(CircuitBreakerOpenError::new(self.open_reset_timeout - elapsed))
         }
       },
       | CircuitBreakerState::HalfOpen => {
@@ -128,7 +220,7 @@ impl<C: Clock> CircuitBreaker<C> {
   }
 
   /// Records a successful call, transitioning to **Closed** if in **HalfOpen**.
-  pub const fn record_success(&mut self) {
+  pub fn record_success(&mut self) {
     match self.state {
       | CircuitBreakerState::HalfOpen => {
         self.transition_to_closed();
@@ -199,13 +291,19 @@ impl<C: Clock> CircuitBreaker<C> {
 
   fn transition_to_open(&mut self) {
     self.state = CircuitBreakerState::Open;
+    self.open_reset_timeout = self.next_reset_timeout;
     self.opened_at = Some(self.clock.now());
+    self.notify_open();
+    self.advance_next_reset_timeout();
   }
 
-  const fn transition_to_closed(&mut self) {
+  fn transition_to_closed(&mut self) {
     self.state = CircuitBreakerState::Closed;
     self.failure_count = 0;
     self.opened_at = None;
+    self.open_reset_timeout = self.reset_timeout;
+    self.next_reset_timeout = self.reset_timeout;
+    self.notify_close();
   }
 
   fn opened_at_or_now(&self) -> C::Instant {
@@ -213,6 +311,64 @@ impl<C: Clock> CircuitBreaker<C> {
   }
 
   fn remaining_in_open(&self) -> Duration {
-    self.opened_at.map_or(Duration::ZERO, |at| self.reset_timeout.saturating_sub(self.clock.elapsed_since(at)))
+    self.opened_at.map_or(Duration::ZERO, |at| self.open_reset_timeout.saturating_sub(self.clock.elapsed_since(at)))
+  }
+
+  fn transition_to_half_open(&mut self) {
+    self.state = CircuitBreakerState::HalfOpen;
+    self.notify_half_open();
+  }
+
+  fn notify_open(&mut self) {
+    for listener in &mut self.open_listeners {
+      listener();
+    }
+  }
+
+  fn notify_half_open(&mut self) {
+    for listener in &mut self.half_open_listeners {
+      listener();
+    }
+  }
+
+  fn notify_close(&mut self) {
+    for listener in &mut self.close_listeners {
+      listener();
+    }
+  }
+
+  fn advance_next_reset_timeout(&mut self) {
+    let multiplier = self.exponential_backoff_factor * self.next_jitter_multiplier();
+    let next = Self::mul_duration_capped(self.open_reset_timeout, multiplier, self.max_reset_timeout);
+    self.next_reset_timeout = next;
+  }
+
+  fn next_jitter_multiplier(&mut self) -> f64 {
+    if self.random_factor == 0.0 {
+      return 1.0;
+    }
+    let mut x = self.jitter_seed;
+    x ^= x << 13;
+    x ^= x >> 7;
+    x ^= x << 17;
+    self.jitter_seed = x;
+    1.0 + (x as f64 / u64::MAX as f64) * self.random_factor
+  }
+
+  fn mul_duration_capped(duration: Duration, factor: f64, max: Duration) -> Duration {
+    let scaled = duration.as_nanos() as f64 * factor;
+    if !scaled.is_finite() || scaled >= max.as_nanos() as f64 {
+      return max;
+    }
+    let truncated = scaled as u128;
+    let nanos = if scaled > truncated as f64 { truncated.saturating_add(1) } else { truncated };
+    Self::duration_from_nanos_capped(nanos).min(max)
+  }
+
+  const fn duration_from_nanos_capped(nanos: u128) -> Duration {
+    const NANOS_PER_SEC: u128 = 1_000_000_000;
+    let secs = nanos / NANOS_PER_SEC;
+    let sub_nanos = (nanos % NANOS_PER_SEC) as u32;
+    if secs > u64::MAX as u128 { Duration::MAX } else { Duration::new(secs as u64, sub_nanos) }
   }
 }

@@ -51,6 +51,12 @@ impl Actor for SelectionProbeActor {
     if let Some(text) = message.downcast_ref::<String>() {
       self.messages.lock().push(text.clone());
       self.senders.lock().push(ctx.sender().map(|sender| sender.pid()));
+      if text == "ask" {
+        let reply = AnyMessage::new(String::from("reply"));
+        if let Err(error) = ctx.reply(reply) {
+          return Err(ActorError::from_send_error(&error));
+        }
+      }
     }
     Ok(())
   }
@@ -406,6 +412,24 @@ fn actor_selection_forward_preserves_sender() {
   wait_until(|| messages.lock().len() == 1);
   assert_eq!(messages.lock().clone(), vec![String::from("forwarded")]);
   assert_eq!(senders.lock().clone(), vec![Some(sender.pid())]);
+}
+
+#[test]
+fn actor_selection_ask_delivers_request_and_returns_reply() {
+  let system = build_selection_system();
+  let (child, messages, senders) = spawn_selection_probe(&system);
+  let path = child.actor_ref().path().expect("path");
+  let selection = system.actor_selection_from_path(&path);
+
+  let response = selection.ask(AnyMessage::new(String::from("ask")), Duration::from_millis(100)).expect("ask");
+
+  wait_until(|| response.future().with_read(|future| future.is_ready()));
+  let result = response.future().with_write(|future| future.try_take()).expect("ready result");
+  let reply = result.expect("ask should succeed");
+  assert_eq!(reply.downcast_ref::<String>(), Some(&String::from("reply")));
+  assert_eq!(messages.lock().clone(), vec![String::from("ask")]);
+  assert_eq!(senders.lock().len(), 1);
+  assert!(senders.lock()[0].is_some());
 }
 
 #[test]

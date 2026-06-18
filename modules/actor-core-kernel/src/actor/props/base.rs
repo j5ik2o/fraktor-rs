@@ -8,7 +8,7 @@ use fraktor_utils_core_rs::collections::queue::capabilities::QueueCapabilityRegi
 
 use super::{
   deployable_props_metadata::DeployablePropsMetadata, factory::ActorFactory, factory_shared::ActorFactoryShared,
-  mailbox_config::MailboxConfig, mailbox_requirement::MailboxRequirement,
+  mailbox_config::MailboxConfig, mailbox_requirement::MailboxRequirement, requires_message_queue::RequiresMessageQueue,
 };
 use crate::{actor::Actor, dispatch::mailbox::MailboxPolicy};
 
@@ -69,6 +69,15 @@ impl Props {
     F: FnMut() -> A + Send + Sync + 'static,
     A: Actor + 'static, {
     Self::new(Box::new(factory))
+  }
+
+  /// Convenience helper to build props from an actor that declares mailbox requirements.
+  #[must_use]
+  pub fn from_required_fn<F, A>(factory: F) -> Self
+  where
+    F: FnMut() -> A + Send + Sync + 'static,
+    A: Actor + RequiresMessageQueue + 'static, {
+    Self::from_fn(factory).with_required_message_queue::<A>()
   }
 
   /// Replaces the actor factory while preserving every other props setting.
@@ -236,6 +245,14 @@ impl Props {
   pub fn with_mailbox_requirement(mut self, mailbox_requirement: MailboxRequirement) -> Self {
     self.mailbox_config = self.mailbox_config.with_requirement(mailbox_requirement);
     self
+  }
+
+  /// Applies the mailbox requirement declared by actor type `A`.
+  #[must_use]
+  pub fn with_required_message_queue<A>(self) -> Self
+  where
+    A: RequiresMessageQueue, {
+    self.with_mailbox_requirement(A::required_message_queue())
   }
 
   /// Configures the actor to use a deque-capable mailbox required by stash replay.

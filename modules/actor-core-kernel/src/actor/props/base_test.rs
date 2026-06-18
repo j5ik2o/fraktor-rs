@@ -6,7 +6,7 @@ use crate::{
     Actor, ActorContext,
     error::ActorError,
     messaging::{AnyMessage, AnyMessageView},
-    props::{DeployablePropsMetadata, MailboxConfig, Props},
+    props::{DeployablePropsMetadata, MailboxConfig, MailboxRequirement, Props, RequiresMessageQueue},
   },
   dispatch::mailbox::{MailboxOverflowStrategy, MailboxPolicy},
 };
@@ -16,6 +16,20 @@ struct TestActor;
 impl Actor for TestActor {
   fn receive(&mut self, _ctx: &mut ActorContext<'_>, _msg: AnyMessageView<'_>) -> Result<(), ActorError> {
     Ok(())
+  }
+}
+
+struct MultiConsumerActor;
+
+impl Actor for MultiConsumerActor {
+  fn receive(&mut self, _ctx: &mut ActorContext<'_>, _msg: AnyMessageView<'_>) -> Result<(), ActorError> {
+    Ok(())
+  }
+}
+
+impl RequiresMessageQueue for MultiConsumerActor {
+  fn required_message_queue() -> MailboxRequirement {
+    MailboxRequirement::requires_multiple_consumer()
   }
 }
 
@@ -101,4 +115,11 @@ fn with_stash_mailbox_accepts_bounded_mailbox_config() {
     .with_stash_mailbox();
 
   assert_eq!(props.mailbox_config().validate(), Ok(()));
+}
+
+#[test]
+fn required_message_queue_marker_sets_mailbox_requirement() {
+  let props = Props::from_required_fn(|| MultiConsumerActor);
+
+  assert!(props.mailbox_requirement().needs_multiple_consumer());
 }

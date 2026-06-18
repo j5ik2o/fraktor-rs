@@ -1,6 +1,6 @@
 //! Opt-in deque capability for message queue implementations.
 
-use super::envelope::Envelope;
+use super::{envelope::Envelope, mailbox_clock::MailboxClock};
 use crate::actor::error::SendError;
 
 /// Extension trait for message queues that support front-of-queue insertion.
@@ -14,4 +14,21 @@ pub trait DequeMessageQueue: Send + Sync {
   ///
   /// Returns [`SendError`] if the envelope cannot be accepted.
   fn enqueue_first(&self, envelope: Envelope) -> Result<(), SendError>;
+
+  /// Inserts an envelope at the front of the queue using the mailbox's
+  /// monotonic clock when an implementation needs timeout-aware offer
+  /// semantics.
+  ///
+  /// The default delegates to [`Self::enqueue_first`].
+  ///
+  /// # Errors
+  ///
+  /// Returns [`SendError`] if the envelope cannot be accepted.
+  fn enqueue_first_with_mailbox_clock(
+    &self,
+    envelope: Envelope,
+    _clock: Option<&MailboxClock>,
+  ) -> Result<(), SendError> {
+    self.enqueue_first(envelope)
+  }
 }

@@ -601,14 +601,14 @@ impl Mailbox {
       if self.is_closed() {
         return Err(EnqueueError::new(SendError::closed(envelope.into_payload())));
       }
-      self.user.enqueue(envelope)
+      self.user.enqueue_with_mailbox_clock(envelope, self.clock.as_ref())
     });
 
     self.complete_enqueue(enqueue_result)
   }
 
   fn enqueue_envelope_unlocked(&self, envelope: Envelope) -> Result<(), SendError> {
-    let enqueue_result = self.user.enqueue(envelope);
+    let enqueue_result = self.user.enqueue_with_mailbox_clock(envelope, self.clock.as_ref());
     self.complete_enqueue(enqueue_result)
   }
 
@@ -719,7 +719,7 @@ impl Mailbox {
   fn prepend_via_deque(&self, deque: &dyn DequeMessageQueue, messages: &VecDeque<AnyMessage>) -> Result<(), SendError> {
     // Insert in reverse order so the first message in `messages` ends up at the front.
     for message in messages.iter().rev().cloned() {
-      if let Err(error) = deque.enqueue_first(Envelope::new(message)) {
+      if let Err(error) = deque.enqueue_first_with_mailbox_clock(Envelope::new(message), self.clock.as_ref()) {
         self.publish_metrics_with_user_len(self.user.number_of_messages());
         return Err(error);
       }

@@ -4,21 +4,22 @@
 #[path = "bounded_message_queue_test.rs"]
 mod tests;
 
-use core::num::NonZeroUsize;
+use core::{num::NonZeroUsize, time::Duration};
 
 use fraktor_utils_core_rs::collections::queue::QueueError;
 
 use super::{
   QueueStateHandle, drop_oldest_outcome::DropOldestOutcome, enqueue_error::EnqueueError,
-  enqueue_outcome::EnqueueOutcome, envelope::Envelope, map_user_envelope_queue_error, message_queue::MessageQueue,
-  overflow_strategy::MailboxOverflowStrategy, policy::MailboxPolicy,
+  enqueue_outcome::EnqueueOutcome, envelope::Envelope, mailbox_clock::MailboxClock, map_user_envelope_queue_error,
+  message_queue::MessageQueue, overflow_strategy::MailboxOverflowStrategy, policy::MailboxPolicy, push_timeout,
 };
 
 /// Bounded message queue with a fixed capacity and configurable overflow behaviour.
 pub struct BoundedMessageQueue {
-  handle:   QueueStateHandle<Envelope>,
-  capacity: usize,
-  overflow: MailboxOverflowStrategy,
+  handle:       QueueStateHandle<Envelope>,
+  capacity:     usize,
+  overflow:     MailboxOverflowStrategy,
+  push_timeout: Option<Duration>,
 }
 
 impl BoundedMessageQueue {
@@ -27,12 +28,35 @@ impl BoundedMessageQueue {
   pub fn new(capacity: NonZeroUsize, overflow: MailboxOverflowStrategy) -> Self {
     let policy = MailboxPolicy::bounded(capacity, overflow, None);
     let handle = QueueStateHandle::new_user(&policy);
-    Self { handle, capacity: capacity.get(), overflow }
+    Self { handle, capacity: capacity.get(), overflow, push_timeout: None }
+  }
+
+  /// Creates a new bounded message queue with Pekko-style push timeout semantics.
+  #[must_use]
+  pub fn new_with_push_timeout(
+    capacity: NonZeroUsize,
+    overflow: MailboxOverflowStrategy,
+    push_timeout: Duration,
+  ) -> Self {
+    let mut queue = Self::new(capacity, overflow);
+    queue.push_timeout = Some(push_timeout);
+    queue
   }
 }
 
 impl MessageQueue for BoundedMessageQueue {
   fn enqueue(&self, envelope: Envelope) -> Result<EnqueueOutcome, EnqueueError> {
+    self.enqueue_with_mailbox_clock(envelope, None)
+  }
+
+  fn enqueue_with_mailbox_clock(
+    &self,
+    envelope: Envelope,
+    clock: Option<&MailboxClock>,
+  ) -> Result<EnqueueOutcome, EnqueueError> {
+    if let Some(timeout) = self.push_timeout {
+      return self.offer_with_push_timeout(envelope, timeout, clock);
+    }
     match self.overflow {
       | MailboxOverflowStrategy::DropNewest => self.offer_if_room(envelope),
       | MailboxOverflowStrategy::DropOldest => self.offer_after_dropping_oldest(envelope),
@@ -74,6 +98,28 @@ impl BoundedMessageQueue {
       | Err(QueueError::Full(rejected) | QueueError::OfferError(rejected)) => Ok(EnqueueOutcome::Rejected(rejected)),
       // 真の失敗 (closed / timeout / alloc error) は呼び出し元に伝播する。
       | Err(error) => Err(EnqueueError::new(map_user_envelope_queue_error(error))),
+    }
+  }
+
+  fn offer_with_push_timeout(
+    &self,
+    mut envelope: Envelope,
+    timeout: Duration,
+    clock: Option<&MailboxClock>,
+  ) -> Result<EnqueueOutcome, EnqueueError> {
+    let deadline = push_timeout::push_timeout_deadline(clock, timeout);
+    loop {
+      match self.handle.offer_if_room(envelope, self.capacity) {
+        | Ok(_) => return Ok(EnqueueOutcome::Accepted),
+        | Err(QueueError::Full(rejected) | QueueError::OfferError(rejected)) => {
+          envelope = rejected;
+          if !push_timeout::should_retry_after_full(clock, deadline) {
+            return Ok(EnqueueOutcome::Rejected(envelope));
+          }
+          push_timeout::spin_before_push_timeout_retry();
+        },
+        | Err(error) => return Err(EnqueueError::new(map_user_envelope_queue_error(error))),
+      }
     }
   }
 

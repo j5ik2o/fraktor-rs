@@ -10,7 +10,7 @@ use core::num::NonZeroUsize;
 
 use fraktor_utils_core_rs::{collections::queue::capabilities::QueueCapabilityRegistry, sync::ArcShared};
 
-use super::{MailboxPolicy, MailboxType, MessageQueue};
+use super::{MailboxPolicy, MailboxType, MessageQueue, MessageQueueSemantics};
 use crate::actor::props::{MailboxConfigError, MailboxRequirement};
 
 /// Builder-facing extension point for mailbox installation.
@@ -83,5 +83,14 @@ pub trait MailboxFactory: Send + Sync {
   /// spawn-time capability checks.
   fn capabilities(&self) -> QueueCapabilityRegistry {
     QueueCapabilityRegistry::with_defaults()
+  }
+
+  /// Returns the queue semantics produced by this factory.
+  ///
+  /// Custom factories should override this when they require compatibility
+  /// checks such as `MultipleConsumerSemantics`. The default mirrors the
+  /// conservative unbounded mailbox contract.
+  fn produced_queue_semantics(&self) -> MessageQueueSemantics {
+    MessageQueueSemantics::unbounded()
   }
 }

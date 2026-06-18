@@ -1,6 +1,6 @@
 //! Public classic auto-receive message that requests graceful actor termination.
 
-use crate::actor::messaging::system_message::SystemMessage;
+use crate::actor::messaging::{DeadLetterSuppression, PossiblyHarmful, system_message::SystemMessage};
 
 /// Public classic auto-receive message that requests graceful actor termination.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -11,3 +11,7 @@ impl From<PoisonPill> for SystemMessage {
     Self::PoisonPill
   }
 }
+
+impl DeadLetterSuppression for PoisonPill {}
+
+impl PossiblyHarmful for PoisonPill {}

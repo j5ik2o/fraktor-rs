@@ -16,13 +16,23 @@ pub struct AnyMessageView<'a> {
   sender: Option<&'a ActorRef>,
   is_control: bool,
   not_influence_receive_timeout: bool,
+  dead_letter_suppressed: bool,
+  possibly_harmful: bool,
 }
 
 impl<'a> AnyMessageView<'a> {
   /// Creates a new borrowed message view.
   #[must_use]
   pub fn new(payload: &'a (dyn Any + Send + Sync + 'static), sender: Option<&'a ActorRef>) -> Self {
-    Self { payload, type_id: (*payload).type_id(), sender, is_control: false, not_influence_receive_timeout: false }
+    Self {
+      payload,
+      type_id: (*payload).type_id(),
+      sender,
+      is_control: false,
+      not_influence_receive_timeout: false,
+      dead_letter_suppressed: false,
+      possibly_harmful: false,
+    }
   }
 
   /// Creates a new borrowed message view with a control flag.
@@ -36,7 +46,15 @@ impl<'a> AnyMessageView<'a> {
     sender: Option<&'a ActorRef>,
     is_control: bool,
   ) -> Self {
-    Self { payload, type_id: (*payload).type_id(), sender, is_control, not_influence_receive_timeout: false }
+    Self {
+      payload,
+      type_id: (*payload).type_id(),
+      sender,
+      is_control,
+      not_influence_receive_timeout: false,
+      dead_letter_suppressed: false,
+      possibly_harmful: false,
+    }
   }
 
   /// Creates a new borrowed message view carrying every envelope flag.
@@ -50,8 +68,18 @@ impl<'a> AnyMessageView<'a> {
     sender: Option<&'a ActorRef>,
     is_control: bool,
     not_influence_receive_timeout: bool,
+    dead_letter_suppressed: bool,
+    possibly_harmful: bool,
   ) -> Self {
-    Self { payload, type_id: (*payload).type_id(), sender, is_control, not_influence_receive_timeout }
+    Self {
+      payload,
+      type_id: (*payload).type_id(),
+      sender,
+      is_control,
+      not_influence_receive_timeout,
+      dead_letter_suppressed,
+      possibly_harmful,
+    }
   }
 
   /// Returns the [`TypeId`] of the payload.
@@ -83,5 +111,19 @@ impl<'a> AnyMessageView<'a> {
   #[must_use]
   pub const fn not_influence_receive_timeout(&self) -> bool {
     self.not_influence_receive_timeout
+  }
+
+  /// Returns whether this message carries the `DeadLetterSuppression` marker
+  /// (Pekko `ActorRef.scala:573`).
+  #[must_use]
+  pub const fn dead_letter_suppressed(&self) -> bool {
+    self.dead_letter_suppressed
+  }
+
+  /// Returns whether this message carries the `PossiblyHarmful` marker
+  /// (Pekko `Actor.scala:39`).
+  #[must_use]
+  pub const fn possibly_harmful(&self) -> bool {
+    self.possibly_harmful
   }
 }

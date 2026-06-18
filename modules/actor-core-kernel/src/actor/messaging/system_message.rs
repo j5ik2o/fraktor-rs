@@ -58,6 +58,24 @@ pub enum SystemMessage {
 
 impl From<SystemMessage> for AnyMessage {
   fn from(value: SystemMessage) -> Self {
-    AnyMessage::new(value)
+    let dead_letter_suppressed = value.is_dead_letter_suppressed();
+    let possibly_harmful = value.is_possibly_harmful();
+    AnyMessage::from_marked(value, false, false, dead_letter_suppressed, possibly_harmful)
+  }
+}
+
+impl SystemMessage {
+  /// Returns whether this system message should use suppressed dead-letter
+  /// observation when delivery fails.
+  #[must_use]
+  pub const fn is_dead_letter_suppressed(&self) -> bool {
+    matches!(self, Self::PoisonPill | Self::DeathWatchNotification(_))
+  }
+
+  /// Returns whether this system message may be harmful when accepted from an
+  /// untrusted remote endpoint.
+  #[must_use]
+  pub const fn is_possibly_harmful(&self) -> bool {
+    matches!(self, Self::PoisonPill | Self::Kill | Self::DeathWatchNotification(_))
   }
 }

@@ -52,6 +52,7 @@ mod mailbox_poll_future;
 mod mailbox_queue_handles;
 mod mailbox_queue_state;
 mod mailbox_registry_error;
+mod mailbox_selection;
 /// Factory trait for creating message queue instances.
 mod mailbox_type;
 mod mailboxes;
@@ -59,10 +60,13 @@ mod mailboxes;
 mod message_priority_generator;
 /// Pluggable message queue trait.
 mod message_queue;
+mod message_queue_semantics;
 /// Event describing mailbox utilisation metrics.
 pub mod metrics_event;
 mod overflow_strategy;
 mod policy;
+mod produces_message_queue;
+mod push_timeout;
 mod schedule_hints;
 mod schedule_state;
 /// Heap entry with sequence number for stable ordering among equal-priority messages.
@@ -119,13 +123,16 @@ pub use mailbox_instrumentation::MailboxInstrumentation;
 pub use mailbox_poll_future::MailboxPollFuture;
 pub(crate) use mailbox_queue_handles::QueueStateHandle;
 pub use mailbox_registry_error::MailboxRegistryError;
+pub use mailbox_selection::MailboxSelection;
 pub use mailbox_type::MailboxType;
 pub use mailboxes::Mailboxes;
 pub(crate) use mailboxes::{create_message_queue_from_config, select_mailbox_type_from_config};
 pub use message_priority_generator::MessagePriorityGenerator;
 pub use message_queue::MessageQueue;
+pub use message_queue_semantics::MessageQueueSemantics;
 pub use overflow_strategy::MailboxOverflowStrategy;
 pub use policy::MailboxPolicy;
+pub use produces_message_queue::ProducesMessageQueue;
 pub use schedule_hints::ScheduleHints;
 pub(crate) use schedule_state::{CloseRequestOutcome, MailboxScheduleState, RunFinishOutcome};
 pub(crate) use system_queue::SystemQueue;

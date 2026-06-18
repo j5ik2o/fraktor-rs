@@ -15,3 +15,14 @@ fn ensure_supported_passes_when_present() {
   let registry = QueueCapabilityRegistry::with_defaults();
   assert!(requirement.ensure_supported(&registry).is_ok());
 }
+
+#[test]
+fn multiple_consumer_requirement_is_tracked_separately() {
+  let requirement = MailboxRequirement::requires_multiple_consumer().with_control_aware();
+
+  assert!(requirement.needs_multiple_consumer());
+  assert!(requirement.needs_control_aware());
+  assert!(!requirement.needs_deque());
+  assert!(!requirement.is_empty());
+  assert!(MailboxRequirement::none().is_empty());
+}

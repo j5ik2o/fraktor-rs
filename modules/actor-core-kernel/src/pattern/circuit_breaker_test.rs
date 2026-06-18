@@ -8,6 +8,8 @@ use core::{
   time::Duration,
 };
 
+use fraktor_utils_core_rs::sync::{ArcShared, SpinSyncMutex};
+
 use super::CircuitBreaker;
 use crate::pattern::{CircuitBreakerState, Clock};
 
@@ -232,4 +234,73 @@ fn open_error_reports_correct_remaining_duration() {
   let err = cb.is_call_permitted().unwrap_err();
 
   assert_eq!(err.remaining(), Duration::from_millis(70));
+}
+
+#[test]
+fn transition_listeners_run_on_state_entry() {
+  let clock = FakeClock::new();
+  let events = ArcShared::new(SpinSyncMutex::new(Vec::<&'static str>::new()));
+  let mut cb = CircuitBreaker::new_with_clock(1, Duration::from_millis(10), clock.clone());
+
+  let open_events = events.clone();
+  cb.on_open(move || open_events.lock().push("open"));
+  let half_open_events = events.clone();
+  cb.on_half_open(move || half_open_events.lock().push("half-open"));
+  let close_events = events.clone();
+  cb.on_close(move || close_events.lock().push("closed"));
+
+  cb.record_failure();
+  clock.advance(Duration::from_millis(10));
+  assert!(cb.is_call_permitted().is_ok());
+  cb.record_success();
+
+  assert_eq!(*events.lock(), vec!["open", "half-open", "closed"]);
+}
+
+#[test]
+fn exponential_backoff_extends_next_open_reset_timeout() {
+  let clock = FakeClock::new();
+  let mut cb = CircuitBreaker::new_with_clock(1, Duration::from_millis(10), clock.clone())
+    .with_exponential_backoff(Duration::from_millis(100));
+
+  cb.record_failure();
+  clock.advance(Duration::from_millis(10));
+  assert!(cb.is_call_permitted().is_ok());
+  cb.record_failure();
+
+  clock.advance(Duration::from_millis(10));
+  let err = cb.is_call_permitted().unwrap_err();
+  assert_eq!(err.remaining(), Duration::from_millis(10));
+
+  clock.advance(Duration::from_millis(10));
+  assert!(cb.is_call_permitted().is_ok());
+}
+
+#[test]
+fn exponential_backoff_is_capped_by_max_reset_timeout() {
+  let clock = FakeClock::new();
+  let mut cb = CircuitBreaker::new_with_clock(1, Duration::from_millis(10), clock.clone())
+    .with_exponential_backoff(Duration::from_millis(15));
+
+  cb.record_failure();
+  clock.advance(Duration::from_millis(10));
+  assert!(cb.is_call_permitted().is_ok());
+  cb.record_failure();
+
+  clock.advance(Duration::from_millis(14));
+  assert!(cb.is_call_permitted().is_err());
+  clock.advance(Duration::from_millis(1));
+  assert!(cb.is_call_permitted().is_ok());
+}
+
+#[test]
+fn random_factor_is_exposed_as_builder_configuration() {
+  let cb = CircuitBreaker::new_with_clock(1, Duration::from_millis(10), FakeClock::new()).with_random_factor(0.25);
+  assert_eq!(cb.random_factor(), 0.25);
+}
+
+#[test]
+#[should_panic(expected = "random_factor must be in [0.0, 1.0]")]
+fn random_factor_rejects_out_of_range_values() {
+  drop(CircuitBreaker::new_with_clock(1, Duration::from_millis(10), FakeClock::new()).with_random_factor(1.5));
 }

@@ -33,6 +33,8 @@ fn poison_pill_message_round_trips_through_any_message() {
   let view = stored.as_view();
   let recovered = view.downcast_ref::<SystemMessage>().expect("system message");
   assert_eq!(recovered, &payload);
+  assert!(view.dead_letter_suppressed());
+  assert!(view.possibly_harmful());
 }
 
 #[test]
@@ -49,6 +51,16 @@ fn poison_pill_public_message_is_stored_as_distinct_payload_in_any_message() {
   let view = stored.as_view();
   assert!(view.downcast_ref::<PoisonPill>().is_some());
   assert!(view.downcast_ref::<SystemMessage>().is_none());
+  assert!(!view.dead_letter_suppressed());
+}
+
+#[test]
+fn poison_pill_public_message_can_carry_dead_letter_suppression_marker() {
+  let stored = AnyMessage::dead_letter_suppressed(PoisonPill);
+  let view = stored.as_view();
+
+  assert!(view.downcast_ref::<PoisonPill>().is_some());
+  assert!(view.dead_letter_suppressed());
 }
 
 #[test]
@@ -58,6 +70,8 @@ fn kill_message_round_trips_through_any_message() {
   let view = stored.as_view();
   let recovered = view.downcast_ref::<SystemMessage>().expect("system message");
   assert_eq!(recovered, &payload);
+  assert!(!view.dead_letter_suppressed());
+  assert!(view.possibly_harmful());
 }
 
 #[test]
@@ -74,6 +88,16 @@ fn kill_public_message_is_stored_as_distinct_payload_in_any_message() {
   let view = stored.as_view();
   assert!(view.downcast_ref::<Kill>().is_some());
   assert!(view.downcast_ref::<SystemMessage>().is_none());
+  assert!(!view.possibly_harmful());
+}
+
+#[test]
+fn kill_public_message_can_carry_possibly_harmful_marker() {
+  let stored = AnyMessage::possibly_harmful(Kill);
+  let view = stored.as_view();
+
+  assert!(view.downcast_ref::<Kill>().is_some());
+  assert!(view.possibly_harmful());
 }
 
 #[test]
@@ -155,6 +179,8 @@ fn death_watch_notification_round_trips_through_any_message() {
   let view = stored.as_view();
   let recovered = view.downcast_ref::<SystemMessage>().expect("system message");
   assert_eq!(recovered, &payload);
+  assert!(view.dead_letter_suppressed());
+  assert!(view.possibly_harmful());
   match recovered {
     | SystemMessage::DeathWatchNotification(pid) => assert_eq!(pid, &target),
     | other => panic!("expected SystemMessage::DeathWatchNotification, got {other:?}"),

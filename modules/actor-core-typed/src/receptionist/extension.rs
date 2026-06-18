@@ -86,7 +86,9 @@ impl Receptionist {
     })
   }
 
-  const fn from_actor_ref(actor_ref: TypedActorRef<ReceptionistCommand>) -> Self {
+  /// Creates a receptionist facade from an actor reference.
+  #[must_use]
+  pub const fn from_actor_ref(actor_ref: TypedActorRef<ReceptionistCommand>) -> Self {
     Self { actor_ref }
   }
 

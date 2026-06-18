@@ -7,6 +7,7 @@ use super::{
   message_dispatcher_factory::MessageDispatcherFactory, message_dispatcher_shared::MessageDispatcherShared,
   shared_message_queue::SharedMessageQueue,
 };
+use crate::{actor::props::MailboxRequirement, dispatch::mailbox::MailboxFactory};
 
 /// Configurator that holds a single eagerly built [`BalancingDispatcher`] handle.
 ///
@@ -23,6 +24,26 @@ impl BalancingDispatcherFactory {
   pub fn new(config: &DispatcherConfig, executor: ExecutorShared, shared_queue: SharedMessageQueue) -> Self {
     let dispatcher = BalancingDispatcher::new(config, executor, shared_queue);
     Self { shared: MessageDispatcherShared::new(Box::new(dispatcher)) }
+  }
+
+  /// Builds a new configurator after validating mailbox compatibility.
+  ///
+  /// Returns `None` when `mailbox_factory` does not advertise
+  /// multiple-consumer queue semantics.
+  #[must_use]
+  pub fn new_checked(
+    config: &DispatcherConfig,
+    executor: ExecutorShared,
+    shared_queue: SharedMessageQueue,
+    mailbox_factory: &dyn MailboxFactory,
+  ) -> Option<Self> {
+    if Self::is_mailbox_compatible(mailbox_factory) { Some(Self::new(config, executor, shared_queue)) } else { None }
+  }
+
+  /// Returns whether `mailbox_factory` satisfies the balancing dispatcher mailbox contract.
+  #[must_use]
+  pub fn is_mailbox_compatible(mailbox_factory: &dyn MailboxFactory) -> bool {
+    mailbox_factory.produced_queue_semantics().satisfies(MailboxRequirement::requires_multiple_consumer())
   }
 }
 

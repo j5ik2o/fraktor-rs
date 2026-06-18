@@ -1,4 +1,4 @@
-use core::num::NonZeroUsize;
+use core::{num::NonZeroUsize, time::Duration};
 
 use super::MailboxPolicy;
 use crate::dispatch::mailbox::{MailboxCapacity, MailboxOverflowStrategy};
@@ -25,9 +25,20 @@ fn with_overrides_return_new_values() {
   let policy = MailboxPolicy::bounded(capacity, MailboxOverflowStrategy::DropOldest, None)
     .with_overflow(MailboxOverflowStrategy::Grow)
     .with_throughput_limit(NonZeroUsize::new(8))
+    .with_push_timeout(Some(Duration::from_millis(25)))
     .with_capacity(MailboxCapacity::Unbounded);
 
   assert_eq!(policy.capacity(), MailboxCapacity::Unbounded);
   assert_eq!(policy.overflow(), MailboxOverflowStrategy::Grow);
   assert_eq!(policy.throughput_limit(), NonZeroUsize::new(8));
+  assert_eq!(policy.push_timeout(), Some(Duration::from_millis(25)));
+}
+
+#[test]
+fn push_timeout_defaults_to_none_and_can_be_overridden() {
+  let capacity = NonZeroUsize::new(8).unwrap();
+  let policy = MailboxPolicy::bounded(capacity, MailboxOverflowStrategy::DropNewest, None);
+
+  assert_eq!(policy.push_timeout(), None);
+  assert_eq!(policy.with_push_timeout(Some(Duration::ZERO)).push_timeout(), Some(Duration::ZERO));
 }

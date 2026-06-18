@@ -3,7 +3,10 @@ use core::time::Duration;
 
 use fraktor_utils_core_rs::sync::{ArcShared, SpinSyncMutex};
 
-use super::{Fsm, FsmReason, FsmStateTimeout, FsmTimerFired, FsmTransition, LoggingFsm};
+use super::{
+  Fsm, FsmCurrentState, FsmReason, FsmStateTimeout, FsmStateTransition, FsmSubscribeTransitionCallback, FsmTimerFired,
+  FsmTransition, FsmUnsubscribeTransitionCallback, LoggingFsm,
+};
 use crate::{
   actor::{
     Actor, ActorCell, ActorContext, Pid,
@@ -107,6 +110,61 @@ fn fsm_transitions_and_reports_transition_callback() {
   assert_eq!(fsm.state_name(), Some(&ProbeState::Active));
   assert_eq!(fsm.state_data(), Some(&1));
   assert_eq!(transitions.lock().as_slice(), &[(ProbeState::Idle, ProbeState::Active)]);
+}
+
+#[test]
+fn fsm_transition_subscription_sends_current_state_and_transition() {
+  let (_system, mut ctx) = build_context();
+  let (inbox, listener) = capturing_sender(Pid::new(1_000, 0));
+  let mut fsm = Fsm::<ProbeState, usize>::new();
+  fsm.start_with(ProbeState::Idle, 0);
+  fsm.when(ProbeState::Idle, |_ctx, message: &AnyMessageView<'_>, _state, _data| {
+    if message.downcast_ref::<Advance>().is_some() {
+      return Ok(FsmTransition::goto(ProbeState::Active));
+    }
+    Ok(FsmTransition::unhandled())
+  });
+  fsm.initialize(&ctx).expect("initialize");
+
+  let subscribe = AnyMessage::new(FsmSubscribeTransitionCallback::new(listener));
+  fsm.handle(&mut ctx, &subscribe.as_view()).expect("subscribe");
+  let advance = AnyMessage::new(Advance);
+  fsm.handle(&mut ctx, &advance.as_view()).expect("advance");
+
+  let inbox = inbox.lock();
+  let current = inbox[0].downcast_ref::<FsmCurrentState<ProbeState>>().expect("current state notification");
+  assert_eq!(current.state(), &ProbeState::Idle);
+  assert_eq!(current.fsm_ref().pid(), ctx.pid());
+  let transition = inbox[1].downcast_ref::<FsmStateTransition<ProbeState>>().expect("transition notification");
+  assert_eq!(transition.from(), &ProbeState::Idle);
+  assert_eq!(transition.to(), &ProbeState::Active);
+  assert_eq!(transition.fsm_ref().pid(), ctx.pid());
+}
+
+#[test]
+fn fsm_transition_unsubscribe_stops_notifications() {
+  let (_system, mut ctx) = build_context();
+  let (inbox, listener) = capturing_sender(Pid::new(1_001, 0));
+  let mut fsm = Fsm::<ProbeState, usize>::new();
+  fsm.start_with(ProbeState::Idle, 0);
+  fsm.when(ProbeState::Idle, |_ctx, message: &AnyMessageView<'_>, _state, _data| {
+    if message.downcast_ref::<Advance>().is_some() {
+      return Ok(FsmTransition::goto(ProbeState::Active));
+    }
+    Ok(FsmTransition::unhandled())
+  });
+  fsm.initialize(&ctx).expect("initialize");
+
+  let subscribe = AnyMessage::new(FsmSubscribeTransitionCallback::new(listener.clone()));
+  fsm.handle(&mut ctx, &subscribe.as_view()).expect("subscribe");
+  let unsubscribe = AnyMessage::new(FsmUnsubscribeTransitionCallback::new(listener));
+  fsm.handle(&mut ctx, &unsubscribe.as_view()).expect("unsubscribe");
+  let advance = AnyMessage::new(Advance);
+  fsm.handle(&mut ctx, &advance.as_view()).expect("advance");
+
+  let inbox = inbox.lock();
+  assert_eq!(inbox.len(), 1);
+  assert!(inbox[0].downcast_ref::<FsmCurrentState<ProbeState>>().is_some());
 }
 
 #[test]

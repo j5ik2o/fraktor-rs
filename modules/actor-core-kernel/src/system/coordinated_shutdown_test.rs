@@ -12,6 +12,11 @@ use fraktor_utils_core_rs::{
 use tokio::sync::Barrier;
 
 use super::*;
+use crate::actor::{
+  Pid,
+  actor_ref::{ActorRef, NullSender},
+  messaging::AnyMessage,
+};
 
 #[derive(Clone)]
 struct SharedManualDelayProvider {
@@ -99,6 +104,77 @@ fn total_timeout_sums_phases_with_tasks() {
   cs.add_task(CoordinatedShutdown::PHASE_SERVICE_STOP, "t1", || async {}).unwrap();
   cs.add_task(CoordinatedShutdown::PHASE_SERVICE_UNBIND, "t2", || async {}).unwrap();
   assert_eq!(cs.total_timeout(), DEFAULT_PHASE_TIMEOUT * 2);
+}
+
+#[tokio::test]
+async fn add_cancellable_task_skips_cancelled_task() {
+  let cs = default_shutdown();
+  let counter = ArcShared::new(AtomicU32::new(0));
+  let c = counter.clone();
+  let handle = cs
+    .add_cancellable_task(CoordinatedShutdown::PHASE_SERVICE_STOP, "cancellable", move || async move {
+      c.fetch_add(1, Ordering::SeqCst);
+    })
+    .unwrap();
+
+  assert!(handle.cancel());
+  cs.run(CoordinatedShutdownReason::Unknown).await;
+
+  assert!(handle.is_cancelled());
+  assert_eq!(counter.load(Ordering::SeqCst), 0);
+}
+
+#[tokio::test]
+async fn add_cancellable_task_marks_completed_after_run() {
+  let cs = default_shutdown();
+  let counter = ArcShared::new(AtomicU32::new(0));
+  let c = counter.clone();
+  let handle = cs
+    .add_cancellable_task(CoordinatedShutdown::PHASE_SERVICE_STOP, "cancellable", move || async move {
+      c.fetch_add(1, Ordering::SeqCst);
+    })
+    .unwrap();
+
+  cs.run(CoordinatedShutdownReason::Unknown).await;
+
+  assert!(handle.is_completed());
+  assert_eq!(counter.load(Ordering::SeqCst), 1);
+}
+
+#[tokio::test]
+async fn add_actor_termination_task_completes_for_absent_actor() {
+  let system = ActorSystem::new_empty();
+  let actor = ActorRef::with_system(Pid::new(42, 0), NullSender, &system.state());
+  let cs = default_shutdown();
+  let marker = ArcShared::new(AtomicU32::new(0));
+  let m = marker.clone();
+
+  cs.add_actor_termination_task(CoordinatedShutdown::PHASE_SERVICE_STOP, "actor-termination", actor, None).unwrap();
+  cs.add_task(CoordinatedShutdown::PHASE_SERVICE_STOP, "marker", move || async move {
+    m.fetch_add(1, Ordering::SeqCst);
+  })
+  .unwrap();
+  cs.run(CoordinatedShutdownReason::Unknown).await;
+
+  assert_eq!(marker.load(Ordering::SeqCst), 1);
+}
+
+#[tokio::test]
+async fn add_actor_termination_task_accepts_stop_message() {
+  let system = ActorSystem::new_empty();
+  let actor = ActorRef::with_system(Pid::new(43, 0), NullSender, &system.state());
+  let cs = default_shutdown();
+
+  cs.add_actor_termination_task(
+    CoordinatedShutdown::PHASE_SERVICE_STOP,
+    "actor-termination",
+    actor,
+    Some(AnyMessage::new("stop")),
+  )
+  .unwrap();
+  cs.run(CoordinatedShutdownReason::Unknown).await;
+
+  assert!(cs.is_running());
 }
 
 #[test]

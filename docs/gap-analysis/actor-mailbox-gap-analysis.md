@@ -1,13 +1,14 @@
 # actor mailbox ギャップ分析
 
-更新日: 2026-05-12
+更新日: 2026-06-19
 
 ## 結論
 
 Mailbox にスコープを絞って深さ優先で見ると、fraktor-rs の actor mailbox は「実行時の drain / system 優先 / dead letter 観測」というコア挙動はかなり Pekko 互換に近い。
 
-一方で、弱いのは queue 実装そのものよりも **mailbox 選択契約** と **blocking bounded mailbox 契約** である。  
-つまり、`actor` モジュール全体では高い parity に見えても、Mailbox だけを掘ると「実行コアは強いが、設定・選択・bounded semantics はまだ簡略化されている」という非対称さが見える。
+2026-06-19 時点では、`RequiresMessageQueue` / `ProducesMessageQueue` / `MessageQueueSemantics`, `Mailboxes::lookup_by_queue_type`, `MailboxSelection`, `BalancingDispatcherFactory::new_checked` により、Pekko の queue type 宣言・selection precedence・balancing compatibility contract も公開契約として到達可能になった。さらに `MailboxPolicy::with_push_timeout` により、Pekko `pushTimeOut` に相当する finite/zero timeout bounded enqueue 契約も公開 API として到達可能になった。
+
+Mailbox スコープで残る差分は、`push_timeout` を使わない bounded control-aware mailbox の overflow ルールが control 保護のために Pekko と完全同型ではない点に限られる。
 
 ## 比較スコープ定義
 
@@ -15,11 +16,11 @@ Mailbox にスコープを絞って深さ優先で見ると、fraktor-rs の act
 
 | 領域 | fraktor-rs | Pekko |
 |------|------------|-------|
-| mailbox run loop / scheduling gate | `modules/actor-core/src/core/kernel/dispatch/mailbox/base.rs` | `references/pekko/actor/src/main/scala/org/apache/pekko/dispatch/Mailbox.scala` |
-| message queue family | `modules/actor-core/src/core/kernel/dispatch/mailbox/*message_queue*.rs` | `Mailbox.scala` の各 `MailboxType` / `MessageQueue` |
-| mailbox registry / selection | `modules/actor-core/src/core/kernel/dispatch/mailbox/mailboxes.rs` | `Mailboxes.scala` |
-| props / requirement / spawn-time validation | `modules/actor-core/src/core/kernel/actor/props/*.rs`, `modules/actor-core/src/core/kernel/system/base.rs` | `Mailboxes.scala`, `actor-typed/Props.scala` |
-| dispatcher-mailbox binding | `modules/actor-core/src/core/kernel/dispatch/dispatcher/*.rs` | `Dispatcher.scala`, `Dispatchers.scala`, `BalancingDispatcher.scala` |
+| mailbox run loop / scheduling gate | `modules/actor-core-kernel/src/dispatch/mailbox/base.rs` | `references/pekko/actor/src/main/scala/org/apache/pekko/dispatch/Mailbox.scala` |
+| message queue family | `modules/actor-core-kernel/src/dispatch/mailbox/*message_queue*.rs` | `Mailbox.scala` の各 `MailboxType` / `MessageQueue` |
+| mailbox registry / selection | `modules/actor-core-kernel/src/dispatch/mailbox/mailboxes.rs` | `Mailboxes.scala` |
+| props / requirement / spawn-time validation | `modules/actor-core-kernel/src/actor/props/*.rs`, `modules/actor-core-kernel/src/system/*.rs` | `Mailboxes.scala`, `actor-typed/Props.scala` |
+| dispatcher-mailbox binding | `modules/actor-core-kernel/src/dispatch/dispatcher/*.rs` | `Dispatcher.scala`, `Dispatchers.scala`, `BalancingDispatcher.scala` |
 
 今回のスコープから外すもの:
 
@@ -36,10 +37,10 @@ Mailbox にスコープを絞って深さ優先で見ると、fraktor-rs の act
 | run loop / scheduling | 高 | system message 優先、suspend 中の scheduling gate、throughput deadline、cleanup は強い |
 | queue family surface | 高 | bounded / unbounded / deque / priority / stable-priority / control-aware が揃う |
 | overflow / dead letter observability | 高 | reject / evict を dead letter に観測可能化している |
-| requirement / capability gate | 中 | spawn 前 capability 検証はあるが、Pekko の queue type mapping までは持たない |
-| mailbox selection / config 契約 | 中 | id registry はあるが、Pekko の `lookupByQueueType` や `bounded-capacity:` 相当はない |
-| blocking bounded mailbox semantics | 低 | `pushTimeOut` ベースの bounded mailbox 契約は未実装 |
-| BalancingDispatcher との mailbox 契約 | 中 | shared queue はあるが、Pekko の mailbox compatibility 契約は内部化されている |
+| requirement / capability gate | 高 | actor 側 `RequiresMessageQueue` と mailbox 側 `ProducesMessageQueue` / `MessageQueueSemantics` で capability contract を表現できる |
+| mailbox selection / config 契約 | 高 | explicit id → dispatcher id → actor requirement → dispatcher requirement → default の precedence と `lookup_by_queue_type` がある |
+| blocking bounded mailbox semantics | 高 | `MailboxPolicy::with_push_timeout` と mailbox clock 連携で finite/zero `pushTimeOut` 相当の bounded enqueue 契約を実装済み |
+| BalancingDispatcher との mailbox 契約 | 高 | `MultipleConsumerSemantics` 相当の requirement と `BalancingDispatcherFactory::new_checked` / `is_mailbox_compatible` がある |
 
 ## 詳細評価
 
@@ -64,7 +65,7 @@ fraktor-rs の `Mailbox::run` は、コメントと実装の両方で Pekko `Mai
 
 ### 2. queue family surface もかなり揃っている
 
-`modules/actor-core/src/core/kernel/dispatch/mailbox.rs` には、Pekko mailbox 調査で期待する主要な queue family がまとまって存在する。
+`modules/actor-core-kernel/src/dispatch/mailbox.rs` には、Pekko mailbox 調査で期待する主要な queue family がまとまって存在する。
 
 確認できた主な型:
 
@@ -89,28 +90,31 @@ fraktor-rs は bounded queue overflow を「黙って捨てる」のではなく
 - `DropOldest` を `Evicted` として扱い、押し出された envelope を dead letter 記録する
 - priority queue / stable-priority queue でも overflow 観測を維持する
 
-### 4. requirement / capability gate は部分対応
+### 4. requirement / capability gate は高い互換性
 
-ここは「未実装」ではなく「Pekko より簡略化されている」が正しい。
+ここは「未実装」ではなく、Pekko の marker trait model を Rust の明示的な trait / value contract に置き換えた対応済み領域である。
 
 fraktor-rs 側には:
 
 - `MailboxRequirement` がある
 - `Deque` / `ControlAware` / `BlockingFuture` の capability を宣言できる
+- `MultipleConsumerSemantics` 相当の capability を宣言できる
+- actor type が `RequiresMessageQueue` で要求 queue semantics を宣言できる
+- mailbox factory が `produced_queue_semantics()` / `ProducesMessageQueue` で提供 semantics を宣言できる
 - `ActorSystem::ensure_mailbox_requirements` が spawn 前に `requirement.ensure_supported(...)` を実行する
 - `Props::with_stash_mailbox()` で stash に必要な deque requirement を付けられる
+- `Props::with_required_message_queue::<A>()` / `Props::from_required_fn::<_, A>(...)` で actor type の requirement を props へ反映できる
 
 つまり、「この actor は deque-capable mailbox を必要とする」といった条件は検証できる。
 
-ただし、Pekko と比べると次がない:
+Pekko と完全同型ではない点は残る:
 
-- `RequiresMessageQueue[T]` のような actor class ベースの queue type 宣言
-- `mailbox.requirements` 設定から queue type を mailbox id へ引く mapping
-- `lookupByQueueType(...)` による queue type 主導の mailbox 選択
+- Scala/JVM の class hierarchy に基づく自動 reflection はない
+- HOCON の `mailbox.requirements` をそのまま読む configurator はない
 
-したがって、**capability 検証はあるが、queue type 解決モデルは Pekko よりかなり薄い**。
+したがって、**capability 検証と queue type contract は実装済みだが、HOCON / reflection 駆動の configurator は Rust の別設計として対象外**である。
 
-### 5. mailbox selection / config 契約は部分対応
+### 5. mailbox selection / config 契約は高い互換性
 
 Pekko の `Mailboxes.getMailboxType(...)` はかなり多段である。
 
@@ -122,28 +126,26 @@ Pekko の `Mailboxes.getMailboxType(...)` はかなり多段である。
 
 さらに `bounded-capacity:` のような programmatic bounded mailbox helper もある。
 
-これに対して fraktor-rs は次のように単純化されている。
+fraktor-rs は `MailboxSelection` と `Mailboxes::select(...)` で、Pekko 型の precedence を明示的に表現する。
 
-- `Props::with_mailbox_id(...)` で registry lookup
-- それ以外は `MailboxConfig`
-- `Mailboxes::select_mailbox_type_from_config(...)` は
-  - priority + stable-priority
-  - control-aware requirement
-  - deque requirement
-  - default
-  の順だけを見る
+- explicit mailbox id
+- dispatcher mailbox id
+- actor 側 requirement の `lookup_by_queue_type(...)`
+- dispatcher 側 requirement の `lookup_by_queue_type(...)`
+- default mailbox
 
-つまり、**選択ルールは理解しやすいが、Pekko の config-driven mailbox resolution とは同等ではない**。
+つまり、**選択 precedence と queue type lookup は公開 API として対応済み**である。
 
-ここで見えた具体差分:
+残る差分は HOCON 固有の configurator 形状である。
 
-- mailbox registry は単純な id → factory で、Pekko mailbox 側の alias chain 解決はない
 - `bounded-capacity:` 相当の helper がない
-- dispatcher config 側 mailbox requirement と actor 側 requirement の優先順位調停がない
+- Pekko mailbox 側の alias chain / fallback chain を HOCON として読む実装はない
 
-### 6. blocking bounded mailbox semantics は弱い
+これは `actor-gap-analysis.md` の固定スコープでは JVM/HOCON configurator を n/a としているため、残ギャップには数えない。
 
-今回の mailbox 深掘りで、もっともはっきりした非互換ポイントはここだった。
+### 6. blocking bounded mailbox semantics は対応済み
+
+今回の mailbox 深掘りで残っていた最大ギャップはここだったが、2026-06-19 時点で解消済みである。
 
 Pekko の bounded mailbox 群は `pushTimeOut` を持つ。
 
@@ -155,18 +157,19 @@ Pekko の bounded mailbox 群は `pushTimeOut` を持つ。
 
 そして `Mailboxes.lookupConfigurator(...)` は、非ゼロの `pushTimeOut` に対して warning を出す。
 
-fraktor-rs にはこの系統の契約がない。bounded 系 queue はすべて次の overflow strategy モデルに寄っている。
+fraktor-rs では `MailboxPolicy::with_push_timeout(Some(Duration))` で timeout-aware bounded enqueue を選択できる。mailbox runtime は `MessageQueue::enqueue_with_mailbox_clock(...)` / `DequeMessageQueue::enqueue_first_with_mailbox_clock(...)` に mailbox clock を渡し、bounded queue family は満杯時に空きが出るまで deadline まで再試行する。deadline 到達時は到着 envelope を `Rejected` / `SendError::Timeout` として返し、mailbox 層が dead letters へ観測可能化する。
 
-- `DropNewest`
-- `DropOldest`
-- `Grow`
+対象 queue family:
 
-つまり fraktor-rs は「bounded queue が満杯のとき、待つか、一定時間 block するか」ではなく、「どのメッセージを捨てるか」で振る舞いを決めている。
+- `BoundedMessageQueue`
+- `BoundedPriorityMessageQueue`
+- `BoundedStablePriorityMessageQueue`
+- `BoundedDequeMessageQueue`（front insertion を含む）
+- `BoundedControlAwareMessageQueue`
 
-この差は mailbox コアより大きい。  
-**Pekko の bounded mailbox semantics をそのまま使う前提では、ここが最大のギャップである。**
+`push_timeout` を指定しない場合は従来どおり `DropNewest` / `DropOldest` / `Grow` の overflow strategy が有効になる。したがって、非互換だった「bounded queue が満杯のとき一定時間待つ」契約は opt-in compatibility path として到達可能になった。
 
-ただし 2026-05-12 の async-first actor adapters 方針では、`pushTimeOut` 系 blocking bounded mailbox は意図的に実装優先度を下げる。std Tokio / Embassy の実行基盤では、mailbox enqueue 側を block して空きを待つより、dispatcher / executor adapter で短い drain を起動し、overflow は既存の reject / evict / dead letter 観測へ流すほうを優先する。`pushTimeOut` 互換は将来 std 限定の compatibility option として再検討できるが、現時点の先行対象ではない。
+Rust 側の API は `core::time::Duration` を受けるため、Pekko の HOCON / JVM configurator 形状そのものではなく、finite/zero timeout の queue contract を Rust API として表現する。
 
 ### 7. control-aware mailbox は存在するが bounded semantics は変形されている
 
@@ -178,51 +181,41 @@ fraktor-rs にはこの系統の契約がない。bounded 系 queue はすべて
 - normal queue が空なら到着 control envelope を reject する
 - これは「control message をなるべく落とさない」ための設計判断
 
-Pekko は bounded control-aware mailbox を `pushTimeOut` 付き queue として扱うため、ここは **同じ目的に対する別設計** であり、完全互換ではない。
+`push_timeout` を指定した場合は bounded control-aware mailbox も timeout-aware enqueue になり、満杯時に既存 envelope を evict しない。`push_timeout` を指定しない `DropOldest` path では、control 保護のために normal queue を優先 evict する独自ルールが残る。ここは **同じ目的に対する別設計** であり、完全互換ではない。
 
-### 8. BalancingDispatcher と mailbox の契約は部分対応
+### 8. BalancingDispatcher と mailbox の契約は高い互換性
 
 Pekko の `BalancingDispatcherConfigurator` は mailbox requirement と mailbox type の互換を明示的に検証する。
 
 - `MultipleConsumerSemantics` を要求する
 - supplied mailbox が requirement を満たすか確認する
 
-fraktor-rs の `BalancingDispatcher` は別アプローチで、dispatcher 内部に `SharedMessageQueue` を持ち、`try_create_shared_mailbox(...)` で sharing mailbox を返す。
+fraktor-rs は `MailboxRequirement::requires_multiple_consumer()` と `MessageQueueSemantics::satisfies(...)` でこの contract を表現し、`BalancingDispatcherFactory::new_checked(...)` / `is_mailbox_compatible(...)` で public に検証できる。
 
-これは runtime semantics としては妥当だが、次の差がある。
+runtime 側では引き続き dispatcher 内部に `SharedMessageQueue` を持ち、`try_create_shared_mailbox(...)` で sharing mailbox を返す。これは実行方式の違いであり、互換性チェックの公開契約は存在する。
 
-- custom mailbox type を balancing dispatcher に差し込む契約が露出していない
-- compatibility check が mailbox type レベルではなく dispatcher 内部実装に吸収されている
-- sharing mailbox は `MailboxPolicy::unbounded(None)` で構築されるため、Pekko の「互換 mailbox type を選ぶ」構図ではない
+残る差分は、Pekko の「設定ファイルから互換 mailbox type を選ぶ」構図ではなく、Rust API で factory semantics を直接検証する点である。
 
-したがって、**負荷分散の実行セマンティクスはあるが、mailbox 契約としての Pekko parity は弱い**。
+したがって、**負荷分散の実行セマンティクスと mailbox compatibility contract はどちらも対応済み**である。
 
 ## 主要ギャップ
 
 | ID | ギャップ | 重要度 | 内容 |
 |----|----------|--------|------|
-| MBX-H1 | blocking bounded mailbox 不在 | high gap / low priority | `pushTimeOut` 付き bounded mailbox 契約は差分として大きいが、async-first actor adapters 方針では意図的に低優先度とする |
-| MBX-M1 | mailbox requirement 解決モデルの簡略化 | medium | capability 検証はあるが、`RequiresMessageQueue[T]` / `lookupByQueueType` / `mailbox.requirements` mapping がない |
-| MBX-M2 | mailbox selection precedence の簡略化 | medium | Pekko の多段 config resolution ではなく、`mailbox_id` または `MailboxConfig` へ単純化されている |
-| MBX-M3 | BalancingDispatcher mailbox compatibility 契約の内部化 | medium | multiple-consumer mailbox compatibility が dispatcher 内部実装に吸収され、mailbox type 契約としては露出しない |
 | MBX-L1 | control-aware bounded overflow の差分 | low | control 優先保護のための独自 eviction ルールがあり、Pekko と完全同型ではない |
 
 ## まとめ
 
-Mailbox だけを深く見ると、fraktor-rs の actor mailbox は「drain loop・system 優先・dead letter 観測・主要 queue family」という **実行時コア** は強い。
+Mailbox だけを深く見ると、fraktor-rs の actor mailbox は「drain loop・system 優先・dead letter 観測・主要 queue family」という **実行時コア** は強い。2026-06-19 時点では、queue type / requirement ベースの mailbox 選択、BalancingDispatcher の mailbox compatibility contract、`pushTimeOut` 相当の timeout-aware bounded enqueue contract も公開 API として揃っている。
 
-一方で、Pekko 互換性が弱いのは次の領域である。
+一方で、Pekko 互換性に差分が残るのは次の領域である。
 
-- `pushTimeOut` を持つ bounded mailbox 契約
-- queue type / requirement ベースの mailbox 選択
-- BalancingDispatcher と mailbox type の compatibility contract
+- `push_timeout` を使わない bounded control-aware mailbox の独自 overflow rule
 
 したがって、Mailbox スコープの結論は次の一文に尽きる。
 
-**fraktor-rs の mailbox は runtime core parity は高いが、configuration-driven mailbox contract parity はまだ中程度である。**
+**fraktor-rs の mailbox は runtime core、selection contract、blocking bounded semantics の parity が高く、残差分は control-aware bounded overflow の低優先度な設計差に限られる。**
 
 もし次に mailbox parity をさらに詰めるなら、優先順位は以下が妥当である。
 
-1. `pushTimeOut` 系 bounded mailbox は当面入れず、std 限定 compatibility option として必要時に再評価する
-2. `lookupByQueueType` 相当の requirement-driven mailbox 解決を追加する
-3. BalancingDispatcher に mailbox compatibility contract を外部から見える形で持たせる
+1. `push_timeout` を指定しない bounded control-aware overflow rule を Pekko と完全同型に寄せる必要があるか再評価する

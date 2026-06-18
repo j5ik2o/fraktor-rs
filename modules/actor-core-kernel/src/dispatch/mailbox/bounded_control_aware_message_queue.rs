@@ -5,13 +5,13 @@
 mod tests;
 
 use alloc::collections::VecDeque;
-use core::{cmp::min, num::NonZeroUsize};
+use core::{cmp::min, num::NonZeroUsize, time::Duration};
 
 use fraktor_utils_core_rs::sync::{DefaultMutex, SharedAccess, SharedLock};
 
 use super::{
-  enqueue_error::EnqueueError, enqueue_outcome::EnqueueOutcome, envelope::Envelope, message_queue::MessageQueue,
-  overflow_strategy::MailboxOverflowStrategy,
+  enqueue_error::EnqueueError, enqueue_outcome::EnqueueOutcome, envelope::Envelope, mailbox_clock::MailboxClock,
+  message_queue::MessageQueue, overflow_strategy::MailboxOverflowStrategy, push_timeout,
 };
 
 /// Initial capacity hint for each backing deque.
@@ -31,9 +31,10 @@ const DEFAULT_CAPACITY_HINT: usize = 16;
 /// chosen [`MailboxOverflowStrategy`] decides overflow behaviour. `DropOldest` always evicts
 /// from the normal queue so control messages are never silently dropped (design Decision 3).
 pub struct BoundedControlAwareMessageQueue {
-  inner:    SharedLock<Inner>,
-  capacity: usize,
-  overflow: MailboxOverflowStrategy,
+  inner:        SharedLock<Inner>,
+  capacity:     usize,
+  overflow:     MailboxOverflowStrategy,
+  push_timeout: Option<Duration>,
 }
 
 struct Inner {
@@ -65,12 +66,36 @@ impl BoundedControlAwareMessageQueue {
       }),
       capacity: capacity_value,
       overflow,
+      push_timeout: None,
     }
+  }
+
+  /// Creates a bounded control-aware message queue with Pekko-style push timeout semantics.
+  #[must_use]
+  pub fn new_with_push_timeout(
+    capacity: NonZeroUsize,
+    overflow: MailboxOverflowStrategy,
+    push_timeout: Duration,
+  ) -> Self {
+    let mut queue = Self::new(capacity, overflow);
+    queue.push_timeout = Some(push_timeout);
+    queue
   }
 }
 
 impl MessageQueue for BoundedControlAwareMessageQueue {
   fn enqueue(&self, envelope: Envelope) -> Result<EnqueueOutcome, EnqueueError> {
+    self.enqueue_with_mailbox_clock(envelope, None)
+  }
+
+  fn enqueue_with_mailbox_clock(
+    &self,
+    envelope: Envelope,
+    clock: Option<&MailboxClock>,
+  ) -> Result<EnqueueOutcome, EnqueueError> {
+    if let Some(timeout) = self.push_timeout {
+      return self.enqueue_with_push_timeout(envelope, timeout, clock);
+    }
     self.inner.with_write(|inner| match self.overflow {
       | MailboxOverflowStrategy::Grow => {
         push_into_appropriate_queue(inner, envelope);
@@ -115,6 +140,39 @@ impl MessageQueue for BoundedControlAwareMessageQueue {
       inner.control_queue.clear();
       inner.normal_queue.clear();
     });
+  }
+}
+
+impl BoundedControlAwareMessageQueue {
+  fn enqueue_with_push_timeout(
+    &self,
+    mut envelope: Envelope,
+    timeout: Duration,
+    clock: Option<&MailboxClock>,
+  ) -> Result<EnqueueOutcome, EnqueueError> {
+    let deadline = push_timeout::push_timeout_deadline(clock, timeout);
+    loop {
+      let result = self.inner.with_write(|inner| {
+        if inner.total_len() < self.capacity {
+          push_into_appropriate_queue(inner, envelope);
+          Ok(EnqueueOutcome::Accepted)
+        } else {
+          Ok(EnqueueOutcome::Rejected(envelope))
+        }
+      });
+      match result {
+        | Ok(EnqueueOutcome::Accepted) => return Ok(EnqueueOutcome::Accepted),
+        | Ok(EnqueueOutcome::Rejected(rejected)) => {
+          envelope = rejected;
+          if !push_timeout::should_retry_after_full(clock, deadline) {
+            return Ok(EnqueueOutcome::Rejected(envelope));
+          }
+          push_timeout::spin_before_push_timeout_retry();
+        },
+        | Ok(EnqueueOutcome::Evicted(evicted)) => return Ok(EnqueueOutcome::Evicted(evicted)),
+        | Err(error) => return Err(error),
+      }
+    }
   }
 }
 

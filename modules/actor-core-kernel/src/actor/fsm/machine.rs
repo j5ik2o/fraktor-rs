@@ -7,10 +7,14 @@ use ahash::RandomState;
 use hashbrown::HashMap;
 use portable_atomic::{AtomicU64, Ordering};
 
-use super::{FsmReason, FsmStateTimeout, FsmTimerFired, FsmTransition, fsm_named_timer::FsmNamedTimer};
+use super::{
+  FsmCurrentState, FsmReason, FsmStateTimeout, FsmStateTransition, FsmSubscribeTransitionCallback, FsmTimerFired,
+  FsmTransition, FsmUnsubscribeTransitionCallback, fsm_named_timer::FsmNamedTimer,
+};
 use crate::{
   actor::{
     ActorContext,
+    actor_ref::ActorRef,
     error::{ActorError, ActorErrorReason},
     messaging::{AnyMessage, AnyMessageView},
     scheduler::SchedulerError,
@@ -52,6 +56,7 @@ where
   handlers:               HashMap<State, Box<StateHandler<State, Data>>, RandomState>,
   unhandled_handler:      Option<Box<StateHandler<State, Data>>>,
   transition_observers:   Vec<Box<TransitionObserver<State>>>,
+  transition_subscribers: Vec<ActorRef>,
   termination_observers:  Vec<Box<TerminationObserver<State, Data>>>,
   state_timeouts:         HashMap<State, Duration, RandomState>,
   initialized:            bool,
@@ -81,6 +86,7 @@ where
       handlers: HashMap::with_hasher(RandomState::new()),
       unhandled_handler: None,
       transition_observers: Vec::new(),
+      transition_subscribers: Vec::new(),
       termination_observers: Vec::new(),
       state_timeouts: HashMap::with_hasher(RandomState::new()),
       initialized: false,
@@ -272,6 +278,9 @@ where
     if self.terminated {
       return Ok(());
     }
+    if self.handle_transition_subscription(ctx, message) {
+      return Ok(());
+    }
 
     let named_timer_outcome = self.take_named_timer_payload(message);
     let payload_view;
@@ -375,6 +384,7 @@ where
       for observer in &mut self.transition_observers {
         observer(current_state, &next_state);
       }
+      self.dispatch_transition_notifications(ctx, current_state, &next_state);
     }
 
     Self::dispatch_replies(ctx, replies);
@@ -468,6 +478,45 @@ where
       debug_assert!(removed.is_some());
     }
     NamedTimerOutcome::Deliver(payload)
+  }
+
+  fn handle_transition_subscription(&mut self, ctx: &ActorContext<'_>, message: &AnyMessageView<'_>) -> bool {
+    if let Some(command) = message.downcast_ref::<FsmSubscribeTransitionCallback>() {
+      let mut subscriber = command.actor_ref().clone();
+      if !self.transition_subscribers.iter().any(|entry| entry == &subscriber) {
+        self.transition_subscribers.push(subscriber.clone());
+      }
+      self.dispatch_current_state(ctx, &mut subscriber);
+      return true;
+    }
+
+    if let Some(command) = message.downcast_ref::<FsmUnsubscribeTransitionCallback>() {
+      let subscriber = command.actor_ref();
+      self.transition_subscribers.retain(|entry| entry != subscriber);
+      return true;
+    }
+
+    false
+  }
+
+  fn dispatch_current_state(&self, ctx: &ActorContext<'_>, subscriber: &mut ActorRef) {
+    let Some(state) = self.state.as_ref() else {
+      return;
+    };
+    let message = AnyMessage::new(FsmCurrentState::new(ctx.self_ref(), state.clone()));
+    if let Err(error) = subscriber.try_tell(message) {
+      ctx.system().state().record_send_error(Some(subscriber.pid()), &error);
+    }
+  }
+
+  fn dispatch_transition_notifications(&mut self, ctx: &ActorContext<'_>, from: &State, to: &State) {
+    let fsm_ref = ctx.self_ref();
+    for subscriber in &mut self.transition_subscribers {
+      let message = AnyMessage::new(FsmStateTransition::new(fsm_ref.clone(), from.clone(), to.clone()));
+      if let Err(error) = subscriber.try_tell(message) {
+        ctx.system().state().record_send_error(Some(subscriber.pid()), &error);
+      }
+    }
   }
 
   fn dispatch_replies(ctx: &mut ActorContext<'_>, replies: Vec<AnyMessage>) {

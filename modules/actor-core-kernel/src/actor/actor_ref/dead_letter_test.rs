@@ -10,7 +10,7 @@ use crate::{
     Pid,
     actor_ref::dead_letter::{DeadLetter, DeadLetterReason, DeadLetterShared},
     error::SendError,
-    messaging::AnyMessage,
+    messaging::{AnyMessage, PoisonPill, WrappedMessage},
   },
   event::{
     logging::LogLevel,
@@ -98,6 +98,18 @@ fn record_send_error_maps_timeout_reason() {
 }
 
 #[test]
+fn record_send_error_maps_suppressed_message_reason() {
+  let mut dead_letter = DeadLetter::with_capacity(4);
+  let pid = Pid::new(14, 0);
+  let error = SendError::closed(AnyMessage::dead_letter_suppressed(PoisonPill));
+
+  let entry = dead_letter.record_send_error(Some(pid), &error, Duration::from_millis(4));
+
+  assert_eq!(entry.reason(), DeadLetterReason::SuppressedDeadLetter);
+  assert_eq!(entry.recipient(), Some(pid));
+}
+
+#[test]
 fn dead_letter_reason_supports_suppressed_and_dropped() {
   let stream = EventStreamShared::default();
   let dead_letter = DeadLetterShared::with_default_capacity(stream);
@@ -139,6 +151,18 @@ fn dead_letter_capacity_drops_oldest_entry() {
   assert_eq!(snapshot.len(), 2);
   assert_eq!(snapshot[0].reason(), DeadLetterReason::Dropped);
   assert_eq!(snapshot[1].reason(), DeadLetterReason::SuppressedDeadLetter);
+}
+
+#[test]
+fn dead_letter_entry_exposes_wrapped_message_trait() {
+  let entry = DeadLetter::with_capacity(1).record_entry(
+    AnyMessage::new("wrapped"),
+    DeadLetterReason::ExplicitRouting,
+    None,
+    Duration::from_millis(1),
+  );
+
+  assert_eq!(WrappedMessage::message(&entry).downcast_ref::<&str>(), Some(&"wrapped"));
 }
 
 #[test]

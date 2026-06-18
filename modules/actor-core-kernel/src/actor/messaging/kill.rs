@@ -1,6 +1,6 @@
 //! Public classic auto-receive message that requests fatal actor termination.
 
-use crate::actor::messaging::system_message::SystemMessage;
+use crate::actor::messaging::{PossiblyHarmful, system_message::SystemMessage};
 
 /// Public classic auto-receive message that requests fatal actor termination.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -11,3 +11,5 @@ impl From<Kill> for SystemMessage {
     Self::Kill
   }
 }
+
+impl PossiblyHarmful for Kill {}

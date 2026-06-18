@@ -18,6 +18,7 @@ mod mailbox_config;
 /// Mailbox configuration error module.
 mod mailbox_config_error;
 mod mailbox_requirement;
+mod requires_message_queue;
 /// Supervisor options module.
 mod supervisor_options;
 
@@ -32,4 +33,5 @@ pub use factory_shared::ActorFactoryShared;
 pub use mailbox_config::MailboxConfig;
 pub use mailbox_config_error::MailboxConfigError;
 pub use mailbox_requirement::MailboxRequirement;
+pub use requires_message_queue::RequiresMessageQueue;
 pub use supervisor_options::SupervisorOptions;

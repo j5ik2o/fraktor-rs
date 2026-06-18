@@ -65,6 +65,18 @@ impl ActorSelection {
     self.deliver(message.with_sender(sender.clone()))
   }
 
+  /// Resolves the selected actor and sends a timeout-aware ask request.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error if the path cannot be resolved before the ask starts.
+  pub fn ask(&self, message: AnyMessage, timeout: Duration) -> Result<AskResponse, ActorSelectionError> {
+    let path = self.resolve_target_path()?;
+    self.ensure_authority_state(&path, Some(&message))?;
+    let mut actor_ref = self.resolve_actor_ref(path)?;
+    Ok(actor_ref.ask_with_timeout(message, timeout))
+  }
+
   /// Resolves the selected actor and sends an `Identify` request via ask.
   ///
   /// # Errors

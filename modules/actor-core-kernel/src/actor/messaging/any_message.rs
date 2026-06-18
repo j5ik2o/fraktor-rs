@@ -11,7 +11,7 @@ use fraktor_utils_core_rs::sync::ArcShared;
 
 use crate::actor::{
   actor_ref::ActorRef,
-  messaging::{AnyMessageView, NotInfluenceReceiveTimeout},
+  messaging::{AnyMessageView, DeadLetterSuppression, NotInfluenceReceiveTimeout, PossiblyHarmful},
 };
 
 /// Wraps an arbitrary payload for message passing.
@@ -20,6 +20,8 @@ pub struct AnyMessage {
   sender: Option<ActorRef>,
   is_control: bool,
   not_influence_receive_timeout: bool,
+  dead_letter_suppressed: bool,
+  possibly_harmful: bool,
 }
 
 impl AnyMessage {
@@ -35,7 +37,7 @@ impl AnyMessage {
   pub fn new<T>(payload: T) -> Self
   where
     T: Any + Send + Sync + 'static, {
-    Self { payload: ArcShared::new(payload), sender: None, is_control: false, not_influence_receive_timeout: false }
+    Self::from_marked(payload, false, false, false, false)
   }
 
   /// Creates a new owned message marked as a control message.
@@ -48,7 +50,7 @@ impl AnyMessage {
   pub fn control<T>(payload: T) -> Self
   where
     T: Any + Send + Sync + 'static, {
-    Self { payload: ArcShared::new(payload), sender: None, is_control: true, not_influence_receive_timeout: false }
+    Self::from_marked(payload, true, false, false, false)
   }
 
   /// Creates a new owned message whose successful delivery must not reset
@@ -83,7 +85,25 @@ impl AnyMessage {
   pub fn not_influence<T>(payload: T) -> Self
   where
     T: NotInfluenceReceiveTimeout + Any + Send + Sync + 'static, {
-    Self { payload: ArcShared::new(payload), sender: None, is_control: false, not_influence_receive_timeout: true }
+    Self::from_marked(payload, false, true, false, false)
+  }
+
+  /// Creates a new owned message that should be observed as a suppressed
+  /// dead letter when delivery fails.
+  #[must_use]
+  pub fn dead_letter_suppressed<T>(payload: T) -> Self
+  where
+    T: DeadLetterSuppression + Any + Send + Sync + 'static, {
+    Self::from_marked(payload, false, false, true, false)
+  }
+
+  /// Creates a new owned message marked as potentially harmful for untrusted
+  /// remoting.
+  #[must_use]
+  pub fn possibly_harmful<T>(payload: T) -> Self
+  where
+    T: PossiblyHarmful + Any + Send + Sync + 'static, {
+    Self::from_marked(payload, false, false, false, true)
   }
 
   /// Associates a sender with this message and returns the updated instance.
@@ -113,6 +133,20 @@ impl AnyMessage {
     self.not_influence_receive_timeout
   }
 
+  /// Returns `true` when delivery failure should be published as a suppressed
+  /// dead letter.
+  #[must_use]
+  pub const fn is_dead_letter_suppressed(&self) -> bool {
+    self.dead_letter_suppressed
+  }
+
+  /// Returns `true` when the payload is marked as potentially harmful for
+  /// untrusted remoting.
+  #[must_use]
+  pub const fn is_possibly_harmful(&self) -> bool {
+    self.possibly_harmful
+  }
+
   /// Converts the owned message into a borrowed view.
   #[must_use]
   pub fn as_view(&self) -> AnyMessageView<'_> {
@@ -121,6 +155,8 @@ impl AnyMessage {
       self.sender.as_ref(),
       self.is_control,
       self.not_influence_receive_timeout,
+      self.dead_letter_suppressed,
+      self.possibly_harmful,
     )
   }
 
@@ -163,14 +199,57 @@ impl AnyMessage {
     is_control: bool,
     not_influence_receive_timeout: bool,
   ) -> Self {
-    Self { payload, sender, is_control, not_influence_receive_timeout }
+    Self::from_parts_with_flags(payload, sender, is_control, not_influence_receive_timeout, false, false)
+  }
+
+  /// Reconstructs an envelope from erased components and every delivery flag.
+  #[doc(hidden)]
+  #[must_use]
+  pub fn from_parts_with_flags(
+    payload: ArcShared<dyn Any + Send + Sync + 'static>,
+    sender: Option<ActorRef>,
+    is_control: bool,
+    not_influence_receive_timeout: bool,
+    dead_letter_suppressed: bool,
+    possibly_harmful: bool,
+  ) -> Self {
+    Self { payload, sender, is_control, not_influence_receive_timeout, dead_letter_suppressed, possibly_harmful }
   }
 
   /// Consumes the message and returns the payload, sender, and flags.
   #[doc(hidden)]
   #[must_use]
-  pub fn into_parts(self) -> (ArcShared<dyn Any + Send + Sync + 'static>, Option<ActorRef>, bool, bool) {
-    (self.payload, self.sender, self.is_control, self.not_influence_receive_timeout)
+  pub fn into_parts(self) -> (ArcShared<dyn Any + Send + Sync + 'static>, Option<ActorRef>, bool, bool, bool, bool) {
+    (
+      self.payload,
+      self.sender,
+      self.is_control,
+      self.not_influence_receive_timeout,
+      self.dead_letter_suppressed,
+      self.possibly_harmful,
+    )
+  }
+
+  /// Creates an envelope from a payload and explicit marker flags.
+  #[doc(hidden)]
+  #[must_use]
+  pub fn from_marked<T>(
+    payload: T,
+    is_control: bool,
+    not_influence_receive_timeout: bool,
+    dead_letter_suppressed: bool,
+    possibly_harmful: bool,
+  ) -> Self
+  where
+    T: Any + Send + Sync + 'static, {
+    Self {
+      payload: ArcShared::new(payload),
+      sender: None,
+      is_control,
+      not_influence_receive_timeout,
+      dead_letter_suppressed,
+      possibly_harmful,
+    }
   }
 }
 
@@ -181,6 +260,8 @@ impl Clone for AnyMessage {
       sender: self.sender.clone(),
       is_control: self.is_control,
       not_influence_receive_timeout: self.not_influence_receive_timeout,
+      dead_letter_suppressed: self.dead_letter_suppressed,
+      possibly_harmful: self.possibly_harmful,
     }
   }
 }
@@ -192,6 +273,8 @@ impl Debug for AnyMessage {
       .field("has_sender", &self.sender.is_some())
       .field("is_control", &self.is_control)
       .field("not_influence_receive_timeout", &self.not_influence_receive_timeout)
+      .field("dead_letter_suppressed", &self.dead_letter_suppressed)
+      .field("possibly_harmful", &self.possibly_harmful)
       .finish()
   }
 }

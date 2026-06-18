@@ -1,4 +1,4 @@
-use core::num::NonZeroUsize;
+use core::{num::NonZeroUsize, time::Duration};
 
 use crate::{
   actor::messaging::AnyMessage,
@@ -97,6 +97,24 @@ fn grow_returns_accepted_even_past_capacity() {
   let result = queue.enqueue(Envelope::new(AnyMessage::new(3_u32)));
   assert!(matches!(result, Ok(EnqueueOutcome::Accepted)), "Grow must keep reporting Accepted, got {result:?}");
   assert_eq!(queue.number_of_messages(), 3);
+}
+
+#[test]
+fn push_timeout_rejects_full_queue_without_drop_oldest_eviction() {
+  let cap = NonZeroUsize::new(1).unwrap();
+  let queue = BoundedMessageQueue::new_with_push_timeout(cap, MailboxOverflowStrategy::DropOldest, Duration::ZERO);
+
+  queue.enqueue(Envelope::new(AnyMessage::new(1_u32))).expect("enqueue first");
+
+  let result = queue.enqueue_with_mailbox_clock(Envelope::new(AnyMessage::new(2_u32)), None);
+  let Ok(EnqueueOutcome::Rejected(rejected)) = result else {
+    panic!("zero push timeout must reject the incoming envelope without eviction, got {result:?}");
+  };
+  assert_eq!(rejected.payload().downcast_ref::<u32>().copied(), Some(2_u32));
+
+  let retained = queue.dequeue().expect("dequeue retained");
+  assert_eq!(retained.payload().downcast_ref::<u32>().copied(), Some(1_u32));
+  assert!(queue.dequeue().is_none());
 }
 
 #[test]

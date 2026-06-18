@@ -9,7 +9,7 @@ use core::{
 
 use fraktor_utils_core_rs::sync::{ArcShared, SharedAccess, SpinSyncMutex};
 
-use super::{graceful_stop, graceful_stop_with_message, retry};
+use super::{after, graceful_stop, graceful_stop_with_message, retry};
 use crate::{
   actor::{
     Actor, ActorCell, ActorContext, Pid,
@@ -171,6 +171,29 @@ fn child_ref_ask_with_timeout_times_out_after_scheduler_tick() {
 
   let result = response.future().with_write(|inner| inner.try_take()).expect("timeout result");
   assert!(matches!(result, Err(AskError::Timeout)));
+}
+
+#[test]
+fn after_completes_value_after_scheduler_tick() {
+  let system = ActorSystem::new_empty();
+  let state = system.state();
+
+  let future = after(&state, Duration::from_millis(1), 42_u32);
+  assert!(future.with_read(|inner| !inner.is_ready()));
+
+  state.scheduler().with_write(|scheduler| scheduler.run_for_test(1));
+
+  assert_eq!(future.with_write(|inner| inner.try_take()), Some(42_u32));
+}
+
+#[test]
+fn after_zero_delay_completes_immediately() {
+  let system = ActorSystem::new_empty();
+  let state = system.state();
+
+  let future = after(&state, Duration::ZERO, String::from("ready"));
+
+  assert_eq!(future.with_write(|inner| inner.try_take()), Some(String::from("ready")));
 }
 
 #[test]

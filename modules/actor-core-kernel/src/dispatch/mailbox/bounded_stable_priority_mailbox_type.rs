@@ -5,7 +5,7 @@
 mod tests;
 
 use alloc::boxed::Box;
-use core::num::NonZeroUsize;
+use core::{num::NonZeroUsize, time::Duration};
 
 use fraktor_utils_core_rs::sync::ArcShared;
 
@@ -20,9 +20,10 @@ use super::{
 /// Produces [`BoundedStablePriorityMessageQueue`] instances with the configured
 /// capacity, overflow strategy, and priority generator.
 pub struct BoundedStablePriorityMailboxType {
-  generator: ArcShared<dyn MessagePriorityGenerator>,
-  capacity:  NonZeroUsize,
-  overflow:  MailboxOverflowStrategy,
+  generator:    ArcShared<dyn MessagePriorityGenerator>,
+  capacity:     NonZeroUsize,
+  overflow:     MailboxOverflowStrategy,
+  push_timeout: Option<Duration>,
 }
 
 impl BoundedStablePriorityMailboxType {
@@ -33,7 +34,19 @@ impl BoundedStablePriorityMailboxType {
     capacity: NonZeroUsize,
     overflow: MailboxOverflowStrategy,
   ) -> Self {
-    Self { generator, capacity, overflow }
+    Self { generator, capacity, overflow, push_timeout: None }
+  }
+
+  /// Creates a bounded stable-priority mailbox type factory with Pekko-style push timeout
+  /// semantics.
+  #[must_use]
+  pub fn new_with_push_timeout(
+    generator: ArcShared<dyn MessagePriorityGenerator>,
+    capacity: NonZeroUsize,
+    overflow: MailboxOverflowStrategy,
+    push_timeout: Duration,
+  ) -> Self {
+    Self { generator, capacity, overflow, push_timeout: Some(push_timeout) }
   }
 }
 
@@ -42,6 +55,20 @@ impl MailboxType for BoundedStablePriorityMailboxType {
     let state_shared = BoundedStablePriorityMessageQueueStateShared::new(
       BoundedStablePriorityMessageQueueState::with_capacity(self.capacity),
     );
-    Box::new(BoundedStablePriorityMessageQueue::new(self.generator.clone(), state_shared, self.capacity, self.overflow))
+    match self.push_timeout {
+      | Some(push_timeout) => Box::new(BoundedStablePriorityMessageQueue::new_with_push_timeout(
+        self.generator.clone(),
+        state_shared,
+        self.capacity,
+        self.overflow,
+        push_timeout,
+      )),
+      | None => Box::new(BoundedStablePriorityMessageQueue::new(
+        self.generator.clone(),
+        state_shared,
+        self.capacity,
+        self.overflow,
+      )),
+    }
   }
 }

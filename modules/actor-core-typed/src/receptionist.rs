@@ -4,6 +4,7 @@ mod deregistered;
 mod extension;
 mod listing;
 mod receptionist_command;
+mod receptionist_setup;
 mod registered;
 mod service_key;
 #[cfg(test)]
@@ -14,5 +15,6 @@ pub use deregistered::Deregistered;
 pub use extension::{Receptionist, SYSTEM_RECEPTIONIST_TOP_LEVEL};
 pub use listing::Listing;
 pub use receptionist_command::ReceptionistCommand;
+pub use receptionist_setup::ReceptionistSetup;
 pub use registered::Registered;
 pub use service_key::ServiceKey;

@@ -1,5 +1,6 @@
 //! Pekko-inspired helper patterns built on top of core actor primitives.
 
+mod after;
 mod ask;
 /// Inner circuit breaker state machine.
 mod circuit_breaker;
@@ -16,6 +17,7 @@ mod clock;
 mod graceful_stop;
 mod retry;
 
+pub use after::after;
 pub use ask::{ask_with_timeout, complete_with_timeout, install_ask_timeout};
 pub use circuit_breaker::CircuitBreaker;
 pub use circuit_breaker_call_error::CircuitBreakerCallError;

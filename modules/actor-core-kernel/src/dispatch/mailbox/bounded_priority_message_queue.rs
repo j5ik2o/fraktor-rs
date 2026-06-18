@@ -4,15 +4,15 @@
 #[path = "bounded_priority_message_queue_test.rs"]
 mod tests;
 
-use core::num::NonZeroUsize;
+use core::{num::NonZeroUsize, time::Duration};
 
 use fraktor_utils_core_rs::sync::{ArcShared, SharedAccess};
 
 use super::{
   bounded_priority_message_queue_state::BoundedPriorityMessageQueueEntry,
   bounded_priority_message_queue_state_shared::BoundedPriorityMessageQueueStateShared, enqueue_error::EnqueueError,
-  enqueue_outcome::EnqueueOutcome, envelope::Envelope, message_queue::MessageQueue,
-  overflow_strategy::MailboxOverflowStrategy,
+  enqueue_outcome::EnqueueOutcome, envelope::Envelope, mailbox_clock::MailboxClock, message_queue::MessageQueue,
+  overflow_strategy::MailboxOverflowStrategy, push_timeout,
 };
 use crate::dispatch::mailbox::message_priority_generator::MessagePriorityGenerator;
 
@@ -27,6 +27,7 @@ pub struct BoundedPriorityMessageQueue {
   generator:    ArcShared<dyn MessagePriorityGenerator>,
   capacity:     usize,
   overflow:     MailboxOverflowStrategy,
+  push_timeout: Option<Duration>,
 }
 
 impl BoundedPriorityMessageQueue {
@@ -38,14 +39,39 @@ impl BoundedPriorityMessageQueue {
     capacity: NonZeroUsize,
     overflow: MailboxOverflowStrategy,
   ) -> Self {
-    Self { state_shared, generator, capacity: capacity.get(), overflow }
+    Self { state_shared, generator, capacity: capacity.get(), overflow, push_timeout: None }
+  }
+
+  /// Creates a bounded priority message queue with Pekko-style push timeout semantics.
+  #[must_use]
+  pub fn new_with_push_timeout(
+    generator: ArcShared<dyn MessagePriorityGenerator>,
+    state_shared: BoundedPriorityMessageQueueStateShared,
+    capacity: NonZeroUsize,
+    overflow: MailboxOverflowStrategy,
+    push_timeout: Duration,
+  ) -> Self {
+    let mut queue = Self::new(generator, state_shared, capacity, overflow);
+    queue.push_timeout = Some(push_timeout);
+    queue
   }
 }
 
 impl MessageQueue for BoundedPriorityMessageQueue {
   fn enqueue(&self, envelope: Envelope) -> Result<EnqueueOutcome, EnqueueError> {
+    self.enqueue_with_mailbox_clock(envelope, None)
+  }
+
+  fn enqueue_with_mailbox_clock(
+    &self,
+    envelope: Envelope,
+    clock: Option<&MailboxClock>,
+  ) -> Result<EnqueueOutcome, EnqueueError> {
     let priority = self.generator.priority(envelope.payload());
     let entry = BoundedPriorityMessageQueueEntry::new(priority, envelope);
+    if let Some(timeout) = self.push_timeout {
+      return self.enqueue_entry_with_push_timeout(entry, timeout, clock);
+    }
     self.state_shared.with_write(|state| {
       if state.heap().len() < self.capacity {
         state.heap_mut().push(entry);
@@ -92,5 +118,38 @@ impl MessageQueue for BoundedPriorityMessageQueue {
 
   fn clean_up(&self) {
     self.state_shared.with_write(|state| state.heap_mut().clear());
+  }
+}
+
+impl BoundedPriorityMessageQueue {
+  fn enqueue_entry_with_push_timeout(
+    &self,
+    mut entry: BoundedPriorityMessageQueueEntry,
+    timeout: Duration,
+    clock: Option<&MailboxClock>,
+  ) -> Result<EnqueueOutcome, EnqueueError> {
+    let deadline = push_timeout::push_timeout_deadline(clock, timeout);
+    loop {
+      let result = self.state_shared.with_write(|state| {
+        if state.heap().len() < self.capacity {
+          state.heap_mut().push(entry);
+          Ok(EnqueueOutcome::Accepted)
+        } else {
+          Ok(EnqueueOutcome::Rejected(entry.into_envelope()))
+        }
+      });
+      match result {
+        | Ok(EnqueueOutcome::Accepted) => return Ok(EnqueueOutcome::Accepted),
+        | Ok(EnqueueOutcome::Rejected(rejected)) => {
+          entry = BoundedPriorityMessageQueueEntry::new(self.generator.priority(rejected.payload()), rejected);
+          if !push_timeout::should_retry_after_full(clock, deadline) {
+            return Ok(EnqueueOutcome::Rejected(entry.into_envelope()));
+          }
+          push_timeout::spin_before_push_timeout_retry();
+        },
+        | Ok(EnqueueOutcome::Evicted(evicted)) => return Ok(EnqueueOutcome::Evicted(evicted)),
+        | Err(error) => return Err(error),
+      }
+    }
   }
 }

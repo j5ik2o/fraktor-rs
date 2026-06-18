@@ -4,7 +4,7 @@
 #[path = "policy_test.rs"]
 mod tests;
 
-use core::num::NonZeroUsize;
+use core::{num::NonZeroUsize, time::Duration};
 
 use crate::dispatch::mailbox::{capacity::MailboxCapacity, overflow_strategy::MailboxOverflowStrategy};
 
@@ -14,6 +14,7 @@ pub struct MailboxPolicy {
   capacity:         MailboxCapacity,
   overflow:         MailboxOverflowStrategy,
   throughput_limit: Option<NonZeroUsize>,
+  push_timeout:     Option<Duration>,
 }
 
 impl MailboxPolicy {
@@ -24,7 +25,7 @@ impl MailboxPolicy {
     overflow: MailboxOverflowStrategy,
     throughput_limit: Option<NonZeroUsize>,
   ) -> Self {
-    Self { capacity, overflow, throughput_limit }
+    Self { capacity, overflow, throughput_limit, push_timeout: None }
   }
 
   /// Creates a bounded mailbox policy with the provided capacity and overflow strategy.
@@ -61,10 +62,26 @@ impl MailboxPolicy {
     self.throughput_limit
   }
 
+  /// Returns the bounded-mailbox push timeout, if configured.
+  #[must_use]
+  pub const fn push_timeout(&self) -> Option<Duration> {
+    self.push_timeout
+  }
+
   /// Returns a copy of the policy with a different throughput limit.
   #[must_use]
   pub const fn with_throughput_limit(self, limit: Option<NonZeroUsize>) -> Self {
     Self { throughput_limit: limit, ..self }
+  }
+
+  /// Returns a copy of the policy with a different bounded-mailbox push timeout.
+  ///
+  /// A configured timeout switches bounded queues from drop/evict overflow
+  /// handling to Pekko-style room waiting: enqueue retries until a slot is
+  /// available or the timeout elapses.
+  #[must_use]
+  pub const fn with_push_timeout(self, timeout: Option<Duration>) -> Self {
+    Self { push_timeout: timeout, ..self }
   }
 
   /// Returns a copy of the policy with a different overflow strategy.

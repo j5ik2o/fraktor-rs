@@ -7,23 +7,24 @@ use alloc::{
   vec,
   vec::Vec,
 };
-use core::{
-  future::Future,
-  pin::Pin,
-  sync::atomic::{AtomicBool, Ordering},
-  task::Poll,
-  time::Duration,
-};
+use core::{future::Future, pin::Pin, task::Poll, time::Duration};
 
 use fraktor_utils_core_rs::{
   sync::{ArcShared, DefaultMutex, SharedAccess, SharedLock, SyncOnce},
   timing::delay::DelayProvider,
 };
 use futures::future::{Either, join_all, poll_fn, select};
+use portable_atomic::{AtomicBool, AtomicU64, Ordering};
 
 use super::{coordinated_shutdown_error::CoordinatedShutdownError, coordinated_shutdown_id::CoordinatedShutdownId};
 use crate::{
-  actor::extension::Extension,
+  actor::{
+    actor_ref::ActorRef,
+    extension::Extension,
+    messaging::{AnyMessage, AskError},
+    scheduler::SchedulerHandle,
+  },
+  pattern::graceful_stop_with_message,
   system::{ActorSystem, CoordinatedShutdownPhase, CoordinatedShutdownReason},
 };
 
@@ -36,7 +37,34 @@ type ShutdownTaskFn = Box<dyn FnOnce() -> Pin<Box<dyn Future<Output = ()> + Send
 
 /// A shutdown task.
 struct ShutdownTask {
-  task: ShutdownTaskFn,
+  task:   ShutdownTaskFn,
+  handle: Option<SchedulerHandle>,
+}
+
+impl ShutdownTask {
+  const fn new(task: ShutdownTaskFn) -> Self {
+    Self { task, handle: None }
+  }
+
+  const fn cancellable(task: ShutdownTaskFn, handle: SchedulerHandle) -> Self {
+    Self { task, handle: Some(handle) }
+  }
+
+  fn into_future(self) -> Pin<Box<dyn Future<Output = ()> + Send>> {
+    let Some(handle) = self.handle else {
+      return (self.task)();
+    };
+    Box::pin(async move {
+      let entry = handle.entry();
+      if entry.is_cancelled() || !entry.try_begin_execute() {
+        return;
+      }
+      (self.task)().await;
+      if !entry.is_cancelled() {
+        entry.mark_completed();
+      }
+    })
+  }
 }
 
 /// Default timeout for phases when not explicitly configured.
@@ -73,6 +101,7 @@ pub struct CoordinatedShutdown {
   run_done:       AtomicBool,
   reason:         SyncOnce<CoordinatedShutdownReason>,
   delay_provider: Option<SharedLock<Box<dyn DelayProvider>>>,
+  next_task_id:   AtomicU64,
 }
 
 impl CoordinatedShutdown {
@@ -223,6 +252,7 @@ impl CoordinatedShutdown {
       run_done: AtomicBool::new(false),
       reason: SyncOnce::new(),
       delay_provider: delay_provider.map(SharedLock::new_with_driver::<DefaultMutex<_>>),
+      next_task_id: AtomicU64::new(1),
     })
   }
 
@@ -248,11 +278,74 @@ impl CoordinatedShutdown {
     if task_name.is_empty() {
       return Err(CoordinatedShutdownError::EmptyTaskName);
     }
-    let shutdown_task = ShutdownTask { task: Box::new(move || Box::pin(task())) };
+    let shutdown_task = ShutdownTask::new(Box::new(move || Box::pin(task())));
     self.tasks.with_write(|tasks| {
       tasks.entry(phase.to_string()).or_default().push(shutdown_task);
     });
     Ok(())
+  }
+
+  /// Adds a cancellable task to the specified phase.
+  ///
+  /// The returned handle can be cancelled before the phase executes. Cancelled
+  /// tasks remain registered but are skipped when the phase runs, mirroring the
+  /// user-facing capability of Pekko `addCancellableTask`.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error if the phase is unknown, the task name is empty, or the
+  /// shutdown sequence has already started.
+  pub fn add_cancellable_task<F, Fut>(
+    &self,
+    phase: &str,
+    task_name: &str,
+    task: F,
+  ) -> Result<SchedulerHandle, CoordinatedShutdownError>
+  where
+    F: FnOnce() -> Fut + Send + Sync + 'static,
+    Fut: Future<Output = ()> + Send + 'static, {
+    if self.run_started.load(Ordering::Acquire) {
+      return Err(CoordinatedShutdownError::RunAlreadyStarted);
+    }
+    if !self.known_phases.contains(phase) {
+      return Err(CoordinatedShutdownError::UnknownPhase(phase.to_string()));
+    }
+    if task_name.is_empty() {
+      return Err(CoordinatedShutdownError::EmptyTaskName);
+    }
+    let handle = self.next_task_handle();
+    handle.entry().mark_scheduled();
+    let shutdown_task = ShutdownTask::cancellable(Box::new(move || Box::pin(task())), handle.clone());
+    self.tasks.with_write(|tasks| {
+      tasks.entry(phase.to_string()).or_default().push(shutdown_task);
+    });
+    Ok(handle)
+  }
+
+  /// Adds a task that waits for an actor to terminate.
+  ///
+  /// When `stop_message` is present, the task sends it before waiting for the
+  /// actor to disappear from the system registry. When it is absent, the task
+  /// only waits for an already initiated termination.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error if the phase is unknown, the task name is empty, or the
+  /// shutdown sequence has already started.
+  pub fn add_actor_termination_task(
+    &self,
+    phase: &str,
+    task_name: &str,
+    actor: ActorRef,
+    stop_message: Option<AnyMessage>,
+  ) -> Result<(), CoordinatedShutdownError> {
+    let timeout = self.timeout(phase)?;
+    self.add_task(phase, task_name, move || async move {
+      if let Err(_error) = Self::wait_for_actor_termination(actor, stop_message, timeout).await {
+        // Coordinated shutdown tasks are best-effort and currently expose no per-task error
+        // channel.
+      }
+    })
   }
 
   /// Returns the configured timeout for the given phase.
@@ -355,7 +448,8 @@ impl CoordinatedShutdown {
   ///
   /// Returns `true` if the phase timed out.
   async fn run_phase_tasks(&self, tasks: Vec<ShutdownTask>, timeout: Duration) -> bool {
-    let task_futures: Vec<Pin<Box<dyn Future<Output = ()> + Send>>> = tasks.into_iter().map(|t| (t.task)()).collect();
+    let task_futures: Vec<Pin<Box<dyn Future<Output = ()> + Send>>> =
+      tasks.into_iter().map(ShutdownTask::into_future).collect();
     let phase_future = Box::pin(async move {
       join_all(task_futures).await;
       false
@@ -378,6 +472,47 @@ impl CoordinatedShutdown {
 
   fn collect_known_phases(phases: &BTreeMap<String, CoordinatedShutdownPhase>) -> BTreeSet<String> {
     phases.keys().cloned().collect()
+  }
+
+  fn next_task_handle(&self) -> SchedulerHandle {
+    let raw = self.next_task_id.fetch_add(1, Ordering::Relaxed);
+    SchedulerHandle::new(raw)
+  }
+
+  async fn wait_for_actor_termination(
+    mut actor: ActorRef,
+    stop_message: Option<AnyMessage>,
+    timeout: Duration,
+  ) -> Result<(), AskError> {
+    let Some(stop_message) = stop_message else {
+      return Self::wait_until_actor_disappears(actor, timeout).await;
+    };
+    graceful_stop_with_message(&mut actor, stop_message, timeout).await
+  }
+
+  async fn wait_until_actor_disappears(actor: ActorRef, timeout: Duration) -> Result<(), AskError> {
+    let Some(system) = actor.system_state() else {
+      return Ok(());
+    };
+    let pid = actor.pid();
+    if system.cell(&pid).is_none() {
+      return Ok(());
+    }
+
+    let mut remaining = timeout;
+    let mut delay_provider = system.delay_provider();
+    const TERMINATION_POLL_INTERVAL: Duration = Duration::from_millis(1);
+    loop {
+      if system.cell(&pid).is_none() {
+        return Ok(());
+      }
+      if remaining.is_zero() {
+        return Err(AskError::Timeout);
+      }
+      let delay_duration = core::cmp::min(remaining, TERMINATION_POLL_INTERVAL);
+      delay_provider.delay(delay_duration).await;
+      remaining = remaining.saturating_sub(delay_duration);
+    }
   }
 
   /// Topological sort of phase dependencies (Kahn's algorithm).

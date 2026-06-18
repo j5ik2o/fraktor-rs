@@ -36,13 +36,17 @@ impl DeadLetter {
   /// after releasing any locks.
   #[must_use]
   pub fn record_send_error(&mut self, target: Option<Pid>, error: &SendError, timestamp: Duration) -> DeadLetterEntry {
-    let reason = match error {
-      | SendError::Full(_) => DeadLetterReason::MailboxFull,
-      | SendError::Suspended(_) => DeadLetterReason::MailboxSuspended,
-      | SendError::Closed(_) => DeadLetterReason::RecipientUnavailable,
-      | SendError::NoRecipient(_) => DeadLetterReason::MissingRecipient,
-      | SendError::Timeout(_) => DeadLetterReason::MailboxTimeout,
-      | SendError::InvalidPayload { .. } => DeadLetterReason::SerializationError,
+    let reason = if error.message().is_dead_letter_suppressed() {
+      DeadLetterReason::SuppressedDeadLetter
+    } else {
+      match error {
+        | SendError::Full(_) => DeadLetterReason::MailboxFull,
+        | SendError::Suspended(_) => DeadLetterReason::MailboxSuspended,
+        | SendError::Closed(_) => DeadLetterReason::RecipientUnavailable,
+        | SendError::NoRecipient(_) => DeadLetterReason::MissingRecipient,
+        | SendError::Timeout(_) => DeadLetterReason::MailboxTimeout,
+        | SendError::InvalidPayload { .. } => DeadLetterReason::SerializationError,
+      }
     };
     let message = error.message().clone();
     self.record_entry(message, reason, target, timestamp)

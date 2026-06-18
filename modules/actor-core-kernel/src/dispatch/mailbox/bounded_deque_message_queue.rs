@@ -5,13 +5,14 @@
 mod tests;
 
 use alloc::collections::VecDeque;
-use core::num::NonZeroUsize;
+use core::{num::NonZeroUsize, time::Duration};
 
 use fraktor_utils_core_rs::sync::{DefaultMutex, SharedAccess, SharedLock};
 
 use super::{
   deque_message_queue::DequeMessageQueue, enqueue_error::EnqueueError, enqueue_outcome::EnqueueOutcome,
-  envelope::Envelope, message_queue::MessageQueue, overflow_strategy::MailboxOverflowStrategy,
+  envelope::Envelope, mailbox_clock::MailboxClock, message_queue::MessageQueue,
+  overflow_strategy::MailboxOverflowStrategy, push_timeout,
 };
 use crate::actor::error::SendError;
 
@@ -22,9 +23,10 @@ use crate::actor::error::SendError;
 /// insertion via [`MessageQueue::enqueue`] enforces `capacity` according to the chosen
 /// [`MailboxOverflowStrategy`].
 pub struct BoundedDequeMessageQueue {
-  inner:    SharedLock<VecDeque<Envelope>>,
-  capacity: usize,
-  overflow: MailboxOverflowStrategy,
+  inner:        SharedLock<VecDeque<Envelope>>,
+  capacity:     usize,
+  overflow:     MailboxOverflowStrategy,
+  push_timeout: Option<Duration>,
 }
 
 impl BoundedDequeMessageQueue {
@@ -36,12 +38,36 @@ impl BoundedDequeMessageQueue {
       inner: SharedLock::new_with_driver::<DefaultMutex<_>>(VecDeque::with_capacity(capacity_value)),
       capacity: capacity_value,
       overflow,
+      push_timeout: None,
     }
+  }
+
+  /// Creates a bounded deque message queue with Pekko-style push timeout semantics.
+  #[must_use]
+  pub fn new_with_push_timeout(
+    capacity: NonZeroUsize,
+    overflow: MailboxOverflowStrategy,
+    push_timeout: Duration,
+  ) -> Self {
+    let mut queue = Self::new(capacity, overflow);
+    queue.push_timeout = Some(push_timeout);
+    queue
   }
 }
 
 impl MessageQueue for BoundedDequeMessageQueue {
   fn enqueue(&self, envelope: Envelope) -> Result<EnqueueOutcome, EnqueueError> {
+    self.enqueue_with_mailbox_clock(envelope, None)
+  }
+
+  fn enqueue_with_mailbox_clock(
+    &self,
+    envelope: Envelope,
+    clock: Option<&MailboxClock>,
+  ) -> Result<EnqueueOutcome, EnqueueError> {
+    if let Some(timeout) = self.push_timeout {
+      return self.enqueue_back_with_push_timeout(envelope, timeout, clock);
+    }
     self.inner.with_write(|inner| match self.overflow {
       | MailboxOverflowStrategy::Grow => {
         inner.push_back(envelope);
@@ -96,6 +122,17 @@ impl MessageQueue for BoundedDequeMessageQueue {
 
 impl DequeMessageQueue for BoundedDequeMessageQueue {
   fn enqueue_first(&self, envelope: Envelope) -> Result<(), SendError> {
+    self.enqueue_first_with_mailbox_clock(envelope, None)
+  }
+
+  fn enqueue_first_with_mailbox_clock(
+    &self,
+    envelope: Envelope,
+    clock: Option<&MailboxClock>,
+  ) -> Result<(), SendError> {
+    if let Some(timeout) = self.push_timeout {
+      return self.enqueue_front_with_push_timeout(envelope, timeout, clock);
+    }
     self.inner.with_write(|inner| match self.overflow {
       | MailboxOverflowStrategy::Grow => {
         inner.push_front(envelope);
@@ -113,5 +150,67 @@ impl DequeMessageQueue for BoundedDequeMessageQueue {
         }
       },
     })
+  }
+}
+
+impl BoundedDequeMessageQueue {
+  fn enqueue_back_with_push_timeout(
+    &self,
+    mut envelope: Envelope,
+    timeout: Duration,
+    clock: Option<&MailboxClock>,
+  ) -> Result<EnqueueOutcome, EnqueueError> {
+    let deadline = push_timeout::push_timeout_deadline(clock, timeout);
+    loop {
+      let result = self.inner.with_write(|inner| {
+        if inner.len() < self.capacity {
+          inner.push_back(envelope);
+          Ok(EnqueueOutcome::Accepted)
+        } else {
+          Ok(EnqueueOutcome::Rejected(envelope))
+        }
+      });
+      match result {
+        | Ok(EnqueueOutcome::Accepted) => return Ok(EnqueueOutcome::Accepted),
+        | Ok(EnqueueOutcome::Rejected(rejected)) => {
+          envelope = rejected;
+          if !push_timeout::should_retry_after_full(clock, deadline) {
+            return Ok(EnqueueOutcome::Rejected(envelope));
+          }
+          push_timeout::spin_before_push_timeout_retry();
+        },
+        | Ok(EnqueueOutcome::Evicted(evicted)) => return Ok(EnqueueOutcome::Evicted(evicted)),
+        | Err(error) => return Err(error),
+      }
+    }
+  }
+
+  fn enqueue_front_with_push_timeout(
+    &self,
+    mut envelope: Envelope,
+    timeout: Duration,
+    clock: Option<&MailboxClock>,
+  ) -> Result<(), SendError> {
+    let deadline = push_timeout::push_timeout_deadline(clock, timeout);
+    loop {
+      let result = self.inner.with_write(|inner| {
+        if inner.len() < self.capacity {
+          inner.push_front(envelope);
+          Ok(())
+        } else {
+          Err(envelope)
+        }
+      });
+      match result {
+        | Ok(()) => return Ok(()),
+        | Err(rejected) => {
+          envelope = rejected;
+          if !push_timeout::should_retry_after_full(clock, deadline) {
+            return Err(SendError::timeout(envelope.into_payload()));
+          }
+          push_timeout::spin_before_push_timeout_retry();
+        },
+      }
+    }
   }
 }

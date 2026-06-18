@@ -1,4 +1,4 @@
-use core::num::NonZeroUsize;
+use core::{num::NonZeroUsize, time::Duration};
 
 use crate::{
   actor::messaging::AnyMessage,
@@ -141,5 +141,26 @@ fn grow_accepts_beyond_capacity_and_preserves_priority() {
     let payload = queue.dequeue().expect("dequeue").into_payload();
     assert_eq!(payload.payload().downcast_ref::<u32>().copied(), Some(value));
   }
+  assert!(queue.dequeue().is_none());
+}
+
+#[test]
+fn push_timeout_rejects_full_queue_without_drop_oldest_eviction() {
+  let cap = NonZeroUsize::new(1).unwrap();
+  let queue =
+    BoundedControlAwareMessageQueue::new_with_push_timeout(cap, MailboxOverflowStrategy::DropOldest, Duration::ZERO);
+
+  queue.enqueue(Envelope::new(AnyMessage::new(1_u32))).expect("enqueue normal");
+
+  let result = queue.enqueue_with_mailbox_clock(Envelope::new(AnyMessage::control(2_u32)), None);
+  let Ok(EnqueueOutcome::Rejected(rejected)) = result else {
+    panic!("zero push timeout must reject the incoming control-aware envelope without eviction, got {result:?}");
+  };
+  assert!(rejected.payload().is_control());
+  assert_eq!(rejected.payload().downcast_ref::<u32>().copied(), Some(2_u32));
+
+  let retained = queue.dequeue().expect("dequeue retained").into_payload();
+  assert!(!retained.is_control());
+  assert_eq!(retained.payload().downcast_ref::<u32>().copied(), Some(1_u32));
   assert!(queue.dequeue().is_none());
 }

@@ -1,4 +1,4 @@
-use core::num::NonZeroUsize;
+use core::{num::NonZeroUsize, time::Duration};
 
 use fraktor_utils_core_rs::sync::ArcShared;
 
@@ -8,7 +8,9 @@ use crate::{
     messaging::AnyMessage,
     props::{MailboxConfigError, MailboxRequirement},
   },
-  dispatch::mailbox::{EnqueueOutcome, Envelope, MailboxOverflowStrategy, MailboxPolicy, MailboxRegistryError},
+  dispatch::mailbox::{
+    EnqueueOutcome, Envelope, MailboxOverflowStrategy, MailboxPolicy, MailboxRegistryError, MailboxSelection,
+  },
 };
 
 struct ConstantPriority;
@@ -17,6 +19,29 @@ impl MessagePriorityGenerator for ConstantPriority {
   fn priority(&self, _message: &AnyMessage) -> i32 {
     0
   }
+}
+
+fn bounded_drop_oldest_push_timeout_policy() -> MailboxPolicy {
+  let capacity = NonZeroUsize::new(1).expect("capacity");
+  MailboxPolicy::bounded(capacity, MailboxOverflowStrategy::DropOldest, None).with_push_timeout(Some(Duration::ZERO))
+}
+
+fn assert_push_timeout_rejects_without_eviction(config: MailboxConfig, label: &str) {
+  let queue = create_message_queue_from_config(&config).expect(label);
+  queue.enqueue(Envelope::new(AnyMessage::new(1_u32))).expect("fill queue");
+
+  let result = queue.enqueue(Envelope::new(AnyMessage::new(2_u32)));
+  let Ok(EnqueueOutcome::Rejected(rejected)) = result else {
+    panic!("{label} must reject incoming envelope after zero push timeout, got {result:?}");
+  };
+  assert_eq!(rejected.payload().downcast_ref::<u32>().copied(), Some(2_u32), "{label}");
+
+  let retained = queue.dequeue().expect("dequeue retained").into_payload();
+  assert_eq!(
+    retained.payload().downcast_ref::<u32>().copied(),
+    Some(1_u32),
+    "{label} must retain the existing envelope instead of applying DropOldest",
+  );
 }
 
 #[test]
@@ -42,6 +67,61 @@ fn ensure_default_mailbox_is_available() {
   let mut registry = Mailboxes::new();
   registry.ensure_default();
   assert!(registry.resolve(DEFAULT_MAILBOX_ID).is_ok());
+  assert!(registry.lookup_by_queue_type(MailboxRequirement::none()).is_ok());
+}
+
+#[test]
+fn lookup_by_queue_type_uses_requirement_binding() {
+  let mut registry = Mailboxes::new();
+  registry.register("multi", MailboxConfig::default()).expect("register mailbox");
+  registry.bind_queue_type(MailboxRequirement::requires_multiple_consumer(), "multi");
+
+  let factory = registry.lookup_by_queue_type(MailboxRequirement::requires_multiple_consumer()).expect("lookup");
+
+  assert!(factory.create_message_queue().is_ok());
+}
+
+#[test]
+fn select_uses_explicit_then_dispatcher_then_requirements() {
+  let mut registry = Mailboxes::new();
+  registry.ensure_default();
+  registry.register("explicit", MailboxConfig::default()).expect("explicit");
+  registry.register("dispatcher", MailboxConfig::default()).expect("dispatcher");
+  registry.register("actor-req", MailboxConfig::default()).expect("actor req");
+  registry.register("dispatcher-req", MailboxConfig::default()).expect("dispatcher req");
+  registry.bind_queue_type(MailboxRequirement::requires_deque(), "actor-req");
+  registry.bind_queue_type(MailboxRequirement::requires_multiple_consumer(), "dispatcher-req");
+
+  let explicit = MailboxSelection::new()
+    .with_explicit_mailbox_id("explicit")
+    .with_dispatcher_mailbox_id("dispatcher")
+    .with_actor_requirement(MailboxRequirement::requires_deque())
+    .with_dispatcher_requirement(MailboxRequirement::requires_multiple_consumer());
+  let dispatcher = MailboxSelection::new()
+    .with_dispatcher_mailbox_id("dispatcher")
+    .with_actor_requirement(MailboxRequirement::requires_deque());
+  let actor_requirement = MailboxSelection::new()
+    .with_actor_requirement(MailboxRequirement::requires_deque())
+    .with_dispatcher_requirement(MailboxRequirement::requires_multiple_consumer());
+  let dispatcher_requirement =
+    MailboxSelection::new().with_dispatcher_requirement(MailboxRequirement::requires_multiple_consumer());
+
+  assert!(ArcShared::ptr_eq(
+    &registry.select(&explicit).expect("select explicit"),
+    &registry.resolve("explicit").unwrap()
+  ));
+  assert!(ArcShared::ptr_eq(
+    &registry.select(&dispatcher).expect("select dispatcher"),
+    &registry.resolve("dispatcher").unwrap()
+  ));
+  assert!(ArcShared::ptr_eq(
+    &registry.select(&actor_requirement).expect("select actor req"),
+    &registry.resolve("actor-req").unwrap()
+  ));
+  assert!(ArcShared::ptr_eq(
+    &registry.select(&dispatcher_requirement).expect("select dispatcher req"),
+    &registry.resolve("dispatcher-req").unwrap()
+  ));
 }
 
 #[test]
@@ -93,6 +173,14 @@ fn control_aware_queue_selection_keeps_lock_backed_enqueue_path() {
 }
 
 #[test]
+fn multiple_consumer_queue_selection_keeps_lock_backed_enqueue_path() {
+  let config = MailboxConfig::default().with_requirement(MailboxRequirement::requires_multiple_consumer());
+  let queue = create_message_queue_from_config(&config).expect("multiple-consumer queue");
+
+  assert!(queue.requires_put_lock_for_enqueue());
+}
+
+#[test]
 fn priority_queue_selection_keeps_lock_backed_enqueue_path() {
   let priority_config = MailboxConfig::default().with_priority_generator(ArcShared::new(ConstantPriority));
   let priority = create_message_queue_from_config(&priority_config).expect("priority queue");
@@ -105,6 +193,35 @@ fn stable_priority_queue_selection_keeps_lock_backed_enqueue_path() {
     MailboxConfig::default().with_priority_generator(ArcShared::new(ConstantPriority)).with_stable_priority(true);
   let stable_priority = create_message_queue_from_config(&stable_priority_config).expect("stable priority queue");
   assert!(stable_priority.requires_put_lock_for_enqueue());
+}
+
+#[test]
+fn create_message_queue_passes_push_timeout_to_bounded_selection_paths() {
+  assert_push_timeout_rejects_without_eviction(
+    MailboxConfig::new(bounded_drop_oldest_push_timeout_policy()),
+    "default bounded mailbox",
+  );
+  assert_push_timeout_rejects_without_eviction(
+    MailboxConfig::new(bounded_drop_oldest_push_timeout_policy())
+      .with_requirement(MailboxRequirement::requires_deque()),
+    "bounded deque mailbox",
+  );
+  assert_push_timeout_rejects_without_eviction(
+    MailboxConfig::new(bounded_drop_oldest_push_timeout_policy())
+      .with_requirement(MailboxRequirement::requires_control_aware()),
+    "bounded control-aware mailbox",
+  );
+  assert_push_timeout_rejects_without_eviction(
+    MailboxConfig::new(bounded_drop_oldest_push_timeout_policy())
+      .with_priority_generator(ArcShared::new(ConstantPriority)),
+    "bounded priority mailbox",
+  );
+  assert_push_timeout_rejects_without_eviction(
+    MailboxConfig::new(bounded_drop_oldest_push_timeout_policy())
+      .with_priority_generator(ArcShared::new(ConstantPriority))
+      .with_stable_priority(true),
+    "bounded stable-priority mailbox",
+  );
 }
 
 #[test]

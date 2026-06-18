@@ -237,7 +237,7 @@ impl ActorRef {
   ///
   /// Returns [`SendError`] when the underlying mailbox rejects the message.
   pub fn try_poison_pill(&mut self) -> Result<(), SendError> {
-    self.try_tell(AnyMessage::new(SystemMessage::PoisonPill))
+    self.try_tell(SystemMessage::PoisonPill.into())
   }
 
   /// Sends `Kill` to the referenced actor via the user message channel.
@@ -251,7 +251,7 @@ impl ActorRef {
   ///
   /// Returns [`SendError`] when the underlying mailbox rejects the message.
   pub fn try_kill(&mut self) -> Result<(), SendError> {
-    self.try_tell(AnyMessage::new(SystemMessage::Kill))
+    self.try_tell(SystemMessage::Kill.into())
   }
 
   /// Sends a request and obtains a future that resolves with the reply.

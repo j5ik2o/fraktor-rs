@@ -1,4 +1,4 @@
-use core::num::NonZeroUsize;
+use core::{num::NonZeroUsize, time::Duration};
 
 use crate::{
   actor::{error::SendError, messaging::AnyMessage},
@@ -144,4 +144,38 @@ fn grow_enqueue_first_bypasses_capacity() {
   assert_eq!(first.payload().downcast_ref::<u32>().copied(), Some(0_u32));
   let second = queue.dequeue().expect("dequeue back");
   assert_eq!(second.payload().downcast_ref::<u32>().copied(), Some(1_u32));
+}
+
+#[test]
+fn push_timeout_rejects_full_back_enqueue_without_drop_oldest_eviction() {
+  let cap = NonZeroUsize::new(1).unwrap();
+  let queue = BoundedDequeMessageQueue::new_with_push_timeout(cap, MailboxOverflowStrategy::DropOldest, Duration::ZERO);
+
+  queue.enqueue(Envelope::new(AnyMessage::new(1_u32))).expect("enqueue first");
+
+  let result = queue.enqueue_with_mailbox_clock(Envelope::new(AnyMessage::new(2_u32)), None);
+  let Ok(EnqueueOutcome::Rejected(rejected)) = result else {
+    panic!("zero push timeout must reject back enqueue without eviction, got {result:?}");
+  };
+  assert_eq!(rejected.payload().downcast_ref::<u32>().copied(), Some(2_u32));
+
+  let retained = queue.dequeue().expect("dequeue retained");
+  assert_eq!(retained.payload().downcast_ref::<u32>().copied(), Some(1_u32));
+  assert!(queue.dequeue().is_none());
+}
+
+#[test]
+fn push_timeout_times_out_full_front_enqueue() {
+  let cap = NonZeroUsize::new(1).unwrap();
+  let queue = BoundedDequeMessageQueue::new_with_push_timeout(cap, MailboxOverflowStrategy::DropNewest, Duration::ZERO);
+
+  queue.enqueue(Envelope::new(AnyMessage::new(1_u32))).expect("enqueue first");
+  let deque = queue.as_deque().expect("deque capability");
+
+  let result = deque.enqueue_first_with_mailbox_clock(Envelope::new(AnyMessage::new(2_u32)), None);
+  let Err(SendError::Timeout(payload)) = result else {
+    panic!("zero push timeout must return SendError::Timeout for front enqueue, got {result:?}");
+  };
+  assert_eq!(payload.downcast_ref::<u32>().copied(), Some(2_u32));
+  assert_eq!(queue.number_of_messages(), 1);
 }

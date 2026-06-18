@@ -1,12 +1,19 @@
 use alloc::{boxed::Box, sync::Arc};
-use core::sync::atomic::{AtomicUsize, Ordering};
+use core::{
+  num::NonZeroUsize,
+  sync::atomic::{AtomicUsize, Ordering},
+  time::Duration,
+};
 
 use fraktor_utils_core_rs::sync::ArcShared;
 
 use super::MailboxFactory;
 use crate::{
-  actor::props::MailboxConfig,
-  dispatch::mailbox::{MailboxType, Mailboxes, MessageQueue, UnboundedMailboxType},
+  actor::props::{MailboxConfig, MailboxRequirement},
+  dispatch::mailbox::{
+    MailboxOverflowStrategy, MailboxPolicy, MailboxType, Mailboxes, MessageQueue, MessageQueueSemantics,
+    UnboundedMailboxType,
+  },
 };
 
 /// Counting MailboxType so tests can observe how many queues a factory
@@ -94,4 +101,28 @@ fn mailbox_factory_default_metadata_is_applied() {
   // `capabilities().with_defaults()` is the declared default.
   let defaults = factory.capabilities();
   let _ = defaults; // smoke test: default constructor must not panic.
+  assert_eq!(factory.produced_queue_semantics(), MessageQueueSemantics::unbounded());
+}
+
+#[test]
+fn mailbox_config_advertises_produced_queue_semantics() {
+  let multiple = MailboxConfig::default().with_requirement(MailboxRequirement::requires_multiple_consumer());
+  let semantics = multiple.produced_queue_semantics();
+
+  assert!(semantics.is_unbounded());
+  assert!(semantics.is_multiple_consumer());
+  assert!(semantics.satisfies(MailboxRequirement::requires_multiple_consumer()));
+}
+
+#[test]
+fn mailbox_config_advertises_push_timeout_semantics_for_bounded_policy() {
+  let capacity = NonZeroUsize::new(1).expect("capacity");
+  let policy =
+    MailboxPolicy::bounded(capacity, MailboxOverflowStrategy::DropNewest, None).with_push_timeout(Some(Duration::ZERO));
+  let config = MailboxConfig::new(policy);
+
+  let semantics = config.produced_queue_semantics();
+
+  assert!(semantics.has_push_timeout());
+  assert!(semantics.satisfies(MailboxRequirement::none().with_blocking_future()));
 }

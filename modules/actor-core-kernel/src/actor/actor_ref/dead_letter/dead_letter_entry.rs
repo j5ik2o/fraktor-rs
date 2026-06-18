@@ -2,7 +2,11 @@
 
 use core::time::Duration;
 
-use crate::actor::{Pid, actor_ref::dead_letter::dead_letter_reason::DeadLetterReason, messaging::AnyMessage};
+use crate::actor::{
+  Pid,
+  actor_ref::dead_letter::dead_letter_reason::DeadLetterReason,
+  messaging::{AnyMessage, WrappedMessage},
+};
 
 /// Captures a single deadletter occurrence.
 #[derive(Debug)]
@@ -53,5 +57,11 @@ impl Clone for DeadLetterEntry {
       recipient: self.recipient,
       timestamp: self.timestamp,
     }
+  }
+}
+
+impl WrappedMessage for DeadLetterEntry {
+  fn message(&self) -> &AnyMessage {
+    &self.message
   }
 }

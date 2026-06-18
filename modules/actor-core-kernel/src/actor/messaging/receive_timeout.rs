@@ -7,3 +7,5 @@ mod tests;
 /// Auto-received message delivered when a configured receive timeout expires.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct ReceiveTimeout;
+
+impl super::PossiblyHarmful for ReceiveTimeout {}

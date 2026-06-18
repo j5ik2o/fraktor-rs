@@ -1,9 +1,21 @@
 use super::*;
-use crate::actor::{Pid, actor_ref::ActorRef, messaging::NotInfluenceReceiveTimeout};
+use crate::actor::{
+  Pid,
+  actor_ref::ActorRef,
+  messaging::{DeadLetterSuppression, NotInfluenceReceiveTimeout, PossiblyHarmful},
+};
 
 struct NonInfluencingTick;
 
 impl NotInfluenceReceiveTimeout for NonInfluencingTick {}
+
+struct SuppressedTick;
+
+impl DeadLetterSuppression for SuppressedTick {}
+
+struct HarmfulTick;
+
+impl PossiblyHarmful for HarmfulTick {}
 
 #[test]
 fn stores_payload_and_sender() {
@@ -95,4 +107,35 @@ fn regular_view_reports_not_influence_flag_as_false() {
   let message = AnyMessage::new(NonInfluencingTick);
   let view = message.as_view();
   assert!(!view.not_influence_receive_timeout());
+}
+
+#[test]
+fn dead_letter_suppressed_sets_suppression_flag() {
+  let message = AnyMessage::dead_letter_suppressed(SuppressedTick);
+  assert!(message.is_dead_letter_suppressed());
+  assert!(!message.is_possibly_harmful());
+
+  let view = message.as_view();
+  assert!(view.dead_letter_suppressed());
+  assert!(!view.possibly_harmful());
+}
+
+#[test]
+fn possibly_harmful_sets_remote_safety_flag() {
+  let message = AnyMessage::possibly_harmful(HarmfulTick);
+  assert!(message.is_possibly_harmful());
+  assert!(!message.is_dead_letter_suppressed());
+
+  let cloned = message.clone();
+  assert!(cloned.is_possibly_harmful());
+}
+
+#[test]
+fn from_parts_with_flags_preserves_marker_flags() {
+  let payload = ArcShared::new(42_u32) as ArcShared<dyn Any + Send + Sync>;
+  let message = AnyMessage::from_parts_with_flags(payload, None, false, true, true, true);
+
+  assert!(message.is_not_influence_receive_timeout());
+  assert!(message.is_dead_letter_suppressed());
+  assert!(message.is_possibly_harmful());
 }

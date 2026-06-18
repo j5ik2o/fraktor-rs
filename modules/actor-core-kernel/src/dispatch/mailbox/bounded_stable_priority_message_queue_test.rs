@@ -1,4 +1,4 @@
-use core::num::NonZeroUsize;
+use core::{num::NonZeroUsize, time::Duration};
 
 use fraktor_utils_core_rs::sync::ArcShared;
 
@@ -191,6 +191,33 @@ fn grow_ignores_capacity() {
 
   let first = queue.dequeue().expect("dequeue 1st").into_payload();
   assert_eq!(*first.payload().downcast_ref::<i32>().expect("downcast"), 10);
+}
+
+#[test]
+fn push_timeout_rejects_full_queue_without_drop_oldest_eviction() {
+  let pgen = ArcShared::new(PayloadPriorityGenerator);
+  let state_shared = BoundedStablePriorityMessageQueueStateShared::new(
+    BoundedStablePriorityMessageQueueState::with_capacity(capacity(1)),
+  );
+  let queue = BoundedStablePriorityMessageQueue::new_with_push_timeout(
+    pgen,
+    state_shared,
+    capacity(1),
+    MailboxOverflowStrategy::DropOldest,
+    Duration::ZERO,
+  );
+
+  queue.enqueue(Envelope::new(AnyMessage::new(10_i32))).expect("enqueue first");
+
+  let result = queue.enqueue_with_mailbox_clock(Envelope::new(AnyMessage::new(5_i32)), None);
+  let Ok(EnqueueOutcome::Rejected(rejected)) = result else {
+    panic!("zero push timeout must reject the incoming stable-priority envelope without eviction, got {result:?}");
+  };
+  assert_eq!(rejected.payload().downcast_ref::<i32>().copied(), Some(5_i32));
+
+  let retained = queue.dequeue().expect("dequeue retained").into_payload();
+  assert_eq!(retained.payload().downcast_ref::<i32>().copied(), Some(10_i32));
+  assert!(queue.dequeue().is_none());
 }
 
 #[test]

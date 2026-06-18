@@ -7,7 +7,10 @@ use core::{
 use fraktor_utils_core_rs::{collections::queue::capabilities::QueueCapabilityRegistry, sync::ArcShared};
 
 use super::{MailboxConfigError, MailboxRequirement};
-use crate::dispatch::mailbox::{MailboxFactory, MailboxPolicy, MailboxType, MessagePriorityGenerator, MessageQueue};
+use crate::dispatch::mailbox::{
+  MailboxCapacity, MailboxFactory, MailboxPolicy, MailboxType, MessagePriorityGenerator, MessageQueue,
+  MessageQueueSemantics,
+};
 
 #[cfg(test)]
 #[path = "mailbox_config_test.rs"]
@@ -183,6 +186,32 @@ impl MailboxFactory for MailboxConfig {
 
   fn capabilities(&self) -> QueueCapabilityRegistry {
     self.capabilities
+  }
+
+  fn produced_queue_semantics(&self) -> MessageQueueSemantics {
+    let mut semantics = match self.policy.capacity() {
+      | MailboxCapacity::Bounded { .. } => MessageQueueSemantics::bounded()
+        .with_multiple_consumer(true)
+        .with_push_timeout(self.policy.push_timeout().is_some()),
+      | MailboxCapacity::Unbounded => {
+        if self.priority_generator.is_some() || self.requirement.needs_deque() || self.requirement.needs_control_aware()
+        {
+          MessageQueueSemantics::unbounded().with_multiple_consumer(true)
+        } else {
+          MessageQueueSemantics::unbounded()
+        }
+      },
+    };
+    if self.requirement.needs_deque() {
+      semantics = semantics.with_deque_based(true);
+    }
+    if self.requirement.needs_control_aware() {
+      semantics = semantics.with_control_aware(true);
+    }
+    if self.requirement.needs_multiple_consumer() {
+      semantics = semantics.with_multiple_consumer(true);
+    }
+    semantics
   }
 }
 

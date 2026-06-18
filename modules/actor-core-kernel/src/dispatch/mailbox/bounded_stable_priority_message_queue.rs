@@ -7,14 +7,15 @@
 #[path = "bounded_stable_priority_message_queue_test.rs"]
 mod tests;
 
-use core::num::NonZeroUsize;
+use core::{num::NonZeroUsize, time::Duration};
 
 use fraktor_utils_core_rs::sync::{ArcShared, SharedAccess};
 
 use super::{
   bounded_stable_priority_message_queue_state_shared::BoundedStablePriorityMessageQueueStateShared,
-  enqueue_error::EnqueueError, enqueue_outcome::EnqueueOutcome, envelope::Envelope, message_queue::MessageQueue,
-  overflow_strategy::MailboxOverflowStrategy, stable_priority_entry::StablePriorityEntry,
+  enqueue_error::EnqueueError, enqueue_outcome::EnqueueOutcome, envelope::Envelope, mailbox_clock::MailboxClock,
+  message_queue::MessageQueue, overflow_strategy::MailboxOverflowStrategy, push_timeout,
+  stable_priority_entry::StablePriorityEntry,
 };
 use crate::dispatch::mailbox::message_priority_generator::MessagePriorityGenerator;
 
@@ -30,6 +31,7 @@ pub struct BoundedStablePriorityMessageQueue {
   generator:    ArcShared<dyn MessagePriorityGenerator>,
   capacity:     usize,
   overflow:     MailboxOverflowStrategy,
+  push_timeout: Option<Duration>,
 }
 
 impl BoundedStablePriorityMessageQueue {
@@ -41,13 +43,38 @@ impl BoundedStablePriorityMessageQueue {
     capacity: NonZeroUsize,
     overflow: MailboxOverflowStrategy,
   ) -> Self {
-    Self { state_shared, generator, capacity: capacity.get(), overflow }
+    Self { state_shared, generator, capacity: capacity.get(), overflow, push_timeout: None }
+  }
+
+  /// Creates a bounded stable-priority message queue with Pekko-style push timeout semantics.
+  #[must_use]
+  pub fn new_with_push_timeout(
+    generator: ArcShared<dyn MessagePriorityGenerator>,
+    state_shared: BoundedStablePriorityMessageQueueStateShared,
+    capacity: NonZeroUsize,
+    overflow: MailboxOverflowStrategy,
+    push_timeout: Duration,
+  ) -> Self {
+    let mut queue = Self::new(generator, state_shared, capacity, overflow);
+    queue.push_timeout = Some(push_timeout);
+    queue
   }
 }
 
 impl MessageQueue for BoundedStablePriorityMessageQueue {
   fn enqueue(&self, envelope: Envelope) -> Result<EnqueueOutcome, EnqueueError> {
+    self.enqueue_with_mailbox_clock(envelope, None)
+  }
+
+  fn enqueue_with_mailbox_clock(
+    &self,
+    envelope: Envelope,
+    clock: Option<&MailboxClock>,
+  ) -> Result<EnqueueOutcome, EnqueueError> {
     let priority = self.generator.priority(envelope.payload());
+    if let Some(timeout) = self.push_timeout {
+      return self.enqueue_with_push_timeout(envelope, priority, timeout, clock);
+    }
     self.state_shared.with_write(|state| {
       let sequence = state.next_sequence();
       let entry = StablePriorityEntry { priority, sequence, envelope };
@@ -97,5 +124,40 @@ impl MessageQueue for BoundedStablePriorityMessageQueue {
 
   fn clean_up(&self) {
     self.state_shared.with_write(|state| state.heap_mut().clear());
+  }
+}
+
+impl BoundedStablePriorityMessageQueue {
+  fn enqueue_with_push_timeout(
+    &self,
+    mut envelope: Envelope,
+    priority: i32,
+    timeout: Duration,
+    clock: Option<&MailboxClock>,
+  ) -> Result<EnqueueOutcome, EnqueueError> {
+    let deadline = push_timeout::push_timeout_deadline(clock, timeout);
+    loop {
+      let result = self.state_shared.with_write(|state| {
+        if state.heap().len() < self.capacity {
+          let sequence = state.next_sequence();
+          state.heap_mut().push(StablePriorityEntry { priority, sequence, envelope });
+          Ok(EnqueueOutcome::Accepted)
+        } else {
+          Ok(EnqueueOutcome::Rejected(envelope))
+        }
+      });
+      match result {
+        | Ok(EnqueueOutcome::Accepted) => return Ok(EnqueueOutcome::Accepted),
+        | Ok(EnqueueOutcome::Rejected(rejected)) => {
+          envelope = rejected;
+          if !push_timeout::should_retry_after_full(clock, deadline) {
+            return Ok(EnqueueOutcome::Rejected(envelope));
+          }
+          push_timeout::spin_before_push_timeout_retry();
+        },
+        | Ok(EnqueueOutcome::Evicted(evicted)) => return Ok(EnqueueOutcome::Evicted(evicted)),
+        | Err(error) => return Err(error),
+      }
+    }
   }
 }

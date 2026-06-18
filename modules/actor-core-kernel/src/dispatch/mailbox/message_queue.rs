@@ -2,7 +2,7 @@
 
 use super::{
   deque_message_queue::DequeMessageQueue, enqueue_error::EnqueueError, enqueue_outcome::EnqueueOutcome,
-  envelope::Envelope,
+  envelope::Envelope, mailbox_clock::MailboxClock,
 };
 
 /// Pluggable user message queue interface inspired by Pekko's `MessageQueue`.
@@ -42,6 +42,24 @@ pub trait MessageQueue: Send + Sync {
   /// [`MailboxOverflowStrategy::DropOldest`]: super::overflow_strategy::MailboxOverflowStrategy
   /// [`MailboxOverflowStrategy::DropNewest`]: super::overflow_strategy::MailboxOverflowStrategy
   fn enqueue(&self, envelope: Envelope) -> Result<EnqueueOutcome, EnqueueError>;
+
+  /// Enqueues a user envelope using the mailbox's monotonic clock when an
+  /// implementation needs timeout-aware offer semantics.
+  ///
+  /// The default delegates to [`Self::enqueue`] so queue implementations that
+  /// do not support bounded push timeouts keep their existing behaviour.
+  ///
+  /// # Errors
+  ///
+  /// Returns an [`EnqueueError`] when the underlying queue rejects the
+  /// envelope for a non-overflow reason.
+  fn enqueue_with_mailbox_clock(
+    &self,
+    envelope: Envelope,
+    _clock: Option<&MailboxClock>,
+  ) -> Result<EnqueueOutcome, EnqueueError> {
+    self.enqueue(envelope)
+  }
 
   /// Dequeues the next user envelope, if available.
   fn dequeue(&self) -> Option<Envelope>;
