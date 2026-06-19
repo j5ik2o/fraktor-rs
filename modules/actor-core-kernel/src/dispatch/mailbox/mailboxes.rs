@@ -154,6 +154,8 @@ fn control_aware_mailbox_type_from_policy(policy: MailboxPolicy) -> Box<dyn Mail
 fn multiple_consumer_mailbox_type_from_policy(policy: MailboxPolicy) -> Box<dyn MailboxType> {
   match policy.capacity() {
     | MailboxCapacity::Bounded { capacity } => bounded_mailbox_type(capacity, policy.overflow(), policy.push_timeout()),
+    // The lock-free unbounded MPSC queue cannot safely support concurrent dequeue.
+    // Multiple-consumer semantics require a lock-backed deque queue instead.
     | MailboxCapacity::Unbounded => Box::new(UnboundedDequeMailboxType::new()),
   }
 }
@@ -183,20 +185,11 @@ fn bounded_mailbox_type(
 /// [`MailboxFactory`] as a bridge so high-level callers register a
 /// `MailboxConfig` and low-level callers pass a custom
 /// [`MailboxFactory`] implementation directly.
+#[derive(Clone)]
 pub struct Mailboxes {
   entries:             HashMap<String, ArcShared<dyn MailboxFactory>, RandomState>,
   queue_type_bindings: HashMap<MailboxRequirement, String, RandomState>,
   _marker:             PhantomData<()>,
-}
-
-impl Clone for Mailboxes {
-  fn clone(&self) -> Self {
-    Self {
-      entries:             self.entries.clone(),
-      queue_type_bindings: self.queue_type_bindings.clone(),
-      _marker:             PhantomData,
-    }
-  }
 }
 
 impl Mailboxes {

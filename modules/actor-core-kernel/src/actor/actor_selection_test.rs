@@ -491,6 +491,23 @@ fn actor_selection_tell_defers_when_remote_authority_is_unresolved() {
 }
 
 #[test]
+fn actor_selection_ask_does_not_defer_without_reply_sender() {
+  let system = build_selection_system();
+  let path =
+    ActorPath::from_parts(ActorPathParts::with_authority("selection-spec", Some(("ask-peer.example.com", 2552))))
+      .child("worker");
+  let selection = ActorSelection::from_path(system.state(), &path);
+
+  let error = match selection.ask(AnyMessage::new(String::from("remote ask")), Duration::from_millis(100)) {
+    | Ok(_) => panic!("ask should fail while remote authority is unresolved"),
+    | Err(error) => error,
+  };
+
+  assert!(matches!(error, ActorSelectionError::Authority(PathResolutionError::AuthorityUnresolved)));
+  assert_eq!(system.state().remote_authority_deferred_count("ask-peer.example.com:2552"), 0);
+}
+
+#[test]
 fn actor_selection_tell_reports_queue_full_when_remote_deferred_queue_is_full() {
   let system = build_selection_system();
   let authority = "full-peer.example.com:2552";

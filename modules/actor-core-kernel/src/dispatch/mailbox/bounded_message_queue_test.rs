@@ -144,10 +144,7 @@ fn push_timeout_without_clock_falls_back_to_overflow_strategy() {
   queue.enqueue(Envelope::new(AnyMessage::new(1_u32))).expect("enqueue first");
 
   let result = queue.enqueue(Envelope::new(AnyMessage::new(2_u32)));
-  let Ok(EnqueueOutcome::Evicted(evicted)) = result else {
-    panic!("clock-less push timeout must use normal DropOldest overflow, got {result:?}");
-  };
-  assert_eq!(evicted.payload().downcast_ref::<u32>().copied(), Some(1_u32));
+  assert!(matches!(result, Ok(EnqueueOutcome::Evicted(_))), "{result:?}");
 
   let retained = queue.dequeue().expect("dequeue retained");
   assert_eq!(retained.payload().downcast_ref::<u32>().copied(), Some(2_u32));

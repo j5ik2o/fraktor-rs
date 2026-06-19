@@ -382,6 +382,7 @@ fn event_bus_test_adapters_exercise_unsubscribe_and_noop_contracts() {
     *value > 0
   }
   let classifier: fn(&u32) -> bool = positive;
+  assert!(classifier(&1));
   let mut predicate = PredicateBus;
   assert!(predicate.subscribe(1, classifier));
   assert!(predicate.unsubscribe(&1, &classifier));

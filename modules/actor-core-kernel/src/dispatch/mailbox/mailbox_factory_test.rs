@@ -7,12 +7,14 @@ use core::{
 
 use fraktor_utils_core_rs::sync::ArcShared;
 
-use super::MailboxFactory;
 use crate::{
-  actor::props::{MailboxConfig, MailboxRequirement},
+  actor::{
+    messaging::AnyMessage,
+    props::{MailboxConfig, MailboxRequirement},
+  },
   dispatch::mailbox::{
-    MailboxOverflowStrategy, MailboxPolicy, MailboxType, Mailboxes, MessageQueue, MessageQueueSemantics,
-    ProducesMessageQueue, UnboundedMailboxType,
+    MailboxFactory, MailboxOverflowStrategy, MailboxPolicy, MailboxType, Mailboxes, MessagePriorityGenerator,
+    MessageQueue, MessageQueueSemantics, ProducesMessageQueue, UnboundedMailboxType,
   },
 };
 
@@ -34,6 +36,14 @@ impl MailboxType for CountingMailboxType {
 /// metadata so the trait default methods can be exercised.
 struct CustomMailboxFactory {
   mailbox_type: ArcShared<dyn MailboxType>,
+}
+
+struct FactoryPriority;
+
+impl MessagePriorityGenerator for FactoryPriority {
+  fn priority(&self, _message: &AnyMessage) -> i32 {
+    0
+  }
 }
 
 impl CustomMailboxFactory {
@@ -125,16 +135,21 @@ fn produces_message_queue_trait_delegates_to_mailbox_factory_semantics() {
 
 #[test]
 fn mailbox_config_advertises_specialized_unbounded_semantics() {
+  let priority = MailboxConfig::default().with_priority_generator(ArcShared::new(FactoryPriority));
+  let priority_semantics = priority.produced_queue_semantics();
+  assert!(priority_semantics.is_unbounded());
+  assert!(!priority_semantics.is_multiple_consumer());
+
   let deque = MailboxConfig::default().with_requirement(MailboxRequirement::requires_deque());
   let deque_semantics = deque.produced_queue_semantics();
   assert!(deque_semantics.is_unbounded());
-  assert!(deque_semantics.is_multiple_consumer());
+  assert!(!deque_semantics.is_multiple_consumer());
   assert!(deque_semantics.is_deque_based());
 
   let control = MailboxConfig::default().with_requirement(MailboxRequirement::requires_control_aware());
   let control_semantics = control.produced_queue_semantics();
   assert!(control_semantics.is_unbounded());
-  assert!(control_semantics.is_multiple_consumer());
+  assert!(!control_semantics.is_multiple_consumer());
   assert!(control_semantics.is_control_aware());
 }
 

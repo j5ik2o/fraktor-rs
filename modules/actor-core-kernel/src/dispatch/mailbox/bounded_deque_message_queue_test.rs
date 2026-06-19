@@ -192,10 +192,9 @@ fn push_timeout_times_out_full_front_enqueue() {
 
   let clock = fixed_zero_clock();
   let result = deque.enqueue_first_with_mailbox_clock(Envelope::new(AnyMessage::new(2_u32)), Some(&clock));
-  let SendError::Timeout(payload) = result.expect_err("zero push timeout must return SendError::Timeout") else {
-    panic!("zero push timeout must return SendError::Timeout");
-  };
-  assert_eq!(payload.downcast_ref::<u32>().copied(), Some(2_u32));
+  let error = result.expect_err("zero push timeout must return SendError::Timeout");
+  assert!(matches!(error, SendError::Timeout(_)));
+  assert_eq!(error.message().payload().downcast_ref::<u32>().copied(), Some(2_u32));
   assert_eq!(queue.number_of_messages(), 1);
 }
 

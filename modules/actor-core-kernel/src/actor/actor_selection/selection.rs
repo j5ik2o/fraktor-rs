@@ -72,7 +72,7 @@ impl ActorSelection {
   /// Returns an error if the path cannot be resolved before the ask starts.
   pub fn ask(&self, message: AnyMessage, timeout: Duration) -> Result<AskResponse, ActorSelectionError> {
     let path = self.resolve_target_path()?;
-    self.ensure_authority_state(&path, Some(&message))?;
+    self.ensure_authority_state(&path, None)?;
     let mut actor_ref = self.resolve_actor_ref(path)?;
     Ok(actor_ref.ask_with_timeout(message, timeout))
   }

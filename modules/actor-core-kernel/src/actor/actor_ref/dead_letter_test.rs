@@ -110,6 +110,22 @@ fn record_send_error_maps_suppressed_message_reason() {
 }
 
 #[test]
+fn record_entry_maps_suppressed_message_reason() {
+  let mut dead_letter = DeadLetter::with_capacity(4);
+  let pid = Pid::new(15, 0);
+
+  let entry = dead_letter.record_entry(
+    AnyMessage::dead_letter_suppressed(PoisonPill),
+    DeadLetterReason::MailboxFull,
+    Some(pid),
+    Duration::from_millis(4),
+  );
+
+  assert_eq!(entry.reason(), DeadLetterReason::SuppressedDeadLetter);
+  assert_eq!(entry.recipient(), Some(pid));
+}
+
+#[test]
 fn dead_letter_reason_supports_suppressed_and_dropped() {
   let stream = EventStreamShared::default();
   let dead_letter = DeadLetterShared::with_default_capacity(stream);

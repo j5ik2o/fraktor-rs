@@ -197,6 +197,8 @@ fn fsm_transition_subscription_records_send_errors_for_failing_listener() {
   });
   fsm.initialize(&ctx).expect("initialize");
 
+  let ignored = AnyMessage::new(Ignore);
+  fsm.handle(&mut ctx, &ignored.as_view()).expect("ignore");
   let subscribe = AnyMessage::new(FsmSubscribeTransitionCallback::new(listener));
   fsm.handle(&mut ctx, &subscribe.as_view()).expect("subscribe");
   let advance = AnyMessage::new(Advance);

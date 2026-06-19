@@ -64,6 +64,7 @@ impl DeadLetter {
     target: Option<Pid>,
     timestamp: Duration,
   ) -> DeadLetterEntry {
+    let reason = if message.is_dead_letter_suppressed() { DeadLetterReason::SuppressedDeadLetter } else { reason };
     let entry = DeadLetterEntry::new(message, reason, target, timestamp);
     self.entries.push(entry.clone());
     if self.entries.len() > self.capacity {

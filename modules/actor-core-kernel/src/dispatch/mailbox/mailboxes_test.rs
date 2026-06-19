@@ -6,6 +6,7 @@ use fraktor_utils_core_rs::sync::ArcShared;
 use super::*;
 use crate::{
   actor::{
+    error::SendError,
     messaging::AnyMessage,
     props::{MailboxConfigError, MailboxRequirement},
   },
@@ -40,7 +41,7 @@ fn assert_push_timeout_rejects_without_eviction(config: MailboxConfig, label: &s
   let clock = fixed_zero_clock();
   let result = queue.enqueue_with_mailbox_clock(Envelope::new(AnyMessage::new(2_u32)), Some(&clock));
   let error = result.expect_err(label);
-  assert!(matches!(error.error(), crate::actor::error::SendError::Timeout(_)), "{label}");
+  assert!(matches!(error.error(), SendError::Timeout(_)), "{label}");
   assert_eq!(error.error().message().payload().downcast_ref::<u32>().copied(), Some(2_u32), "{label}");
 
   let retained = queue.dequeue().expect("dequeue retained").into_payload();
@@ -71,7 +72,7 @@ fn register_duplicate_mailbox_fails() {
 
 #[test]
 fn ensure_default_mailbox_is_available() {
-  let mut registry = Mailboxes::new();
+  let mut registry = Mailboxes::default();
   registry.ensure_default();
   assert!(registry.resolve(DEFAULT_MAILBOX_ID).is_ok());
   assert!(registry.lookup_by_queue_type(MailboxRequirement::none()).is_ok());

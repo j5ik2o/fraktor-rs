@@ -28,6 +28,17 @@ impl Actor for TerminationNoopActor {
   }
 }
 
+#[test]
+fn termination_noop_actor_accepts_messages() {
+  let system = ActorSystem::new_empty();
+  let pid = system.allocate_pid();
+  let mut ctx = ActorContext::new(&system, pid);
+  let message = AnyMessage::new("termination probe");
+  let mut actor = TerminationNoopActor;
+
+  assert!(actor.receive(&mut ctx, message.as_view()).is_ok());
+}
+
 #[derive(Clone)]
 struct SharedManualDelayProvider {
   inner: ArcShared<SpinSyncMutex<ManualDelayProvider>>,

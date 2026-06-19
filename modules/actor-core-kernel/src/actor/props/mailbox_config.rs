@@ -193,14 +193,7 @@ impl MailboxFactory for MailboxConfig {
       | MailboxCapacity::Bounded { .. } => {
         MessageQueueSemantics::bounded().with_push_timeout(self.policy.push_timeout().is_some())
       },
-      | MailboxCapacity::Unbounded => {
-        if self.priority_generator.is_some() || self.requirement.needs_deque() || self.requirement.needs_control_aware()
-        {
-          MessageQueueSemantics::unbounded().with_multiple_consumer(true)
-        } else {
-          MessageQueueSemantics::unbounded()
-        }
-      },
+      | MailboxCapacity::Unbounded => MessageQueueSemantics::unbounded(),
     };
     if self.requirement.needs_deque() {
       semantics = semantics.with_deque_based(true);
