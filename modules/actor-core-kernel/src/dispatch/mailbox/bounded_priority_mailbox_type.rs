@@ -37,7 +37,7 @@ impl BoundedPriorityMailboxType {
     Self { generator, capacity, overflow, push_timeout: None }
   }
 
-  /// Creates a bounded priority mailbox type factory with Pekko-style push timeout semantics.
+  /// Creates a bounded priority mailbox type factory with push-timeout reporting.
   #[must_use]
   pub fn new_with_push_timeout(
     generator: ArcShared<dyn MessagePriorityGenerator>,

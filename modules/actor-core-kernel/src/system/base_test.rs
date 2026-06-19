@@ -1,5 +1,6 @@
 use alloc::{boxed::Box, format, vec, vec::Vec};
 use core::{
+  num::NonZeroUsize,
   pin::Pin,
   sync::atomic::{AtomicBool, AtomicUsize, Ordering},
   task::{Context, Poll, RawWaker, RawWakerVTable, Waker},
@@ -36,9 +37,12 @@ use crate::{
     setup::ActorSystemConfig,
     spawn::SpawnError,
   },
-  dispatch::dispatcher::{
-    DefaultDispatcherFactory, DispatcherConfig, ExecuteError, Executor, ExecutorShared, MessageDispatcherFactory,
-    TrampolineState,
+  dispatch::{
+    dispatcher::{
+      DefaultDispatcherFactory, DispatcherConfig, ExecuteError, Executor, ExecutorShared, MessageDispatcherFactory,
+      TrampolineState,
+    },
+    mailbox::{MailboxOverflowStrategy, MailboxPolicy},
   },
   event::stream::{EventStreamEvent, EventStreamSubscriber, tests::subscriber_handle},
   system::{
@@ -831,6 +835,35 @@ fn spawn_child_succeeds_when_requirements_met() {
   let props = Props::from_fn(|| TestActor).with_mailbox_config(mailbox);
 
   assert!(system.spawn_child(parent_pid, &props).is_ok());
+}
+
+#[test]
+fn spawn_child_selects_mailbox_from_queue_type_binding() {
+  let bounded_stash = MailboxConfig::new(MailboxPolicy::bounded(
+    NonZeroUsize::new(1).expect("non-zero mailbox capacity"),
+    MailboxOverflowStrategy::DropNewest,
+    None,
+  ))
+  .with_requirement(MailboxRequirement::for_stash());
+  let system = ActorSystem::new_empty_with(|config| {
+    config
+      .with_mailbox("bounded-stash", bounded_stash)
+      .with_mailbox_queue_type(MailboxRequirement::for_stash(), "bounded-stash")
+  });
+  let parent_pid = system.allocate_pid();
+  let parent_name = system.state().assign_name(None, Some("parent"), parent_pid).expect("parent name");
+  let parent_cell = ActorCell::create(system.state(), parent_pid, None, parent_name, &Props::from_fn(|| TestActor))
+    .expect("create actor cell");
+  system.state().register_cell(parent_cell);
+  let props = Props::from_fn(|| TestActor).with_stash_mailbox();
+
+  let child = system.spawn_child(parent_pid, &props).expect("spawn child");
+  let cell = system.state().cell(&child.pid()).expect("child cell");
+  let mailbox = cell.mailbox();
+  mailbox.enqueue_user(AnyMessage::new(1_u32)).expect("first enqueue fits");
+  mailbox.enqueue_user(AnyMessage::new(2_u32)).expect("DropNewest overflow reports success");
+
+  assert_eq!(mailbox.user_len(), 1);
 }
 
 #[test]

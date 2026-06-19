@@ -16,7 +16,7 @@ use crate::{
     deploy::Deployer,
     extension::ExtensionInstallers,
     invoke_guard::{InvokeGuardFactory, NoopInvokeGuardFactory},
-    props::DeployableActorFactoryRegistry,
+    props::{DeployableActorFactoryRegistry, MailboxRequirement},
     scheduler::{SchedulerConfig, tick_driver::TickDriver},
     setup::CircuitBreakerConfig,
   },
@@ -147,6 +147,13 @@ impl ActorSystemConfig {
   #[must_use]
   pub fn with_mailbox(mut self, id: impl Into<String>, factory: impl MailboxFactory + 'static) -> Self {
     self.mailboxes.register_or_update(id, factory);
+    self
+  }
+
+  /// Binds a mailbox requirement to a registered mailbox id.
+  #[must_use]
+  pub fn with_mailbox_queue_type(mut self, requirement: MailboxRequirement, id: impl Into<String>) -> Self {
+    self.mailboxes.bind_queue_type(requirement, id);
     self
   }
 

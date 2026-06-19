@@ -19,6 +19,7 @@ pub struct Props {
   tags: BTreeSet<String>,
   mailbox_config: MailboxConfig,
   mailbox_id: Option<String>,
+  inline_mailbox_config: bool,
   middleware: Vec<String>,
   dispatcher_id: Option<String>,
   dispatcher_same_as_parent: bool,
@@ -35,6 +36,7 @@ impl Props {
       tags: BTreeSet::new(),
       mailbox_config: MailboxConfig::default(),
       mailbox_id: None,
+      inline_mailbox_config: false,
       middleware: Vec::new(),
       dispatcher_id: None,
       dispatcher_same_as_parent: false,
@@ -55,6 +57,7 @@ impl Props {
       tags: BTreeSet::new(),
       mailbox_config: MailboxConfig::default(),
       mailbox_id: None,
+      inline_mailbox_config: false,
       middleware: Vec::new(),
       dispatcher_id: None,
       dispatcher_same_as_parent: false,
@@ -127,6 +130,13 @@ impl Props {
     self.mailbox_id.as_deref()
   }
 
+  /// Returns whether these props carry an explicitly supplied inline mailbox configuration.
+  #[doc(hidden)]
+  #[must_use]
+  pub const fn uses_inline_mailbox_config(&self) -> bool {
+    self.inline_mailbox_config
+  }
+
   /// Returns the mailbox policy.
   #[must_use]
   pub const fn mailbox_policy(&self) -> MailboxPolicy {
@@ -164,6 +174,7 @@ impl Props {
   pub fn with_mailbox_config(mut self, mailbox_config: MailboxConfig) -> Self {
     self.mailbox_config = mailbox_config;
     self.mailbox_id = None;
+    self.inline_mailbox_config = true;
     self
   }
 
@@ -265,6 +276,7 @@ impl Props {
   #[must_use]
   pub fn with_mailbox_id(mut self, id: impl Into<String>) -> Self {
     self.mailbox_id = Some(id.into());
+    self.inline_mailbox_config = false;
     self
   }
 
@@ -273,6 +285,7 @@ impl Props {
   pub fn with_mailbox_capabilities(mut self, queue_capability_registry: QueueCapabilityRegistry) -> Self {
     self.mailbox_config = self.mailbox_config.with_capabilities(queue_capability_registry);
     self.mailbox_id = None;
+    self.inline_mailbox_config = true;
     self
   }
 }
@@ -285,6 +298,7 @@ impl Clone for Props {
       tags: self.tags.clone(),
       mailbox_config: self.mailbox_config.clone(),
       mailbox_id: self.mailbox_id.clone(),
+      inline_mailbox_config: self.inline_mailbox_config,
       middleware: self.middleware.clone(),
       dispatcher_id: self.dispatcher_id.clone(),
       dispatcher_same_as_parent: self.dispatcher_same_as_parent,

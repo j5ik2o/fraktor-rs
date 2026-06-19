@@ -40,6 +40,7 @@ use crate::{
     setup::{ActorSystemConfig, CircuitBreakerConfig},
     spawn::SpawnError,
   },
+  dispatch::mailbox::{MailboxFactory, MailboxSelection},
   event::{
     logging::LogLevel,
     stream::{
@@ -761,17 +762,31 @@ impl ActorSystem {
   }
 
   fn ensure_mailbox_requirements(&self, props: &Props) -> Result<(), SpawnError> {
-    // Requirements come from the factory that will actually be used at spawn
-    // time: the registered factory when `mailbox_id` is set, otherwise the
-    // inline `MailboxConfig` carried by the props.
-    if let Some(mailbox_id) = props.mailbox_id() {
-      let factory =
-        self.state.resolve_mailbox(mailbox_id).map_err(|error| SpawnError::invalid_props(error.to_string()))?;
-      Self::ensure_requirements_from(factory.requirement(), factory.capabilities())
-    } else {
-      let config = props.mailbox_config();
-      Self::ensure_requirements_from(config.requirement(), config.capabilities())
+    let factory = self.select_mailbox_factory(props)?;
+    Self::ensure_requirements_from(factory.requirement(), factory.capabilities())?;
+    Self::ensure_requirements_from(props.mailbox_requirement(), factory.capabilities())?;
+    if !factory.produced_queue_semantics().satisfies(props.mailbox_requirement()) {
+      return Err(SpawnError::invalid_props("mailbox does not satisfy actor queue requirement"));
     }
+    Ok(())
+  }
+
+  pub(crate) fn select_mailbox_factory(&self, props: &Props) -> Result<ArcShared<dyn MailboxFactory>, SpawnError> {
+    if props.uses_inline_mailbox_config() {
+      return Ok(ArcShared::new(props.mailbox_config().clone()));
+    }
+    self
+      .state
+      .select_mailbox(&Self::mailbox_selection(props))
+      .map_err(|error| SpawnError::invalid_props(error.to_string()))
+  }
+
+  fn mailbox_selection(props: &Props) -> MailboxSelection {
+    let selection = MailboxSelection::new().with_actor_requirement(props.mailbox_requirement());
+    if let Some(id) = props.mailbox_id() {
+      return selection.with_explicit_mailbox_id(id);
+    }
+    selection
   }
 
   fn ensure_requirements_from(

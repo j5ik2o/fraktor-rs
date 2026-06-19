@@ -2,7 +2,6 @@ use alloc::boxed::Box;
 use core::{num::NonZeroUsize, time::Duration};
 
 use fraktor_utils_core_rs::sync::{ArcShared, SharedAccess};
-use portable_atomic::{AtomicU64, Ordering};
 
 use crate::{
   actor::{error::SendError, messaging::AnyMessage},
@@ -14,15 +13,6 @@ use crate::{
 
 fn fixed_zero_clock() -> MailboxClock {
   let closure: Box<dyn Fn() -> Duration + Send + Sync> = Box::new(|| Duration::ZERO);
-  ArcShared::from_boxed(closure)
-}
-
-fn stepping_clock() -> MailboxClock {
-  let tick = ArcShared::new(AtomicU64::new(0));
-  let closure: Box<dyn Fn() -> Duration + Send + Sync> = Box::new(move || {
-    let millis = tick.fetch_add(1, Ordering::SeqCst);
-    Duration::from_millis(millis)
-  });
   ArcShared::from_boxed(closure)
 }
 
@@ -164,17 +154,17 @@ fn push_timeout_accepts_when_queue_has_room_with_clock() {
 }
 
 #[test]
-fn push_timeout_retries_until_deadline_when_queue_stays_full() {
+fn push_timeout_times_out_full_queue_without_spinning() {
   let cap = NonZeroUsize::new(1).unwrap();
   let queue =
     BoundedMessageQueue::new_with_push_timeout(cap, MailboxOverflowStrategy::DropNewest, Duration::from_millis(2));
 
   queue.enqueue(Envelope::new(AnyMessage::new(1_u32))).expect("enqueue first");
 
-  let clock = stepping_clock();
+  let clock = fixed_zero_clock();
   let error = queue
     .enqueue_with_mailbox_clock(Envelope::new(AnyMessage::new(2_u32)), Some(&clock))
-    .expect_err("push timeout must eventually expire");
+    .expect_err("push timeout must fail fast when full");
 
   assert!(matches!(error.error(), SendError::Timeout(_)));
   assert_eq!(error.error().message().payload().downcast_ref::<u32>().copied(), Some(2_u32));

@@ -70,7 +70,7 @@ impl BoundedControlAwareMessageQueue {
     }
   }
 
-  /// Creates a bounded control-aware message queue with Pekko-style push timeout semantics.
+  /// Creates a bounded control-aware message queue with push-timeout reporting.
   #[must_use]
   pub fn new_with_push_timeout(
     capacity: NonZeroUsize,
@@ -146,30 +146,21 @@ impl MessageQueue for BoundedControlAwareMessageQueue {
 impl BoundedControlAwareMessageQueue {
   fn enqueue_with_push_timeout(
     &self,
-    mut envelope: Envelope,
-    timeout: Duration,
-    clock: &MailboxClock,
+    envelope: Envelope,
+    _timeout: Duration,
+    _clock: &MailboxClock,
   ) -> Result<EnqueueOutcome, EnqueueError> {
-    let deadline = push_timeout::push_timeout_deadline(clock, timeout);
-    loop {
-      let rejected = self.inner.with_write(|inner| {
-        if inner.total_len() < self.capacity {
-          push_into_appropriate_queue(inner, envelope);
-          None
-        } else {
-          Some(envelope)
-        }
-      });
-      match rejected {
-        | None => return Ok(EnqueueOutcome::Accepted),
-        | Some(rejected) => {
-          envelope = rejected;
-          if !push_timeout::should_retry_after_full(clock, deadline) {
-            return Err(push_timeout::enqueue_timeout(envelope));
-          }
-          push_timeout::spin_before_push_timeout_retry();
-        },
+    let rejected = self.inner.with_write(|inner| {
+      if inner.total_len() < self.capacity {
+        push_into_appropriate_queue(inner, envelope);
+        None
+      } else {
+        Some(envelope)
       }
+    });
+    match rejected {
+      | None => Ok(EnqueueOutcome::Accepted),
+      | Some(rejected) => Err(push_timeout::enqueue_timeout(rejected)),
     }
   }
 }

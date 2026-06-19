@@ -30,7 +30,7 @@ impl BoundedDequeMailboxType {
     Self { capacity, overflow, push_timeout: None }
   }
 
-  /// Creates a bounded deque mailbox type factory with Pekko-style push timeout semantics.
+  /// Creates a bounded deque mailbox type factory with push-timeout reporting.
   #[must_use]
   pub const fn new_with_push_timeout(
     capacity: NonZeroUsize,

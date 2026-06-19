@@ -3,6 +3,7 @@ use core::time::Duration;
 use crate::{
   actor::{
     actor_path::GuardianKind as PathGuardianKind,
+    props::{MailboxConfig, MailboxRequirement},
     setup::{ActorSystemConfig, CircuitBreakerConfig},
   },
   dispatch::dispatcher::DEFAULT_DISPATCHER_ID,
@@ -71,6 +72,15 @@ fn test_actor_system_config_default_resolves_default_dispatcher() {
     config.dispatchers().resolve(DEFAULT_DISPATCHER_ID).is_ok(),
     "ActorSystemConfig::default() should seed the default dispatcher entry"
   );
+}
+
+#[test]
+fn test_actor_system_config_binds_mailbox_queue_type() {
+  let config = ActorSystemConfig::default()
+    .with_mailbox("stash", MailboxConfig::default().with_requirement(MailboxRequirement::for_stash()))
+    .with_mailbox_queue_type(MailboxRequirement::for_stash(), "stash");
+
+  assert!(config.mailboxes().lookup_by_queue_type(MailboxRequirement::for_stash()).is_ok());
 }
 
 #[test]

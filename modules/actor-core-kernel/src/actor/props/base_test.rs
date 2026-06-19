@@ -103,6 +103,7 @@ fn with_stash_mailbox_sets_stash_requirement() {
   let props = Props::from_fn(|| TestActor).with_stash_mailbox();
 
   assert_eq!(props.mailbox_requirement(), crate::actor::props::MailboxRequirement::for_stash());
+  assert!(!props.uses_inline_mailbox_config());
 }
 
 #[test]
@@ -116,6 +117,21 @@ fn with_stash_mailbox_accepts_bounded_mailbox_config() {
     .with_stash_mailbox();
 
   assert_eq!(props.mailbox_config().validate(), Ok(()));
+  assert!(props.uses_inline_mailbox_config());
+}
+
+#[test]
+fn mailbox_id_disables_inline_mailbox_config() {
+  let props = Props::from_fn(|| TestActor)
+    .with_mailbox_config(MailboxConfig::new(MailboxPolicy::bounded(
+      NonZeroUsize::new(8).expect("non-zero"),
+      MailboxOverflowStrategy::DropNewest,
+      None,
+    )))
+    .with_mailbox_id("registered");
+
+  assert_eq!(props.mailbox_id(), Some("registered"));
+  assert!(!props.uses_inline_mailbox_config());
 }
 
 #[test]

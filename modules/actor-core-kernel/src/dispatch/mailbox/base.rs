@@ -835,7 +835,7 @@ impl Mailbox {
       // `Watch` / `Terminated` / `Create` / `Stop` envelope を失って観測不能にしてはならない。
       while let Some(sys_msg) = self.system.pop() {
         if let Some(ref state) = system_state {
-          state.record_dead_letter(AnyMessage::new(sys_msg), DeadLetterReason::Dropped, pid);
+          state.record_dead_letter(sys_msg.into(), DeadLetterReason::Dropped, pid);
         }
       }
       // user queue の扱いのみ cleanup policy に従う。`DrainToDeadLetters` なら残留 user message を

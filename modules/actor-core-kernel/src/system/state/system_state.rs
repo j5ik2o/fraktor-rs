@@ -53,7 +53,7 @@ use crate::{
   },
   dispatch::{
     dispatcher::{Dispatchers, DispatchersError, MessageDispatcherShared},
-    mailbox::{MailboxFactory, MailboxRegistryError, Mailboxes, MessageQueue},
+    mailbox::{MailboxFactory, MailboxRegistryError, MailboxSelection, Mailboxes, MessageQueue},
   },
   event::{
     logging::{DefaultLoggingFilter, LogEvent, LogLevel, LoggingFilter},
@@ -948,6 +948,18 @@ impl SystemState {
   /// Returns [`MailboxRegistryError::Unknown`] when the identifier has not been registered.
   pub fn resolve_mailbox(&self, id: &str) -> Result<ArcShared<dyn MailboxFactory>, MailboxRegistryError> {
     self.mailboxes.resolve(id)
+  }
+
+  /// Selects a mailbox factory from the configured mailbox registry.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`MailboxRegistryError`] when the requested id or queue-type binding is unknown.
+  pub fn select_mailbox(
+    &self,
+    selection: &MailboxSelection,
+  ) -> Result<ArcShared<dyn MailboxFactory>, MailboxRegistryError> {
+    self.mailboxes.select(selection)
   }
 
   /// Creates a mailbox queue from the configuration registered under the identifier.

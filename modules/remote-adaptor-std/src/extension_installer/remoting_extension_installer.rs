@@ -15,7 +15,7 @@ use fraktor_actor_core_kernel_rs::{
     actor_path::ActorPath,
     actor_ref::dead_letter::DeadLetterReason,
     extension::ExtensionInstaller,
-    messaging::{AnyMessage, system_message::SystemMessage},
+    messaging::{AnyMessage, Kill, PoisonPill, system_message::SystemMessage},
   },
   event::stream::{CorrelationId, EventStreamSubscription},
   serialization::{SerializationExtensionShared, default_serialization_extension_id},
@@ -750,6 +750,17 @@ pub(super) fn deliver_inbound_envelope(envelope: InboundEnvelope, system: &Actor
     deliver_inbound_system_envelope(recipient, remote_node, system_message, sender, correlation_id, priority, system);
     return;
   }
+  if is_harmful_user_payload(&message) {
+    tracing::warn!(
+      recipient = %recipient,
+      ?remote_node,
+      ?correlation_id,
+      ?priority,
+      "remote inbound harmful user payload rejected"
+    );
+    system.record_dead_letter(message, DeadLetterReason::Dropped, None);
+    return;
+  }
   let message = attach_sender(system, sender, message);
   let mut actor_ref = match system.resolve_actor_ref(recipient.clone()) {
     | Ok(actor_ref) => actor_ref,
@@ -776,6 +787,13 @@ pub(super) fn deliver_inbound_envelope(envelope: InboundEnvelope, system: &Actor
       "remote inbound delivery send failed"
     );
   }
+}
+
+fn is_harmful_user_payload(message: &AnyMessage) -> bool {
+  message.is_possibly_harmful()
+    || message.downcast_ref::<PoisonPill>().is_some()
+    || message.downcast_ref::<Kill>().is_some()
+    || message.downcast_ref::<SystemMessage>().is_some_and(SystemMessage::is_possibly_harmful)
 }
 
 fn deliver_inbound_system_envelope(
@@ -891,7 +909,7 @@ fn deliver_inbound_deathwatch_notification(
       "remote inbound death-watch notification missing sender path"
     );
     system.record_dead_letter(
-      AnyMessage::new(SystemMessage::DeathWatchNotification(Pid::new(0, 0))),
+      SystemMessage::DeathWatchNotification(Pid::new(0, 0)).into(),
       DeadLetterReason::MissingRecipient,
       None,
     );
@@ -949,7 +967,7 @@ fn deliver_inbound_system_message_to_recipient(
       ?priority,
       "remote inbound system message recipient resolution failed"
     );
-    system.record_dead_letter(AnyMessage::new(system_message), DeadLetterReason::RecipientUnavailable, None);
+    system.record_dead_letter(system_message.into(), DeadLetterReason::RecipientUnavailable, None);
     return;
   };
   if let Err(error) = system.state().send_system_message(recipient_pid, system_message) {

@@ -18,7 +18,7 @@ use crate::{
       ActorIdentity, AnyMessage, AnyMessageView, Identify, Kill, NotInfluenceReceiveTimeout, PoisonPill,
       message_invoker::MessageInvoker, system_message::SystemMessage,
     },
-    props::{MailboxConfig, Props},
+    props::{MailboxConfig, MailboxRequirement, Props},
     supervision::{
       RestartLimit, SupervisorDirective, SupervisorStrategy, SupervisorStrategyConfig, SupervisorStrategyKind,
     },
@@ -747,7 +747,7 @@ fn unstash_messages_are_replayed_before_existing_mailbox_messages() {
     let captured = received.clone();
     move || OrderedMessageActor::new(captured.clone())
   })
-  .with_stash_mailbox();
+  .with_mailbox_config(MailboxConfig::default().with_requirement(MailboxRequirement::for_stash()));
   let cell =
     ActorCell::create(state.clone(), Pid::new(60, 0), None, "ordered".to_string(), &props).expect("create actor cell");
   state.register_cell(cell.clone());

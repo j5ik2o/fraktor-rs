@@ -42,7 +42,7 @@ impl BoundedPriorityMessageQueue {
     Self { state_shared, generator, capacity: capacity.get(), overflow, push_timeout: None }
   }
 
-  /// Creates a bounded priority message queue with Pekko-style push timeout semantics.
+  /// Creates a bounded priority message queue with push-timeout reporting.
   #[must_use]
   pub fn new_with_push_timeout(
     generator: ArcShared<dyn MessagePriorityGenerator>,
@@ -124,30 +124,21 @@ impl MessageQueue for BoundedPriorityMessageQueue {
 impl BoundedPriorityMessageQueue {
   fn enqueue_entry_with_push_timeout(
     &self,
-    mut entry: BoundedPriorityMessageQueueEntry,
-    timeout: Duration,
-    clock: &MailboxClock,
+    entry: BoundedPriorityMessageQueueEntry,
+    _timeout: Duration,
+    _clock: &MailboxClock,
   ) -> Result<EnqueueOutcome, EnqueueError> {
-    let deadline = push_timeout::push_timeout_deadline(clock, timeout);
-    loop {
-      let rejected = self.state_shared.with_write(|state| {
-        if state.heap().len() < self.capacity {
-          state.heap_mut().push(entry);
-          None
-        } else {
-          Some(entry)
-        }
-      });
-      match rejected {
-        | None => return Ok(EnqueueOutcome::Accepted),
-        | Some(rejected) => {
-          entry = rejected;
-          if !push_timeout::should_retry_after_full(clock, deadline) {
-            return Err(push_timeout::enqueue_timeout(entry.into_envelope()));
-          }
-          push_timeout::spin_before_push_timeout_retry();
-        },
+    let rejected = self.state_shared.with_write(|state| {
+      if state.heap().len() < self.capacity {
+        state.heap_mut().push(entry);
+        None
+      } else {
+        Some(entry)
       }
+    });
+    match rejected {
+      | None => Ok(EnqueueOutcome::Accepted),
+      | Some(rejected) => Err(push_timeout::enqueue_timeout(rejected.into_envelope())),
     }
   }
 }

@@ -10,7 +10,7 @@ use crate::{
     Pid,
     actor_ref::dead_letter::{DeadLetter, DeadLetterReason, DeadLetterShared},
     error::SendError,
-    messaging::{AnyMessage, PoisonPill, WrappedMessage},
+    messaging::{AnyMessage, PoisonPill, WrappedMessage, system_message::SystemMessage},
   },
   event::{
     logging::LogLevel,
@@ -110,6 +110,18 @@ fn record_send_error_maps_suppressed_message_reason() {
 }
 
 #[test]
+fn record_send_error_maps_system_message_marker_reason() {
+  let mut dead_letter = DeadLetter::with_capacity(4);
+  let pid = Pid::new(16, 0);
+  let error = SendError::closed(AnyMessage::new(SystemMessage::PoisonPill));
+
+  let entry = dead_letter.record_send_error(Some(pid), &error, Duration::from_millis(4));
+
+  assert_eq!(entry.reason(), DeadLetterReason::SuppressedDeadLetter);
+  assert_eq!(entry.recipient(), Some(pid));
+}
+
+#[test]
 fn record_entry_maps_suppressed_message_reason() {
   let mut dead_letter = DeadLetter::with_capacity(4);
   let pid = Pid::new(15, 0);
@@ -117,6 +129,22 @@ fn record_entry_maps_suppressed_message_reason() {
   let entry = dead_letter.record_entry(
     AnyMessage::dead_letter_suppressed(PoisonPill),
     DeadLetterReason::MailboxFull,
+    Some(pid),
+    Duration::from_millis(4),
+  );
+
+  assert_eq!(entry.reason(), DeadLetterReason::SuppressedDeadLetter);
+  assert_eq!(entry.recipient(), Some(pid));
+}
+
+#[test]
+fn record_entry_maps_system_message_marker_reason() {
+  let mut dead_letter = DeadLetter::with_capacity(4);
+  let pid = Pid::new(17, 0);
+
+  let entry = dead_letter.record_entry(
+    AnyMessage::new(SystemMessage::DeathWatchNotification(pid)),
+    DeadLetterReason::RecipientUnavailable,
     Some(pid),
     Duration::from_millis(4),
   );

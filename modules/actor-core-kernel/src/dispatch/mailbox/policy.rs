@@ -77,8 +77,8 @@ impl MailboxPolicy {
   /// Returns a copy of the policy with a different bounded-mailbox push timeout.
   ///
   /// A configured timeout switches bounded queues from drop/evict overflow
-  /// handling to Pekko-style room waiting: enqueue retries until a slot is
-  /// available or the timeout elapses.
+  /// handling to fail-fast timeout reporting when no slot is immediately
+  /// available.
   #[must_use]
   pub const fn with_push_timeout(self, timeout: Option<Duration>) -> Self {
     Self { push_timeout: timeout, ..self }

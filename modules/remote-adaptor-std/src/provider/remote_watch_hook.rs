@@ -113,7 +113,7 @@ impl StdRemoteWatchHook {
       OutboundEnvelope::new(
         recipient,
         sender,
-        AnyMessage::new(message),
+        message.into(),
         OutboundPriority::System,
         remote_node,
         CorrelationId::nil(),

@@ -31,7 +31,7 @@ impl BoundedMessageQueue {
     Self { handle, capacity: capacity.get(), overflow, push_timeout: None }
   }
 
-  /// Creates a new bounded message queue with Pekko-style push timeout semantics.
+  /// Creates a new bounded message queue with push-timeout reporting.
   #[must_use]
   pub fn new_with_push_timeout(
     capacity: NonZeroUsize,
@@ -103,23 +103,16 @@ impl BoundedMessageQueue {
 
   fn offer_with_push_timeout(
     &self,
-    mut envelope: Envelope,
-    timeout: Duration,
-    clock: &MailboxClock,
+    envelope: Envelope,
+    _timeout: Duration,
+    _clock: &MailboxClock,
   ) -> Result<EnqueueOutcome, EnqueueError> {
-    let deadline = push_timeout::push_timeout_deadline(clock, timeout);
-    loop {
-      match self.handle.offer_if_room(envelope, self.capacity) {
-        | Ok(_) => return Ok(EnqueueOutcome::Accepted),
-        | Err(QueueError::Full(rejected) | QueueError::OfferError(rejected)) => {
-          envelope = rejected;
-          if !push_timeout::should_retry_after_full(clock, deadline) {
-            return Err(push_timeout::enqueue_timeout(envelope));
-          }
-          push_timeout::spin_before_push_timeout_retry();
-        },
-        | Err(error) => return Err(EnqueueError::new(map_user_envelope_queue_error(error))),
-      }
+    match self.handle.offer_if_room(envelope, self.capacity) {
+      | Ok(_) => Ok(EnqueueOutcome::Accepted),
+      | Err(QueueError::Full(rejected) | QueueError::OfferError(rejected)) => {
+        Err(push_timeout::enqueue_timeout(rejected))
+      },
+      | Err(error) => Err(EnqueueError::new(map_user_envelope_queue_error(error))),
     }
   }
 

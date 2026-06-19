@@ -119,7 +119,7 @@ impl ChildRef {
   }
 
   fn unsupported_remote_lifecycle(message: SystemMessage) -> SendError {
-    SendError::invalid_payload(AnyMessage::new(message), "remote child lifecycle command is not supported")
+    SendError::invalid_payload(message.into(), "remote child lifecycle command is not supported")
   }
 }
 

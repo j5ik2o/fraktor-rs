@@ -17,7 +17,7 @@ use fraktor_actor_core_kernel_rs::{
     actor_ref_provider::LocalActorRefProviderInstaller,
     error::ActorError,
     extension::{ExtensionInstaller, ExtensionInstallers},
-    messaging::{AnyMessage, AnyMessageView, system_message::SystemMessage},
+    messaging::{AnyMessage, AnyMessageView, PoisonPill, system_message::SystemMessage},
     props::Props,
   },
   event::stream::{CorrelationId, EventStreamEvent, EventStreamSubscriber, RemotingLifecycleEvent, subscriber_handle},
@@ -553,6 +553,31 @@ fn inbound_delivery_bridge_sends_bytes_payload_to_local_actor() {
 
   let received = rx.recv_timeout(Duration::from_secs(1)).expect("local actor should receive inbound remote payload");
   assert_eq!(received, Bytes::from_static(b"inbound payload"));
+}
+
+#[test]
+fn inbound_delivery_bridge_rejects_harmful_user_payload() {
+  let config = std_actor_system_config(TestTickDriver::default())
+    .with_actor_ref_provider_installer(LocalActorRefProviderInstaller::default());
+  let system = ActorSystem::create_with_noop_guardian(config).expect("noop actor system should build");
+  let props = Props::from_fn(|| RecordingBytesActor::new(mpsc::channel().0));
+  let child = system.actor_of_named(&props, "harmful-target").expect("spawn recording actor");
+  let recipient = child.actor_ref().path().expect("recording actor path");
+  let before = system.dead_letters().len();
+
+  deliver_inbound_envelope(
+    InboundEnvelope::new(
+      recipient,
+      RemoteNodeId::new("remote-sys", "127.0.0.1", Some(2552), 1),
+      AnyMessage::new(PoisonPill),
+      None,
+      CorrelationId::nil(),
+      OutboundPriority::User,
+    ),
+    &system,
+  );
+
+  assert_dead_letters_len(&system, before + 1);
 }
 
 #[test]

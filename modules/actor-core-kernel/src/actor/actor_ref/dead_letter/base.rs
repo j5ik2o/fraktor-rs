@@ -7,7 +7,7 @@ use crate::actor::{
   Pid,
   actor_ref::dead_letter::{DeadLetterEntry, dead_letter_reason::DeadLetterReason},
   error::SendError,
-  messaging::AnyMessage,
+  messaging::{AnyMessage, system_message::SystemMessage},
 };
 
 const DEFAULT_CAPACITY: usize = 256;
@@ -36,7 +36,7 @@ impl DeadLetter {
   /// after releasing any locks.
   #[must_use]
   pub fn record_send_error(&mut self, target: Option<Pid>, error: &SendError, timestamp: Duration) -> DeadLetterEntry {
-    let reason = if error.message().is_dead_letter_suppressed() {
+    let reason = if is_suppressed_dead_letter_message(error.message()) {
       DeadLetterReason::SuppressedDeadLetter
     } else {
       match error {
@@ -64,7 +64,8 @@ impl DeadLetter {
     target: Option<Pid>,
     timestamp: Duration,
   ) -> DeadLetterEntry {
-    let reason = if message.is_dead_letter_suppressed() { DeadLetterReason::SuppressedDeadLetter } else { reason };
+    let reason =
+      if is_suppressed_dead_letter_message(&message) { DeadLetterReason::SuppressedDeadLetter } else { reason };
     let entry = DeadLetterEntry::new(message, reason, target, timestamp);
     self.entries.push(entry.clone());
     if self.entries.len() > self.capacity {
@@ -85,6 +86,11 @@ impl DeadLetter {
   pub const fn capacity(&self) -> usize {
     self.capacity
   }
+}
+
+fn is_suppressed_dead_letter_message(message: &AnyMessage) -> bool {
+  message.is_dead_letter_suppressed()
+    || message.downcast_ref::<SystemMessage>().is_some_and(SystemMessage::is_dead_letter_suppressed)
 }
 
 impl Default for DeadLetter {

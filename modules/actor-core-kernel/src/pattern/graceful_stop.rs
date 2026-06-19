@@ -19,7 +19,7 @@ const STOP_POLL_INTERVAL: Duration = Duration::from_millis(1);
 /// stop message cannot be enqueued while the target actor is still alive,
 /// or [`AskError::Timeout`] when the actor does not stop before `timeout`.
 pub async fn graceful_stop(target: &mut ActorRef, timeout: Duration) -> Result<(), AskError> {
-  graceful_stop_with_message(target, AnyMessage::new(SystemMessage::PoisonPill), timeout).await
+  graceful_stop_with_message(target, SystemMessage::PoisonPill.into(), timeout).await
 }
 
 /// Sends the supplied stop message and waits until the target actor disappears from the system

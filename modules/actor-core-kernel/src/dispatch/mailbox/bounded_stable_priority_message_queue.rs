@@ -46,7 +46,7 @@ impl BoundedStablePriorityMessageQueue {
     Self { state_shared, generator, capacity: capacity.get(), overflow, push_timeout: None }
   }
 
-  /// Creates a bounded stable-priority message queue with Pekko-style push timeout semantics.
+  /// Creates a bounded stable-priority message queue with push-timeout reporting.
   #[must_use]
   pub fn new_with_push_timeout(
     generator: ArcShared<dyn MessagePriorityGenerator>,
@@ -130,32 +130,23 @@ impl MessageQueue for BoundedStablePriorityMessageQueue {
 impl BoundedStablePriorityMessageQueue {
   fn enqueue_with_push_timeout(
     &self,
-    mut envelope: Envelope,
+    envelope: Envelope,
     priority: i32,
-    timeout: Duration,
-    clock: &MailboxClock,
+    _timeout: Duration,
+    _clock: &MailboxClock,
   ) -> Result<EnqueueOutcome, EnqueueError> {
-    let deadline = push_timeout::push_timeout_deadline(clock, timeout);
-    loop {
-      let rejected = self.state_shared.with_write(|state| {
-        if state.heap().len() < self.capacity {
-          let sequence = state.next_sequence();
-          state.heap_mut().push(StablePriorityEntry { priority, sequence, envelope });
-          None
-        } else {
-          Some(envelope)
-        }
-      });
-      match rejected {
-        | None => return Ok(EnqueueOutcome::Accepted),
-        | Some(rejected) => {
-          envelope = rejected;
-          if !push_timeout::should_retry_after_full(clock, deadline) {
-            return Err(push_timeout::enqueue_timeout(envelope));
-          }
-          push_timeout::spin_before_push_timeout_retry();
-        },
+    let rejected = self.state_shared.with_write(|state| {
+      if state.heap().len() < self.capacity {
+        let sequence = state.next_sequence();
+        state.heap_mut().push(StablePriorityEntry { priority, sequence, envelope });
+        None
+      } else {
+        Some(envelope)
       }
+    });
+    match rejected {
+      | None => Ok(EnqueueOutcome::Accepted),
+      | Some(rejected) => Err(push_timeout::enqueue_timeout(rejected)),
     }
   }
 }

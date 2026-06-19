@@ -42,7 +42,7 @@ impl BoundedDequeMessageQueue {
     }
   }
 
-  /// Creates a bounded deque message queue with Pekko-style push timeout semantics.
+  /// Creates a bounded deque message queue with push-timeout reporting.
   #[must_use]
   pub fn new_with_push_timeout(
     capacity: NonZeroUsize,
@@ -156,59 +156,41 @@ impl DequeMessageQueue for BoundedDequeMessageQueue {
 impl BoundedDequeMessageQueue {
   fn enqueue_back_with_push_timeout(
     &self,
-    mut envelope: Envelope,
-    timeout: Duration,
-    clock: &MailboxClock,
+    envelope: Envelope,
+    _timeout: Duration,
+    _clock: &MailboxClock,
   ) -> Result<EnqueueOutcome, EnqueueError> {
-    let deadline = push_timeout::push_timeout_deadline(clock, timeout);
-    loop {
-      let rejected = self.inner.with_write(|inner| {
-        if inner.len() < self.capacity {
-          inner.push_back(envelope);
-          None
-        } else {
-          Some(envelope)
-        }
-      });
-      match rejected {
-        | None => return Ok(EnqueueOutcome::Accepted),
-        | Some(rejected) => {
-          envelope = rejected;
-          if !push_timeout::should_retry_after_full(clock, deadline) {
-            return Err(push_timeout::enqueue_timeout(envelope));
-          }
-          push_timeout::spin_before_push_timeout_retry();
-        },
+    let rejected = self.inner.with_write(|inner| {
+      if inner.len() < self.capacity {
+        inner.push_back(envelope);
+        None
+      } else {
+        Some(envelope)
       }
+    });
+    match rejected {
+      | None => Ok(EnqueueOutcome::Accepted),
+      | Some(rejected) => Err(push_timeout::enqueue_timeout(rejected)),
     }
   }
 
   fn enqueue_front_with_push_timeout(
     &self,
-    mut envelope: Envelope,
-    timeout: Duration,
-    clock: &MailboxClock,
+    envelope: Envelope,
+    _timeout: Duration,
+    _clock: &MailboxClock,
   ) -> Result<(), SendError> {
-    let deadline = push_timeout::push_timeout_deadline(clock, timeout);
-    loop {
-      let result = self.inner.with_write(|inner| {
-        if inner.len() < self.capacity {
-          inner.push_front(envelope);
-          Ok(())
-        } else {
-          Err(envelope)
-        }
-      });
-      match result {
-        | Ok(()) => return Ok(()),
-        | Err(rejected) => {
-          envelope = rejected;
-          if !push_timeout::should_retry_after_full(clock, deadline) {
-            return Err(push_timeout::send_timeout(envelope));
-          }
-          push_timeout::spin_before_push_timeout_retry();
-        },
+    let result = self.inner.with_write(|inner| {
+      if inner.len() < self.capacity {
+        inner.push_front(envelope);
+        Ok(())
+      } else {
+        Err(envelope)
       }
+    });
+    match result {
+      | Ok(()) => Ok(()),
+      | Err(rejected) => Err(push_timeout::send_timeout(rejected)),
     }
   }
 }

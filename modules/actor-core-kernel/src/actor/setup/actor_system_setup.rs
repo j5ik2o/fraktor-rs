@@ -12,6 +12,7 @@ use crate::{
   actor::{
     actor_ref_provider::ActorRefProviderInstaller,
     extension::ExtensionInstallers,
+    props::MailboxRequirement,
     scheduler::{SchedulerConfig, tick_driver::TickDriver},
     setup::{ActorSystemConfig, BootstrapSetup, CircuitBreakerConfig},
   },
@@ -87,6 +88,12 @@ impl ActorSystemSetup {
   #[must_use]
   pub fn with_mailbox(self, id: impl Into<String>, factory: impl MailboxFactory + 'static) -> Self {
     Self { config: self.config.with_mailbox(id, factory) }
+  }
+
+  /// Binds a mailbox requirement to a registered mailbox id.
+  #[must_use]
+  pub fn with_mailbox_queue_type(self, requirement: MailboxRequirement, id: impl Into<String>) -> Self {
+    Self { config: self.config.with_mailbox_queue_type(requirement, id) }
   }
 
   /// Replaces the default circuit-breaker configuration.

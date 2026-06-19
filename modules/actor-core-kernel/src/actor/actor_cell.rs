@@ -39,7 +39,10 @@ use crate::{
   },
   dispatch::{
     dispatcher::{DEFAULT_DISPATCHER_ID, DispatcherSender, MessageDispatcherShared},
-    mailbox::{Mailbox, MailboxCapacity, MailboxFactory, MailboxInstrumentation, metrics_event::MailboxPressureEvent},
+    mailbox::{
+      Mailbox, MailboxCapacity, MailboxFactory, MailboxInstrumentation, MailboxSelection,
+      metrics_event::MailboxPressureEvent,
+    },
   },
   event::{logging::LogLevel, stream::EventStreamEvent},
   system::{
@@ -125,13 +128,7 @@ impl ActorCell {
     name: String,
     props: &Props,
   ) -> Result<ArcShared<Self>, SpawnError> {
-    let mailbox_id = props.mailbox_id();
-
-    let mailbox_factory: ArcShared<dyn MailboxFactory> = if let Some(id) = mailbox_id {
-      system.resolve_mailbox(id).map_err(|error| SpawnError::invalid_props(alloc::format!("{error:?}")))?
-    } else {
-      ArcShared::new(props.mailbox_config().clone())
-    };
+    let mailbox_factory = Self::select_mailbox_factory(&system, props)?;
 
     let dispatcher_id = Self::resolve_dispatcher_id(&system, parent, props)?;
     // The dispatcher tree owns the ActorRef sender path. A configurator must
@@ -151,10 +148,6 @@ impl ActorCell {
     let mailbox_shared_set = system.mailbox_shared_set();
     let mailbox = if let Some(shared_mailbox) = new_dispatcher.try_create_shared_mailbox(&mailbox_shared_set) {
       shared_mailbox
-    } else if let Some(id) = mailbox_id {
-      let queue =
-        system.create_mailbox_queue(id).map_err(|error| SpawnError::invalid_props(alloc::format!("{error:?}")))?;
-      ArcShared::new(Mailbox::new_with_queue_and_shared_set(mailbox_factory.policy(), queue, &mailbox_shared_set))
     } else {
       ArcShared::new(
         Mailbox::new_from_factory_with_shared_set(&*mailbox_factory, &mailbox_shared_set)
@@ -220,6 +213,26 @@ impl ActorCell {
     cell.new_dispatcher.attach(&cell)?;
 
     Ok(cell)
+  }
+
+  fn select_mailbox_factory(
+    system: &SystemStateShared,
+    props: &Props,
+  ) -> Result<ArcShared<dyn MailboxFactory>, SpawnError> {
+    if props.uses_inline_mailbox_config() {
+      return Ok(ArcShared::new(props.mailbox_config().clone()));
+    }
+    system
+      .select_mailbox(&Self::mailbox_selection(props))
+      .map_err(|error| SpawnError::invalid_props(alloc::format!("{error:?}")))
+  }
+
+  fn mailbox_selection(props: &Props) -> MailboxSelection {
+    let selection = MailboxSelection::new().with_actor_requirement(props.mailbox_requirement());
+    if let Some(id) = props.mailbox_id() {
+      return selection.with_explicit_mailbox_id(id);
+    }
+    selection
   }
 
   /// Recreates the actor instance from the stored factory.

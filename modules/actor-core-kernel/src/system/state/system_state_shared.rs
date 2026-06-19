@@ -47,7 +47,7 @@ use crate::{
   },
   dispatch::{
     dispatcher::{DispatchersError, MessageDispatcherShared},
-    mailbox::{MailboxFactory, MailboxRegistryError, MessageQueue},
+    mailbox::{MailboxFactory, MailboxRegistryError, MailboxSelection, MessageQueue},
   },
   event::{
     logging::{LogEvent, LogLevel, LoggingFilter},
@@ -800,7 +800,7 @@ impl SystemStateShared {
     if let Some(cell) = self.cell(&pid) {
       cell.new_dispatcher_shared().system_dispatch(&cell, message)
     } else if let Some(mut actor) = self.temp_actor_by_pid(&pid) {
-      actor.try_tell(AnyMessage::new(message))
+      actor.try_tell(message.into())
     } else {
       match message {
         | SystemMessage::Watch(watcher) => {
@@ -828,7 +828,7 @@ impl SystemStateShared {
           Ok(())
         },
         | SystemMessage::PipeTask(_) => Ok(()),
-        | other => Err(SendError::closed(AnyMessage::new(other))),
+        | other => Err(SendError::closed(other.into())),
       }
     }
   }
@@ -919,6 +919,18 @@ impl SystemStateShared {
   /// Returns [`MailboxRegistryError::Unknown`] when the identifier has not been registered.
   pub fn resolve_mailbox(&self, id: &str) -> Result<ArcShared<dyn MailboxFactory>, MailboxRegistryError> {
     self.inner.with_read(|inner| inner.resolve_mailbox(id))
+  }
+
+  /// Selects a mailbox factory from the configured mailbox registry.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`MailboxRegistryError`] when the requested id or queue-type binding is unknown.
+  pub fn select_mailbox(
+    &self,
+    selection: &MailboxSelection,
+  ) -> Result<ArcShared<dyn MailboxFactory>, MailboxRegistryError> {
+    self.inner.with_read(|inner| inner.select_mailbox(selection))
   }
 
   /// Creates a mailbox queue from the configuration registered under the identifier.
