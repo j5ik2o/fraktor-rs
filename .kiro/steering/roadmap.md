@@ -8,6 +8,8 @@
 
 **Phase 2 (2026-06-11)**: gap analysis の再検証（parity 分母 151 概念への再構成）で確定した「実装優先度 Phase 1（trivial / easy、24 項目）」を、責務境界で 6 つの新規 spec + 既存 spec 更新 1 件 + 直接実装 2 件に分解した。前提 SPI が必要な項目（extractor 実装群、基本 CRDT 型群）は、依存する medium 項目（extractor SPI、ReplicatedData 基底 SPI）を同じ spec に前倒しで束ね、配線されない型を作らない。
 
+**Phase 3 (2026-06-19)**: `docs/gap-analysis/actor-gap-analysis.md` の actor gap closure を、API parity と内部構造ギャップの両方として扱う。Phase 1（trivial / easy）と Phase 2（medium）に加え、同 document の内部モジュール構造ギャップ（ActorCell dungeon facet、SystemState registry split、typed receptionist facade 分離、public surface audit）を、後続の API 実装を安全に進める前提 workstream として spec 化する。
+
 ## Approach Decision
 
 - **Chosen**: active follow-up を7つの spec に分け、依存順に仕様化する。
@@ -16,18 +18,22 @@
 
 **Phase 2 の判断**: gap analysis Phase 1（trivial/easy 24 項目）も同じ責務分割方針を踏襲し、6 spec に分ける。難易度・層別の粗い 3 spec 案は Phase 1 と同じ理由で却下。1 項目 1 spec の 24 分割案は review/PR の固定費が過大なため却下。極小項目（routee std 配線、mediator 全体 Count）は spec を立てず直接実装とし、既存完了 spec の自然な拡張（Multi-DC failure detector 設定）は既存 spec の更新として扱う。
 
+**Phase 3 の判断**: actor gap closure は、(1) Phase 1 API gap をすべて単一 spec に入れる案、(2) 内部構造 refactor を後回しにして API だけ先に埋める案、(3) 高変更頻度の構造ギャップを先行 spec に切り出し、その上に API parity spec を重ねる案を比較した。採用するのは (3) である。`actor_cell.rs` / `SystemState` / typed receptionist 周辺は actor gap document 上でも変更速度のボトルネックとして示されており、ここを spec 化せず API を追加すると、後続 PR がさらに巨大化するため。
+
 ## Scope
 
 - **In**:
   - (Phase 1) `Active comparison follow-up: trivial / easy`、`medium`、`hard` にある項目のうち、現在の cluster roadmap と矛盾しない comparison-driven runtime contract。
   - (Phase 2) gap analysis「実装優先度 Phase 1（trivial/easy、24 項目）」: membership イベント表層、singleton 設定契約、typed entity facade、extractor 契約 + 実装群、sharding health / join compat、基本 CRDT 型群。runtime 基盤（singleton manager、Replicator）の前提となる「契約・型・検証」までを In とする。
-- **Out**: Cluster Client（Pekko 本体で全面 deprecated）、Receptionist 実装、Cluster Singleton の runtime（manager / proxy / handover election）、Distributed Data の Replicator runtime と OR/LWW 系 CRDT、sharding の rebalance / remembered entities / delivery controllers、JVM 固有機能、完全な Akka/Pekko 互換 migration layer。これらは gap analysis の Phase 2-3（medium / hard）として別フェーズで扱う。
+  - (Phase 3) actor gap analysis の Phase 1 / Phase 2 項目（FSM transition subscription、dead letter suppression、CircuitBreaker listener/backoff、CoordinatedShutdown task variants、ReceptionistSetup、FutureTimeoutSupport.after、selection ask、marker traits、EventBus classification、mailbox queue type resolution、blocking bounded compatibility）と、同 document の内部構造ギャップのうち actor parity 実装に直接関係する構造整理。
+- **Out**: Cluster Client（Pekko 本体で全面 deprecated）、Receptionist 実装、Cluster Singleton の runtime（manager / proxy / handover election）、Distributed Data の Replicator runtime と OR/LWW 系 CRDT、sharding の rebalance / remembered entities / delivery controllers、JVM 固有機能、完全な Akka/Pekko 互換 migration layer。actor gap closure では Java DSL / Java interop、Scala 構文糖、JVM reflection / classloader / HOCON loading、Java serialization / JFR、deprecated classic remoting / ActorDSL / TypedActor、Pekko IO / TCP / UDP / DNS、testkit / TCK / tests は対象外にする。
 
 ## Constraints
 
 - `*-core` は `no_std` 境界を維持し、Tokio・network I/O・host lifecycle は `*-adaptor-std` に置く。
 - 既存の Grain runtime 方向性を優先し、Pekko public API parity を現在の cluster roadmap として扱わない。
 - `docs/gap-analysis/cluster-gap-analysis.md` は comparison evidence として更新し、実装契約は spec / tests / showcases で証明する。
+- `docs/gap-analysis/actor-gap-analysis.md` は actor parity の comparison evidence として扱い、Pekko の公開契約を Rust の `no_std` core / std adaptor 境界へ写像する。JVM 固有、Java DSL、Scala 構文糖、testkit は引き続き out of scope とする。
 - 参照実装に寄せる場合も、Rust の型境界、crate boundary、port-and-adapter 方針を優先する。
 
 ## Boundary Strategy
@@ -35,6 +41,7 @@
 - **Why this split**: 各 spec を module boundary と review scope に近い単位へ分けることで、membership の基礎 contract、transport/wire、downing decision、pubsub protocol を独立して進められる。
 - **Shared seams to watch**: `membership` と `downing_provider`、`membership` と `pub_sub`、`cluster-adaptor-std` と `remote-adaptor-std`、actor-core serialization boundary、provider lifecycle と topology input。
 - **Phase 2 で追加の seam**: `extension`（config validation / join compatibility）と singleton / sharding 設定契約、`grain` と `cluster-core-typed`（typed facade）、新設 `ddata` モジュールと membership 用 `VectorClock`（混同しないこと — CRDT 用 `VersionVector` は別物として Phase 3 で扱う）。
+- **Phase 3 で追加の seam**: `actor-core-kernel` の ActorCell facet と dispatch/mailbox/event/system registries、`actor-core-typed` の receptionist extension API と behavior 実装、`actor-adaptor-std` の blocking compatibility option、Pekko parity 用 marker/protocol と remote/cluster 側の将来利用点を分けて扱う。
 
 ## Specs (dependency order)
 
@@ -51,6 +58,16 @@
 - [x] cluster-sharding-extractor-contract -- ShardingEnvelope / ShardingMessageExtractor SPI と HashCode / Murmur2 標準実装群を定義する。Dependencies: cluster-grain-typed-entity-facade（2026-06-13 完了、PR #1990）
 - [x] cluster-sharding-health-and-join-compat -- grain/placement の readiness check（core 完結の純粋判定 + 公開アクセサ）と sharding join compatibility の除外キー整備（required key の追加は config 所有化とともに後続スペックへ委譲）を定義する。Dependencies: cluster-active-compatibility-baseline（2026-06-13 完了、PR #1993）
 - [x] cluster-ddata-core-types -- ReplicatedData 基底 SPI、Key、SelfUniqueAddress、基本 CRDT（Flag / GCounter / PNCounter / PNCounterMap）、consistency levels、補助 protocol 型を新設 ddata モジュールに定義する。Dependencies: none
+- [ ] actor-cell-facet-structure -- ActorCell の dispatch / fault handling / death watch / children / receive timeout facet 分離と receive timeout 集約を行い、後続 API 追加の変更面を小さくする。Dependencies: none
+- [ ] actor-system-state-registry-split -- SystemState / SystemStateShared の dispatcher / mailbox / event / guardian / serialization / remote / scheduler registry 分離を行い、mailbox と EventBus workstream の変更点を独立させる。Dependencies: none
+- [ ] actor-typed-receptionist-setup -- typed receptionist の extension API と behavior 実装を分離し、ReceptionistSetup 相当の差し替え契約を定義する。Dependencies: none
+- [ ] actor-kernel-message-observability -- FSM transition subscription、DeadLetterSuppression / SuppressedDeadLetter 生成経路、PossiblyHarmful、WrappedMessage を kernel の message observability contract として定義する。Dependencies: actor-cell-facet-structure
+- [ ] actor-pattern-utility-parity -- FutureTimeoutSupport.after、ActorSelection ask、CircuitBreaker state listeners と exponential backoff / jitter を pattern utility parity として定義する。Dependencies: none
+- [ ] actor-coordinated-shutdown-task-variants -- CoordinatedShutdown の cancellable task と actor termination task 変種を kernel lifecycle contract として定義する。Dependencies: actor-system-state-registry-split
+- [ ] actor-eventbus-classification-contract -- Lookup / Subchannel / Scanning / ManagedActor classification を含む汎用 EventBus trait 族を定義し、既存 EventStream との関係を明確にする。Dependencies: actor-system-state-registry-split, actor-kernel-message-observability
+- [ ] actor-mailbox-resolution-contract -- RequiresMessageQueue / ProducesMessageQueue 相当、lookupByQueueType、多段 mailbox selection precedence、BalancingDispatcher mailbox compatibility を mailbox 設定契約として定義する。Dependencies: actor-system-state-registry-split
+- [ ] actor-blocking-bounded-mailbox-compat -- pushTimeOut 付き bounded mailbox の互換契約を core + std の境界で定義し、async-first 方針との調停を明文化する。Dependencies: actor-mailbox-resolution-contract
+- [ ] actor-kernel-public-surface-audit -- actor kernel の低レベル public re-export、SystemMessage の層配置、typed facade の残存混在を棚卸しし、外部契約と internal surface を分ける。Dependencies: actor-kernel-message-observability, actor-eventbus-classification-contract, actor-mailbox-resolution-contract, actor-typed-receptionist-setup
 
 ## Existing Spec Updates
 
