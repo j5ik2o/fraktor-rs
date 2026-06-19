@@ -2,7 +2,7 @@
 // および std 側の同名テストファイルに重複して定義されている。
 // テスト専用ユーティリティへの共通化は別タスクとして実施する（今回のスコープ外）。
 
-use alloc::sync::Arc;
+use alloc::{format, sync::Arc};
 use core::{
   sync::atomic::{AtomicU64, Ordering},
   time::Duration,
@@ -297,6 +297,37 @@ fn exponential_backoff_is_capped_by_max_reset_timeout() {
 fn random_factor_is_exposed_as_builder_configuration() {
   let cb = CircuitBreaker::new_with_clock(1, Duration::from_millis(10), FakeClock::new()).with_random_factor(0.25);
   assert_eq!(cb.random_factor(), 0.25);
+}
+
+#[test]
+fn debug_includes_backoff_fields() {
+  let cb = CircuitBreaker::new_with_clock(1, Duration::from_millis(10), FakeClock::new())
+    .with_exponential_backoff(Duration::from_millis(100));
+  let debug = format!("{cb:?}");
+
+  assert!(debug.contains("open_reset_timeout"));
+  assert!(debug.contains("next_reset_timeout"));
+  assert!(debug.contains("max_reset_timeout"));
+}
+
+#[test]
+fn backoff_configuration_accessors_are_exposed() {
+  let cb = CircuitBreaker::new_with_clock(1, Duration::from_millis(10), FakeClock::new())
+    .with_exponential_backoff(Duration::from_millis(100));
+
+  assert_eq!(cb.max_reset_timeout(), Duration::from_millis(100));
+  assert_eq!(cb.exponential_backoff_factor(), 2.0);
+}
+
+#[test]
+fn random_factor_contributes_jitter_to_next_reset_timeout() {
+  let mut cb = CircuitBreaker::new_with_clock(1, Duration::from_millis(10), FakeClock::new())
+    .with_exponential_backoff(Duration::from_millis(100))
+    .with_random_factor(0.5);
+
+  cb.record_failure();
+
+  assert!(cb.random_factor() > 0.0);
 }
 
 #[test]

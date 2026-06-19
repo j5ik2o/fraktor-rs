@@ -354,6 +354,52 @@ fn actor_classification_traits_match_actor_ref_contracts() {
   assert!(bus.associations.is_empty());
 }
 
+#[test]
+fn event_bus_test_adapters_exercise_unsubscribe_and_noop_contracts() {
+  let mut lookup = LookupBus::default();
+  assert!(lookup.subscribe(1, "a"));
+  assert!(lookup.subscribe(2, "b"));
+  lookup.unsubscribe_all(&1);
+  assert_eq!(lookup.subscriptions, [("b", 2)]);
+
+  let mut subchannel = SubchannelBus::default();
+  assert!(subchannel.subscribe(1, "a"));
+  assert!(!subchannel.subscribe(1, "a"));
+  assert!(subchannel.unsubscribe(&1, &"a"));
+  assert!(subchannel.subscribe(2, "b"));
+  subchannel.unsubscribe_all(&2);
+  assert!(subchannel.subscriptions.is_empty());
+
+  let mut scanning = ScanningBus::default();
+  assert!(scanning.subscribe(1, 3));
+  assert!(!scanning.subscribe(1, 3));
+  assert!(scanning.unsubscribe(&1, &3));
+  assert!(scanning.subscribe(2, 4));
+  scanning.unsubscribe_all(&2);
+  assert!(scanning.subscriptions.is_empty());
+
+  fn positive(value: &u32) -> bool {
+    *value > 0
+  }
+  let classifier: fn(&u32) -> bool = positive;
+  let mut predicate = PredicateBus;
+  assert!(predicate.subscribe(1, classifier));
+  assert!(predicate.unsubscribe(&1, &classifier));
+  predicate.unsubscribe_all(&1);
+  predicate.publish(1);
+
+  let mut actor_bus = ActorBus::default();
+  let monitored = actor_ref(10);
+  let monitor = actor_ref(11);
+  assert_eq!(actor_bus.map_size(), 128);
+  assert_eq!(actor_bus.classify(&()).pid(), actor_ref(0).pid());
+  assert!(actor_bus.register_with_unsubscriber(&monitor, 1));
+  assert!(actor_bus.subscribe(monitor.clone(), monitored.clone()));
+  actor_bus.publish(());
+  actor_bus.unsubscribe_all(&monitor);
+  assert!(actor_bus.associations.is_empty());
+}
+
 fn actor_ref(value: u64) -> ActorRef {
   ActorRef::new_with_builtin_lock(Pid::new(value, 0), NullSender)
 }

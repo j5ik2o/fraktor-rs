@@ -26,3 +26,12 @@ fn multiple_consumer_requirement_is_tracked_separately() {
   assert!(!requirement.is_empty());
   assert!(MailboxRequirement::none().is_empty());
 }
+
+#[test]
+fn with_multiple_consumer_sets_only_multiple_consumer_flag() {
+  let requirement = MailboxRequirement::none().with_multiple_consumer();
+
+  assert!(requirement.needs_multiple_consumer());
+  assert!(!requirement.needs_deque());
+  assert!(!requirement.needs_control_aware());
+}

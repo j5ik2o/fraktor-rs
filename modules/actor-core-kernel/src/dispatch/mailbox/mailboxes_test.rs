@@ -39,9 +39,7 @@ fn assert_push_timeout_rejects_without_eviction(config: MailboxConfig, label: &s
 
   let clock = fixed_zero_clock();
   let result = queue.enqueue_with_mailbox_clock(Envelope::new(AnyMessage::new(2_u32)), Some(&clock));
-  let Err(error) = result else {
-    panic!("{label} must time out incoming envelope after zero push timeout, got {result:?}");
-  };
+  let error = result.expect_err(label);
   assert!(matches!(error.error(), crate::actor::error::SendError::Timeout(_)), "{label}");
   assert_eq!(error.error().message().payload().downcast_ref::<u32>().copied(), Some(2_u32), "{label}");
 
@@ -205,6 +203,40 @@ fn stable_priority_queue_selection_keeps_lock_backed_enqueue_path() {
 }
 
 #[test]
+fn bounded_priority_selection_without_push_timeout_uses_priority_queue() {
+  let capacity = NonZeroUsize::new(2).expect("capacity");
+  let config = MailboxConfig::new(MailboxPolicy::bounded(capacity, MailboxOverflowStrategy::DropNewest, None))
+    .with_priority_generator(ArcShared::new(ConstantPriority));
+
+  let queue = create_message_queue_from_config(&config).expect("bounded priority queue");
+
+  assert!(queue.enqueue(Envelope::new(AnyMessage::new(1_u32))).is_ok());
+}
+
+#[test]
+fn bounded_stable_priority_selection_without_push_timeout_uses_stable_priority_queue() {
+  let capacity = NonZeroUsize::new(2).expect("capacity");
+  let config = MailboxConfig::new(MailboxPolicy::bounded(capacity, MailboxOverflowStrategy::DropNewest, None))
+    .with_priority_generator(ArcShared::new(ConstantPriority))
+    .with_stable_priority(true);
+
+  let queue = create_message_queue_from_config(&config).expect("bounded stable priority queue");
+
+  assert!(queue.enqueue(Envelope::new(AnyMessage::new(1_u32))).is_ok());
+}
+
+#[test]
+fn bounded_multiple_consumer_selection_uses_bounded_mailbox_type() {
+  let capacity = NonZeroUsize::new(2).expect("capacity");
+  let config = MailboxConfig::new(MailboxPolicy::bounded(capacity, MailboxOverflowStrategy::DropNewest, None))
+    .with_requirement(MailboxRequirement::requires_multiple_consumer());
+
+  let queue = create_message_queue_from_config(&config).expect("bounded multiple-consumer queue");
+
+  assert!(queue.requires_put_lock_for_enqueue());
+}
+
+#[test]
 fn create_message_queue_passes_push_timeout_to_bounded_selection_paths() {
   assert_push_timeout_rejects_without_eviction(
     MailboxConfig::new(bounded_drop_oldest_push_timeout_policy()),
@@ -231,6 +263,43 @@ fn create_message_queue_passes_push_timeout_to_bounded_selection_paths() {
       .with_stable_priority(true),
     "bounded stable-priority mailbox",
   );
+}
+
+#[test]
+fn select_falls_back_to_dispatcher_requirement_when_actor_requirement_missing() {
+  let mut registry = Mailboxes::new();
+  registry.ensure_default();
+  registry.register("dispatcher-req", MailboxConfig::default()).expect("dispatcher req");
+  registry.bind_queue_type(MailboxRequirement::requires_multiple_consumer(), "dispatcher-req");
+  let selection = MailboxSelection::new()
+    .with_actor_requirement(MailboxRequirement::requires_deque())
+    .with_dispatcher_requirement(MailboxRequirement::requires_multiple_consumer());
+
+  let selected = registry.select(&selection).expect("select dispatcher fallback");
+
+  assert!(ArcShared::ptr_eq(&selected, &registry.resolve("dispatcher-req").expect("resolve dispatcher")));
+}
+
+#[test]
+fn select_returns_actor_requirement_error_without_dispatcher_fallback() {
+  let mut registry = Mailboxes::new();
+  registry.ensure_default();
+  let selection = MailboxSelection::new().with_actor_requirement(MailboxRequirement::requires_deque());
+
+  let result = registry.select(&selection);
+
+  assert!(matches!(result, Err(MailboxRegistryError::Unknown(_))));
+}
+
+#[test]
+fn select_uses_default_when_no_selection_criteria_are_present() {
+  let mut registry = Mailboxes::new();
+  registry.ensure_default();
+  let selection = MailboxSelection::new();
+
+  let selected = registry.select(&selection).expect("select default");
+
+  assert!(ArcShared::ptr_eq(&selected, &registry.resolve(DEFAULT_MAILBOX_ID).expect("resolve default")));
 }
 
 #[test]

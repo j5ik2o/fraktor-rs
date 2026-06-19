@@ -9,6 +9,7 @@ use crate::{
     props::{DeployablePropsMetadata, MailboxConfig, MailboxRequirement, Props, RequiresMessageQueue},
   },
   dispatch::mailbox::{MailboxOverflowStrategy, MailboxPolicy},
+  system::ActorSystem,
 };
 
 struct TestActor;
@@ -122,4 +123,14 @@ fn required_message_queue_marker_sets_mailbox_requirement() {
   let props = Props::from_required_fn(|| MultiConsumerActor);
 
   assert!(props.mailbox_requirement().needs_multiple_consumer());
+}
+
+#[test]
+fn multi_consumer_actor_receive_is_noop() {
+  let system = ActorSystem::new_empty();
+  let mut ctx = ActorContext::new(&system, system.allocate_pid());
+  let message = AnyMessage::new("ping");
+  let mut actor = MultiConsumerActor;
+
+  assert!(actor.receive(&mut ctx, message.as_view()).is_ok());
 }

@@ -139,3 +139,19 @@ fn from_parts_with_flags_preserves_marker_flags() {
   assert!(message.is_dead_letter_suppressed());
   assert!(message.is_possibly_harmful());
 }
+
+#[test]
+fn into_parts_returns_payload_sender_and_all_flags() {
+  let payload = ArcShared::new(42_u32) as ArcShared<dyn Any + Send + Sync>;
+  let sender = ActorRef::null();
+  let message = AnyMessage::from_parts_with_flags(payload, Some(sender.clone()), true, true, true, true);
+
+  let (payload, sender_out, is_control, not_influence, dead_letter_suppressed, possibly_harmful) = message.into_parts();
+
+  assert_eq!(payload.downcast_ref::<u32>(), Some(&42_u32));
+  assert_eq!(sender_out.as_ref(), Some(&sender));
+  assert!(is_control);
+  assert!(not_influence);
+  assert!(dead_letter_suppressed);
+  assert!(possibly_harmful);
+}

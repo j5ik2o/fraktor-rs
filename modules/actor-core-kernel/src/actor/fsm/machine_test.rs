@@ -7,8 +7,9 @@ use super::{Fsm, FsmNamedTimer};
 use crate::{
   actor::{
     Actor, ActorCell, ActorContext, Pid,
+    actor_ref::{ActorRef, NullSender},
     error::ActorError,
-    fsm::{FsmStateTimeout, FsmTransition},
+    fsm::{FsmStateTimeout, FsmSubscribeTransitionCallback, FsmTransition},
     messaging::{AnyMessage, AnyMessageView},
     props::Props,
     scheduler::SchedulerError,
@@ -142,6 +143,20 @@ fn stale_timeout_without_current_state_is_ignored() {
   let view = timeout.as_view();
 
   fsm.handle(&mut context, &view).expect("stale timeout");
+
+  assert_eq!(fsm.state_data(), Some(&1));
+}
+
+#[test]
+fn subscribe_without_current_state_returns_without_current_state_notification() {
+  let (_system, mut context) = build_context();
+  let mut fsm = Fsm::<ProbeState, usize>::new();
+  fsm.initialized = true;
+  fsm.data = Some(1);
+  let listener = ActorRef::new_with_builtin_lock(Pid::new(1_100, 0), NullSender);
+  let subscribe = AnyMessage::new(FsmSubscribeTransitionCallback::new(listener));
+
+  fsm.handle(&mut context, &subscribe.as_view()).expect("subscribe");
 
   assert_eq!(fsm.state_data(), Some(&1));
 }

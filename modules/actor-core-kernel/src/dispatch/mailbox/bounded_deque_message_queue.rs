@@ -162,25 +162,23 @@ impl BoundedDequeMessageQueue {
   ) -> Result<EnqueueOutcome, EnqueueError> {
     let deadline = push_timeout::push_timeout_deadline(clock, timeout);
     loop {
-      let result = self.inner.with_write(|inner| {
+      let rejected = self.inner.with_write(|inner| {
         if inner.len() < self.capacity {
           inner.push_back(envelope);
-          Ok(EnqueueOutcome::Accepted)
+          None
         } else {
-          Ok(EnqueueOutcome::Rejected(envelope))
+          Some(envelope)
         }
       });
-      match result {
-        | Ok(EnqueueOutcome::Accepted) => return Ok(EnqueueOutcome::Accepted),
-        | Ok(EnqueueOutcome::Rejected(rejected)) => {
+      match rejected {
+        | None => return Ok(EnqueueOutcome::Accepted),
+        | Some(rejected) => {
           envelope = rejected;
           if !push_timeout::should_retry_after_full(clock, deadline) {
             return Err(push_timeout::enqueue_timeout(envelope));
           }
           push_timeout::spin_before_push_timeout_retry();
         },
-        | Ok(EnqueueOutcome::Evicted(evicted)) => return Ok(EnqueueOutcome::Evicted(evicted)),
-        | Err(error) => return Err(error),
       }
     }
   }

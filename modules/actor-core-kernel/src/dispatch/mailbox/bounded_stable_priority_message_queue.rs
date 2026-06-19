@@ -137,26 +137,24 @@ impl BoundedStablePriorityMessageQueue {
   ) -> Result<EnqueueOutcome, EnqueueError> {
     let deadline = push_timeout::push_timeout_deadline(clock, timeout);
     loop {
-      let result = self.state_shared.with_write(|state| {
+      let rejected = self.state_shared.with_write(|state| {
         if state.heap().len() < self.capacity {
           let sequence = state.next_sequence();
           state.heap_mut().push(StablePriorityEntry { priority, sequence, envelope });
-          Ok(EnqueueOutcome::Accepted)
+          None
         } else {
-          Ok(EnqueueOutcome::Rejected(envelope))
+          Some(envelope)
         }
       });
-      match result {
-        | Ok(EnqueueOutcome::Accepted) => return Ok(EnqueueOutcome::Accepted),
-        | Ok(EnqueueOutcome::Rejected(rejected)) => {
+      match rejected {
+        | None => return Ok(EnqueueOutcome::Accepted),
+        | Some(rejected) => {
           envelope = rejected;
           if !push_timeout::should_retry_after_full(clock, deadline) {
             return Err(push_timeout::enqueue_timeout(envelope));
           }
           push_timeout::spin_before_push_timeout_retry();
         },
-        | Ok(EnqueueOutcome::Evicted(evicted)) => return Ok(EnqueueOutcome::Evicted(evicted)),
-        | Err(error) => return Err(error),
       }
     }
   }

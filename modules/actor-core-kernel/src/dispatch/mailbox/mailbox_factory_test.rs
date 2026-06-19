@@ -12,7 +12,7 @@ use crate::{
   actor::props::{MailboxConfig, MailboxRequirement},
   dispatch::mailbox::{
     MailboxOverflowStrategy, MailboxPolicy, MailboxType, Mailboxes, MessageQueue, MessageQueueSemantics,
-    UnboundedMailboxType,
+    ProducesMessageQueue, UnboundedMailboxType,
   },
 };
 
@@ -112,6 +112,46 @@ fn mailbox_config_advertises_produced_queue_semantics() {
   assert!(semantics.is_unbounded());
   assert!(semantics.is_multiple_consumer());
   assert!(semantics.satisfies(MailboxRequirement::requires_multiple_consumer()));
+}
+
+#[test]
+fn produces_message_queue_trait_delegates_to_mailbox_factory_semantics() {
+  let multiple = MailboxConfig::default().with_requirement(MailboxRequirement::requires_multiple_consumer());
+  let semantics = ProducesMessageQueue::produced_message_queue(&multiple);
+
+  assert!(semantics.is_unbounded());
+  assert!(semantics.is_multiple_consumer());
+}
+
+#[test]
+fn mailbox_config_advertises_specialized_unbounded_semantics() {
+  let deque = MailboxConfig::default().with_requirement(MailboxRequirement::requires_deque());
+  let deque_semantics = deque.produced_queue_semantics();
+  assert!(deque_semantics.is_unbounded());
+  assert!(deque_semantics.is_multiple_consumer());
+  assert!(deque_semantics.is_deque_based());
+
+  let control = MailboxConfig::default().with_requirement(MailboxRequirement::requires_control_aware());
+  let control_semantics = control.produced_queue_semantics();
+  assert!(control_semantics.is_unbounded());
+  assert!(control_semantics.is_multiple_consumer());
+  assert!(control_semantics.is_control_aware());
+}
+
+#[test]
+fn message_queue_semantics_builder_and_default_are_observable() {
+  let semantics = MessageQueueSemantics::bounded()
+    .with_deque_based(true)
+    .with_control_aware(true)
+    .with_multiple_consumer(true)
+    .with_push_timeout(true);
+
+  assert!(semantics.is_bounded());
+  assert!(semantics.is_deque_based());
+  assert!(semantics.is_control_aware());
+  assert!(semantics.is_multiple_consumer());
+  assert!(semantics.has_push_timeout());
+  assert_eq!(MessageQueueSemantics::default(), MessageQueueSemantics::unbounded());
 }
 
 #[test]

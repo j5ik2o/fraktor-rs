@@ -47,10 +47,18 @@ struct CapturingSender {
   inbox: ArcShared<SpinSyncMutex<Vec<AnyMessage>>>,
 }
 
+struct FailingSender;
+
 impl ActorRefSender for CapturingSender {
   fn send(&mut self, message: AnyMessage) -> Result<SendOutcome, SendError> {
     self.inbox.lock().push(message);
     Ok(SendOutcome::Delivered)
+  }
+}
+
+impl ActorRefSender for FailingSender {
+  fn send(&mut self, message: AnyMessage) -> Result<SendOutcome, SendError> {
+    Err(SendError::closed(message))
   }
 }
 
@@ -82,6 +90,10 @@ fn capturing_sender(pid: Pid) -> (ArcShared<SpinSyncMutex<Vec<AnyMessage>>>, Act
   let inbox = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let sender = ActorRef::new_with_builtin_lock(pid, CapturingSender { inbox: inbox.clone() });
   (inbox, sender)
+}
+
+fn failing_sender(pid: Pid) -> ActorRef {
+  ActorRef::new_with_builtin_lock(pid, FailingSender)
 }
 
 #[test]
@@ -126,6 +138,8 @@ fn fsm_transition_subscription_sends_current_state_and_transition() {
   });
   fsm.initialize(&ctx).expect("initialize");
 
+  let ignore = AnyMessage::new(Ignore);
+  fsm.handle(&mut ctx, &ignore.as_view()).expect("ignore");
   let subscribe = AnyMessage::new(FsmSubscribeTransitionCallback::new(listener));
   fsm.handle(&mut ctx, &subscribe.as_view()).expect("subscribe");
   let advance = AnyMessage::new(Advance);
@@ -155,6 +169,8 @@ fn fsm_transition_unsubscribe_stops_notifications() {
   });
   fsm.initialize(&ctx).expect("initialize");
 
+  let ignore = AnyMessage::new(Ignore);
+  fsm.handle(&mut ctx, &ignore.as_view()).expect("ignore");
   let subscribe = AnyMessage::new(FsmSubscribeTransitionCallback::new(listener.clone()));
   fsm.handle(&mut ctx, &subscribe.as_view()).expect("subscribe");
   let unsubscribe = AnyMessage::new(FsmUnsubscribeTransitionCallback::new(listener));
@@ -165,6 +181,28 @@ fn fsm_transition_unsubscribe_stops_notifications() {
   let inbox = inbox.lock();
   assert_eq!(inbox.len(), 1);
   assert!(inbox[0].downcast_ref::<FsmCurrentState<ProbeState>>().is_some());
+}
+
+#[test]
+fn fsm_transition_subscription_records_send_errors_for_failing_listener() {
+  let (system, mut ctx) = build_context();
+  let listener = failing_sender(Pid::new(1_002, 0));
+  let mut fsm = Fsm::<ProbeState, usize>::new();
+  fsm.start_with(ProbeState::Idle, 0);
+  fsm.when(ProbeState::Idle, |_ctx, message: &AnyMessageView<'_>, _state, _data| {
+    if message.downcast_ref::<Advance>().is_some() {
+      return Ok(FsmTransition::goto(ProbeState::Active));
+    }
+    Ok(FsmTransition::unhandled())
+  });
+  fsm.initialize(&ctx).expect("initialize");
+
+  let subscribe = AnyMessage::new(FsmSubscribeTransitionCallback::new(listener));
+  fsm.handle(&mut ctx, &subscribe.as_view()).expect("subscribe");
+  let advance = AnyMessage::new(Advance);
+  fsm.handle(&mut ctx, &advance.as_view()).expect("advance");
+
+  assert_eq!(system.state().dead_letters().len(), 2);
 }
 
 #[test]

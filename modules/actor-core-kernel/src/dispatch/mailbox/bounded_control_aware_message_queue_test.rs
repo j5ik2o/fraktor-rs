@@ -2,6 +2,7 @@ use alloc::boxed::Box;
 use core::{num::NonZeroUsize, time::Duration};
 
 use fraktor_utils_core_rs::sync::ArcShared;
+use portable_atomic::{AtomicU64, Ordering};
 
 use crate::{
   actor::{error::SendError, messaging::AnyMessage},
@@ -13,6 +14,15 @@ use crate::{
 
 fn fixed_zero_clock() -> MailboxClock {
   let closure: Box<dyn Fn() -> Duration + Send + Sync> = Box::new(|| Duration::ZERO);
+  ArcShared::from_boxed(closure)
+}
+
+fn stepping_clock() -> MailboxClock {
+  let tick = ArcShared::new(AtomicU64::new(0));
+  let closure: Box<dyn Fn() -> Duration + Send + Sync> = Box::new(move || {
+    let millis = tick.fetch_add(1, Ordering::SeqCst);
+    Duration::from_millis(millis)
+  });
   ArcShared::from_boxed(closure)
 }
 
@@ -162,9 +172,7 @@ fn push_timeout_rejects_full_queue_without_drop_oldest_eviction() {
 
   let clock = fixed_zero_clock();
   let result = queue.enqueue_with_mailbox_clock(Envelope::new(AnyMessage::control(2_u32)), Some(&clock));
-  let Err(error) = result else {
-    panic!("zero push timeout must time out the incoming control-aware envelope without eviction, got {result:?}");
-  };
+  let error = result.expect_err("zero push timeout must time out the incoming control-aware envelope without eviction");
   assert!(matches!(error.error(), SendError::Timeout(_)));
   assert!(error.error().message().is_control());
   assert_eq!(error.error().message().payload().downcast_ref::<u32>().copied(), Some(2_u32));
@@ -173,4 +181,41 @@ fn push_timeout_rejects_full_queue_without_drop_oldest_eviction() {
   assert!(!retained.is_control());
   assert_eq!(retained.payload().downcast_ref::<u32>().copied(), Some(1_u32));
   assert!(queue.dequeue().is_none());
+}
+
+#[test]
+fn push_timeout_accepts_when_queue_has_room_with_clock() {
+  let cap = NonZeroUsize::new(2).unwrap();
+  let queue = BoundedControlAwareMessageQueue::new_with_push_timeout(
+    cap,
+    MailboxOverflowStrategy::DropNewest,
+    Duration::from_secs(1),
+  );
+  let clock = fixed_zero_clock();
+
+  let result = queue.enqueue_with_mailbox_clock(Envelope::new(AnyMessage::control(1_u32)), Some(&clock));
+
+  assert!(matches!(result, Ok(EnqueueOutcome::Accepted)));
+  let payload = queue.dequeue().expect("dequeue accepted").into_payload();
+  assert!(payload.is_control());
+}
+
+#[test]
+fn push_timeout_retries_until_deadline_when_queue_stays_full() {
+  let cap = NonZeroUsize::new(1).unwrap();
+  let queue = BoundedControlAwareMessageQueue::new_with_push_timeout(
+    cap,
+    MailboxOverflowStrategy::DropNewest,
+    Duration::from_millis(2),
+  );
+
+  queue.enqueue(Envelope::new(AnyMessage::new(1_u32))).expect("enqueue first");
+
+  let clock = stepping_clock();
+  let error = queue
+    .enqueue_with_mailbox_clock(Envelope::new(AnyMessage::control(2_u32)), Some(&clock))
+    .expect_err("push timeout must eventually expire");
+
+  assert!(matches!(error.error(), SendError::Timeout(_)));
+  assert!(error.error().message().is_control());
 }

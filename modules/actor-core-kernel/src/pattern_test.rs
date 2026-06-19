@@ -180,6 +180,8 @@ fn after_completes_value_after_scheduler_tick() {
 
   let future = after(&state, Duration::from_millis(1), 42_u32);
   assert!(future.with_read(|inner| !inner.is_ready()));
+  let waker = noop_waker();
+  future.with_write(|inner| inner.register_waker(&waker));
 
   state.scheduler().with_write(|scheduler| scheduler.run_for_test(1));
 
@@ -192,6 +194,19 @@ fn after_zero_delay_completes_immediately() {
   let state = system.state();
 
   let future = after(&state, Duration::ZERO, String::from("ready"));
+
+  assert_eq!(future.with_write(|inner| inner.try_take()), Some(String::from("ready")));
+}
+
+#[test]
+fn after_completes_value_when_scheduler_rejects_registration() {
+  let system = ActorSystem::new_empty();
+  let state = system.state();
+  state.scheduler().with_write(|scheduler| {
+    scheduler.shutdown();
+  });
+
+  let future = after(&state, Duration::from_millis(1), String::from("ready"));
 
   assert_eq!(future.with_write(|inner| inner.try_take()), Some(String::from("ready")));
 }

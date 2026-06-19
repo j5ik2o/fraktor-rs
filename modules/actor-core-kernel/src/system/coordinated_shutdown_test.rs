@@ -13,10 +13,20 @@ use tokio::sync::Barrier;
 
 use super::*;
 use crate::actor::{
-  Pid,
+  Actor, ActorCell, ActorContext, Pid,
   actor_ref::{ActorRef, NullSender},
-  messaging::AnyMessage,
+  error::ActorError,
+  messaging::{AnyMessage, AnyMessageView, AskError},
+  props::Props,
 };
+
+struct TerminationNoopActor;
+
+impl Actor for TerminationNoopActor {
+  fn receive(&mut self, _ctx: &mut ActorContext<'_>, _message: AnyMessageView<'_>) -> Result<(), ActorError> {
+    Ok(())
+  }
+}
 
 #[derive(Clone)]
 struct SharedManualDelayProvider {
@@ -109,19 +119,13 @@ fn total_timeout_sums_phases_with_tasks() {
 #[tokio::test]
 async fn add_cancellable_task_skips_cancelled_task() {
   let cs = default_shutdown();
-  let counter = ArcShared::new(AtomicU32::new(0));
-  let c = counter.clone();
-  let handle = cs
-    .add_cancellable_task(CoordinatedShutdown::PHASE_SERVICE_STOP, "cancellable", move || async move {
-      c.fetch_add(1, Ordering::SeqCst);
-    })
-    .unwrap();
+  let handle = cs.add_cancellable_task(CoordinatedShutdown::PHASE_SERVICE_STOP, "cancellable", || async {}).unwrap();
 
   assert!(handle.cancel());
   cs.run(CoordinatedShutdownReason::Unknown).await;
 
   assert!(handle.is_cancelled());
-  assert_eq!(counter.load(Ordering::SeqCst), 0);
+  assert!(!handle.is_completed());
 }
 
 #[tokio::test]
@@ -141,6 +145,30 @@ async fn add_cancellable_task_marks_completed_after_run() {
   assert_eq!(counter.load(Ordering::SeqCst), 1);
 }
 
+#[test]
+fn add_cancellable_task_rejects_invalid_inputs() {
+  let cs = default_shutdown();
+
+  assert!(matches!(
+    cs.add_cancellable_task("missing-phase", "task", || async {}),
+    Err(CoordinatedShutdownError::UnknownPhase(_))
+  ));
+  assert!(matches!(
+    cs.add_cancellable_task(CoordinatedShutdown::PHASE_SERVICE_STOP, "", || async {}),
+    Err(CoordinatedShutdownError::EmptyTaskName)
+  ));
+}
+
+#[tokio::test]
+async fn add_cancellable_task_rejects_after_run_started() {
+  let cs = default_shutdown();
+  cs.run(CoordinatedShutdownReason::Unknown).await;
+
+  let result = cs.add_cancellable_task(CoordinatedShutdown::PHASE_SERVICE_STOP, "late", || async {});
+
+  assert!(matches!(result, Err(CoordinatedShutdownError::RunAlreadyStarted)));
+}
+
 #[tokio::test]
 async fn add_actor_termination_task_completes_for_absent_actor() {
   let system = ActorSystem::new_empty();
@@ -157,6 +185,69 @@ async fn add_actor_termination_task_completes_for_absent_actor() {
   cs.run(CoordinatedShutdownReason::Unknown).await;
 
   assert_eq!(marker.load(Ordering::SeqCst), 1);
+}
+
+#[tokio::test]
+async fn wait_until_actor_disappears_times_out_when_cell_remains_registered() {
+  let system = ActorSystem::new_empty();
+  let pid = system.allocate_pid();
+  let props = Props::from_fn(|| TerminationNoopActor);
+  let cell = ActorCell::create(system.state(), pid, None, "termination-wait".to_string(), &props).expect("create cell");
+  system.state().register_cell(cell);
+  let actor = ActorRef::with_system(pid, NullSender, &system.state());
+
+  let wait = tokio::spawn(CoordinatedShutdown::wait_until_actor_disappears(actor, Duration::from_millis(1)));
+  tokio::task::yield_now().await;
+  system.scheduler().with_write(|scheduler| scheduler.run_for_test(1));
+
+  assert!(matches!(wait.await.expect("wait task"), Err(AskError::Timeout)));
+}
+
+#[tokio::test]
+async fn wait_until_actor_disappears_returns_ok_without_system_state() {
+  let actor = ActorRef::new_with_builtin_lock(Pid::new(44, 0), NullSender);
+
+  let result = CoordinatedShutdown::wait_until_actor_disappears(actor, Duration::from_millis(1)).await;
+
+  assert!(result.is_ok());
+}
+
+#[tokio::test]
+async fn wait_until_actor_disappears_returns_ok_after_cell_is_removed() {
+  let system = ActorSystem::new_empty();
+  let pid = system.allocate_pid();
+  let props = Props::from_fn(|| TerminationNoopActor);
+  let cell =
+    ActorCell::create(system.state(), pid, None, "termination-wait-remove".to_string(), &props).expect("create cell");
+  system.state().register_cell(cell);
+  let actor = ActorRef::with_system(pid, NullSender, &system.state());
+
+  let wait = tokio::spawn(CoordinatedShutdown::wait_until_actor_disappears(actor, Duration::from_millis(2)));
+  tokio::task::yield_now().await;
+  system.state().remove_cell(&pid);
+  system.scheduler().with_write(|scheduler| scheduler.run_for_test(1));
+
+  assert!(wait.await.expect("wait task").is_ok());
+}
+
+#[tokio::test]
+async fn add_actor_termination_task_swallows_wait_errors() {
+  let system = ActorSystem::new_empty();
+  let pid = system.allocate_pid();
+  let props = Props::from_fn(|| TerminationNoopActor);
+  let cell =
+    ActorCell::create(system.state(), pid, None, "termination-best-effort".to_string(), &props).expect("create cell");
+  system.state().register_cell(cell);
+  let actor = ActorRef::with_system(pid, NullSender, &system.state());
+  let mut phases = BTreeMap::new();
+  phases.insert("fast-phase".to_string(), CoordinatedShutdownPhase::new(vec![], Duration::ZERO));
+  let cs = CoordinatedShutdown::new(phases).expect("shutdown");
+
+  cs.add_actor_termination_task("fast-phase", "actor-termination", actor, None).unwrap();
+  cs.run(CoordinatedShutdownReason::Unknown).await;
+
+  assert!(cs.is_running());
+  assert!(system.state().cell(&pid).is_some());
 }
 
 #[tokio::test]

@@ -433,6 +433,21 @@ fn actor_selection_ask_delivers_request_and_returns_reply() {
 }
 
 #[test]
+fn actor_selection_tell_with_failing_sender_reaches_reply_error_path() {
+  let system = build_selection_system();
+  let (child, messages, senders) = spawn_selection_probe(&system);
+  let path = child.actor_ref().path().expect("path");
+  let selection = system.actor_selection_from_path(&path);
+  let sender = ActorRef::new_with_builtin_lock(Pid::new(9002, 0), NullSender);
+
+  selection.tell(AnyMessage::new(String::from("ask")), Some(sender.clone())).expect("tell");
+
+  wait_until(|| messages.lock().len() == 1);
+  assert_eq!(messages.lock().clone(), vec![String::from("ask")]);
+  assert_eq!(senders.lock().clone(), vec![Some(sender.pid())]);
+}
+
+#[test]
 fn actor_selection_resolve_one_returns_actor_identity_reply() {
   let system = build_selection_system();
   let (child, _, _) = spawn_selection_probe(&system);
