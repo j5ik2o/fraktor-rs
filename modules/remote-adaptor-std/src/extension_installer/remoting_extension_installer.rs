@@ -15,7 +15,7 @@ use fraktor_actor_core_kernel_rs::{
     actor_path::ActorPath,
     actor_ref::dead_letter::DeadLetterReason,
     extension::ExtensionInstaller,
-    messaging::{AnyMessage, Kill, PoisonPill, system_message::SystemMessage},
+    messaging::{AnyMessage, Kill, PoisonPill, ReceiveTimeout, system_message::SystemMessage},
   },
   event::stream::{CorrelationId, EventStreamSubscription},
   serialization::{SerializationExtensionShared, default_serialization_extension_id},
@@ -793,6 +793,7 @@ fn is_harmful_user_payload(message: &AnyMessage) -> bool {
   message.is_possibly_harmful()
     || message.downcast_ref::<PoisonPill>().is_some()
     || message.downcast_ref::<Kill>().is_some()
+    || message.downcast_ref::<ReceiveTimeout>().is_some()
     || message.downcast_ref::<SystemMessage>().is_some_and(SystemMessage::is_possibly_harmful)
 }
 

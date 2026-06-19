@@ -17,7 +17,7 @@ use fraktor_actor_core_kernel_rs::{
     actor_ref_provider::LocalActorRefProviderInstaller,
     error::ActorError,
     extension::{ExtensionInstaller, ExtensionInstallers},
-    messaging::{AnyMessage, AnyMessageView, PoisonPill, system_message::SystemMessage},
+    messaging::{AnyMessage, AnyMessageView, PoisonPill, ReceiveTimeout, system_message::SystemMessage},
     props::Props,
   },
   event::stream::{CorrelationId, EventStreamEvent, EventStreamSubscriber, RemotingLifecycleEvent, subscriber_handle},
@@ -565,19 +565,21 @@ fn inbound_delivery_bridge_rejects_harmful_user_payload() {
   let recipient = child.actor_ref().path().expect("recording actor path");
   let before = system.dead_letters().len();
 
-  deliver_inbound_envelope(
-    InboundEnvelope::new(
-      recipient,
-      RemoteNodeId::new("remote-sys", "127.0.0.1", Some(2552), 1),
-      AnyMessage::new(PoisonPill),
-      None,
-      CorrelationId::nil(),
-      OutboundPriority::User,
-    ),
-    &system,
-  );
+  for message in [AnyMessage::new(PoisonPill), AnyMessage::new(ReceiveTimeout)] {
+    deliver_inbound_envelope(
+      InboundEnvelope::new(
+        recipient.clone(),
+        RemoteNodeId::new("remote-sys", "127.0.0.1", Some(2552), 1),
+        message,
+        None,
+        CorrelationId::nil(),
+        OutboundPriority::User,
+      ),
+      &system,
+    );
+  }
 
-  assert_dead_letters_len(&system, before + 1);
+  assert_dead_letters_len(&system, before + 2);
 }
 
 #[test]
