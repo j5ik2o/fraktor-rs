@@ -4,8 +4,18 @@
 //! of the actor system.
 
 mod actor_cell;
+mod actor_cell_adapter_handles;
+mod actor_cell_children;
+mod actor_cell_death_watch;
+mod actor_cell_dispatch;
+mod actor_cell_fault_handling;
+mod actor_cell_lifecycle;
+mod actor_cell_pipe_tasks;
+mod actor_cell_receive_timeout;
+mod actor_cell_stash;
 mod actor_cell_state;
 mod actor_cell_state_shared;
+mod actor_cell_timers;
 mod actor_context;
 mod actor_lifecycle;
 pub mod actor_path;
@@ -40,6 +50,10 @@ pub mod supervision;
 mod suspend_reason;
 mod watch_kind;
 mod watch_registration_kind;
+
+#[cfg(test)]
+#[path = "actor/actor_cell_test.rs"]
+mod tests;
 
 pub use actor_cell::ActorCell;
 pub(crate) use actor_cell_state::ActorCellState;
