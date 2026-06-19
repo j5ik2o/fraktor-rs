@@ -26,6 +26,23 @@ use crate::{
 
 const DOWNCAST_FAILED: &str = "typed actor received unexpected message";
 
+#[derive(Clone, Copy)]
+struct AdapterMessageFlags {
+  dead_letter_suppressed: bool,
+  possibly_harmful:       bool,
+}
+
+impl AdapterMessageFlags {
+  const DEFAULT: Self = Self { dead_letter_suppressed: false, possibly_harmful: false };
+
+  const fn from_envelope(envelope: &AdapterEnvelope) -> Self {
+    Self {
+      dead_letter_suppressed: envelope.is_dead_letter_suppressed(),
+      possibly_harmful:       envelope.is_possibly_harmful(),
+    }
+  }
+}
+
 /// Wraps a typed actor and exposes the untyped [`Actor`] interface.
 pub(crate) struct TypedActorAdapter<M>
 where
@@ -58,19 +75,20 @@ where
       ctx.system().emit_log(LogLevel::Warn, "adapter envelope missing payload", Some(ctx.pid()), None);
       return Ok(());
     };
+    let flags = AdapterMessageFlags::from_envelope(envelope);
     if payload.type_id() != envelope.type_id() {
-      Self::record_dead_letter(ctx, payload, sender.as_ref(), DeadLetterReason::ExplicitRouting, is_control);
+      Self::record_dead_letter(ctx, payload, sender.as_ref(), DeadLetterReason::ExplicitRouting, is_control, flags);
       ctx.system().emit_log(LogLevel::Error, "adapter envelope corrupted", Some(ctx.pid()), None);
       return Ok(());
     }
     let (outcome, leftover) = self.adapters.adapt(payload);
-    self.handle_adapter_outcome(ctx, outcome, sender.as_ref(), leftover, is_control)
+    self.handle_adapter_outcome(ctx, outcome, sender.as_ref(), leftover, is_control, flags)
   }
 
   fn handle_adapt_message(&mut self, ctx: &mut ActorContext<'_>, message: &AdaptMessage<M>) -> Result<(), ActorError> {
     let outcome = message.execute();
     // AdaptMessage はローカル生成のため control フラグは不要
-    self.handle_adapter_outcome(ctx, outcome, None, None, false)
+    self.handle_adapter_outcome(ctx, outcome, None, None, false, AdapterMessageFlags::DEFAULT)
   }
 
   fn handle_adapter_outcome(
@@ -80,13 +98,14 @@ where
     sender: Option<&ActorRef>,
     original_payload: Option<AdapterPayload>,
     is_control: bool,
+    flags: AdapterMessageFlags,
   ) -> Result<(), ActorError> {
     match outcome {
       | AdapterOutcome::Converted(message) => self.deliver_converted_message(ctx, message, sender),
       | AdapterOutcome::Failure(failure) => self.forward_adapter_failure(ctx, failure),
       | AdapterOutcome::NotFound => {
         if let Some(payload) = original_payload {
-          Self::record_dead_letter(ctx, payload, sender, DeadLetterReason::ExplicitRouting, is_control);
+          Self::record_dead_letter(ctx, payload, sender, DeadLetterReason::ExplicitRouting, is_control, flags);
         }
         ctx.system().emit_log(LogLevel::Warn, "adapter dropped message", Some(ctx.pid()), None);
         Ok(())
@@ -182,9 +201,17 @@ where
     sender: Option<&ActorRef>,
     reason: DeadLetterReason,
     is_control: bool,
+    flags: AdapterMessageFlags,
   ) {
     let system_state = ctx.system().state();
-    let message = AnyMessage::from_parts(payload.into_erased(), sender.cloned(), is_control, false);
+    let message = AnyMessage::from_parts_with_flags(
+      payload.into_erased(),
+      sender.cloned(),
+      is_control,
+      false,
+      flags.dead_letter_suppressed,
+      flags.possibly_harmful,
+    );
     system_state.record_dead_letter(message, reason, Some(ctx.pid()));
   }
 }

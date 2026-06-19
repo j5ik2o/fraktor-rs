@@ -54,7 +54,9 @@ impl MessageQueue for BoundedMessageQueue {
     envelope: Envelope,
     clock: Option<&MailboxClock>,
   ) -> Result<EnqueueOutcome, EnqueueError> {
-    if let (Some(timeout), Some(clock)) = (self.push_timeout, clock) {
+    if self.overflow != MailboxOverflowStrategy::Grow
+      && let (Some(timeout), Some(clock)) = (self.push_timeout, clock)
+    {
       return self.offer_with_push_timeout(envelope, timeout, clock);
     }
     match self.overflow {

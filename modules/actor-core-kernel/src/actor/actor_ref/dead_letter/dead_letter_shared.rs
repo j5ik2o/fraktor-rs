@@ -91,6 +91,9 @@ impl DeadLetterShared {
 
   fn publish(&self, entry: &DeadLetterEntry) {
     self.event_stream.publish(&EventStreamEvent::DeadLetter(entry.clone()));
+    if entry.reason() == DeadLetterReason::SuppressedDeadLetter {
+      return;
+    }
     let (origin, message) = match entry.recipient() {
       | Some(pid) => (Some(pid), format!("deadletter for pid {:?} (reason: {:?})", pid, entry.reason())),
       | None => (None, format!("deadletter recorded (reason: {:?})", entry.reason())),

@@ -126,11 +126,20 @@ fn drop_oldest_returns_evicted_outcome_with_heap_top_envelope() {
 #[test]
 fn grow_ignores_capacity() {
   let pgen = ArcShared::new(PayloadPriorityGenerator);
-  let queue = queue(pgen, capacity(2), MailboxOverflowStrategy::Grow);
+  let state_shared =
+    BoundedPriorityMessageQueueStateShared::new(BoundedPriorityMessageQueueState::with_capacity(capacity(2)));
+  let queue = BoundedPriorityMessageQueue::new_with_push_timeout(
+    pgen,
+    state_shared,
+    capacity(2),
+    MailboxOverflowStrategy::Grow,
+    Duration::ZERO,
+  );
+  let clock = fixed_zero_clock();
 
   queue.enqueue(Envelope::new(AnyMessage::new(30_i32))).expect("enqueue 30");
   queue.enqueue(Envelope::new(AnyMessage::new(10_i32))).expect("enqueue 10");
-  let result = queue.enqueue(Envelope::new(AnyMessage::new(20_i32)));
+  let result = queue.enqueue_with_mailbox_clock(Envelope::new(AnyMessage::new(20_i32)), Some(&clock));
   assert!(matches!(result, Ok(EnqueueOutcome::Accepted)), "Grow must keep reporting Accepted, got {result:?}");
   assert_eq!(queue.number_of_messages(), 3);
 

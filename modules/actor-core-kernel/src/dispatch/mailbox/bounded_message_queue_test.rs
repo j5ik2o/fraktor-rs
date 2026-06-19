@@ -97,12 +97,13 @@ fn drop_oldest_returns_evicted_outcome_with_oldest_envelope() {
 #[test]
 fn grow_returns_accepted_even_past_capacity() {
   let cap = NonZeroUsize::new(2).unwrap();
-  let queue = BoundedMessageQueue::new(cap, MailboxOverflowStrategy::Grow);
+  let queue = BoundedMessageQueue::new_with_push_timeout(cap, MailboxOverflowStrategy::Grow, Duration::ZERO);
+  let clock = fixed_zero_clock();
 
   queue.enqueue(Envelope::new(AnyMessage::new(1_u32))).expect("enqueue 1");
   queue.enqueue(Envelope::new(AnyMessage::new(2_u32))).expect("enqueue 2");
 
-  let result = queue.enqueue(Envelope::new(AnyMessage::new(3_u32)));
+  let result = queue.enqueue_with_mailbox_clock(Envelope::new(AnyMessage::new(3_u32)), Some(&clock));
   assert!(matches!(result, Ok(EnqueueOutcome::Accepted)), "Grow must keep reporting Accepted, got {result:?}");
   assert_eq!(queue.number_of_messages(), 3);
 }

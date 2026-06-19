@@ -8,9 +8,11 @@ use crate::message_adapter::{AdapterEnvelope, AdapterPayload};
 fn envelope_exposes_type_id_and_sender() {
   let payload = AdapterPayload::new(7_u32);
   let sender = ActorRef::null();
-  let envelope = AdapterEnvelope::new(payload, Some(sender.clone()));
+  let envelope = AdapterEnvelope::with_flags(payload, Some(sender.clone()), true, true);
   assert_eq!(envelope.type_id(), TypeId::of::<u32>());
   assert!(envelope.sender().is_some());
+  assert!(envelope.is_dead_letter_suppressed());
+  assert!(envelope.is_possibly_harmful());
   let extracted = envelope.take_payload().expect("payload available");
   assert_eq!(extracted.type_id(), TypeId::of::<u32>());
   assert!(envelope.take_payload().is_none());

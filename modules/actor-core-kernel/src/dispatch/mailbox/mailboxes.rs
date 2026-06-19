@@ -37,6 +37,7 @@ mod tests;
 /// so the legacy `"default"` token is no longer registered after the Fraktor
 /// namespace split.
 const DEFAULT_MAILBOX_ID: &str = "fraktor.actor.default-mailbox";
+const DEFAULT_STASH_MAILBOX_ID: &str = "fraktor.actor.default-stash-mailbox";
 
 pub(crate) fn create_message_queue_from_policy(policy: MailboxPolicy) -> Box<dyn MessageQueue> {
   mailbox_type_from_policy(policy).create()
@@ -279,11 +280,7 @@ impl Mailboxes {
       return self.resolve(id);
     }
     if !selection.actor_requirement().is_empty() {
-      match self.lookup_by_queue_type(selection.actor_requirement()) {
-        | Ok(factory) => return Ok(factory),
-        | Err(_) if !selection.dispatcher_requirement().is_empty() => {},
-        | Err(error) => return Err(error),
-      }
+      return self.lookup_by_queue_type(selection.actor_requirement());
     }
     if !selection.dispatcher_requirement().is_empty() {
       return self.lookup_by_queue_type(selection.dispatcher_requirement());
@@ -306,7 +303,12 @@ impl Mailboxes {
   /// Ensures the default mailbox configuration is registered.
   pub fn ensure_default(&mut self) {
     self.entries.entry(DEFAULT_MAILBOX_ID.to_owned()).or_insert_with(|| ArcShared::new(MailboxConfig::default()));
+    self
+      .entries
+      .entry(DEFAULT_STASH_MAILBOX_ID.to_owned())
+      .or_insert_with(|| ArcShared::new(MailboxConfig::default().with_requirement(MailboxRequirement::for_stash())));
     self.bind_queue_type(MailboxRequirement::none(), DEFAULT_MAILBOX_ID);
+    self.bind_queue_type(MailboxRequirement::for_stash(), DEFAULT_STASH_MAILBOX_ID);
   }
 }
 

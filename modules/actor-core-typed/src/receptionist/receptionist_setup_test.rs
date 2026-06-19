@@ -25,5 +25,7 @@ fn receptionist_setup_registers_custom_factory_during_bootstrap() {
   let receptionist = Receptionist::get(&system);
 
   assert_eq!(receptionist.r#ref().pid(), custom_pid);
+  assert_eq!(system.receptionist_ref().expect("system receptionist").pid(), custom_pid);
+  assert_eq!(system.receptionist().pid(), custom_pid);
   system.terminate().expect("terminate");
 }

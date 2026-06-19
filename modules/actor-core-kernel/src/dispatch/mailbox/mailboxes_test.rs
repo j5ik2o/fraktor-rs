@@ -76,6 +76,7 @@ fn ensure_default_mailbox_is_available() {
   registry.ensure_default();
   assert!(registry.resolve(DEFAULT_MAILBOX_ID).is_ok());
   assert!(registry.lookup_by_queue_type(MailboxRequirement::none()).is_ok());
+  assert!(registry.lookup_by_queue_type(MailboxRequirement::for_stash()).is_ok());
 }
 
 #[test]
@@ -267,25 +268,25 @@ fn create_message_queue_passes_push_timeout_to_bounded_selection_paths() {
 }
 
 #[test]
-fn select_falls_back_to_dispatcher_requirement_when_actor_requirement_missing() {
+fn select_returns_actor_requirement_error_before_dispatcher_fallback() {
   let mut registry = Mailboxes::new();
   registry.ensure_default();
   registry.register("dispatcher-req", MailboxConfig::default()).expect("dispatcher req");
   registry.bind_queue_type(MailboxRequirement::requires_multiple_consumer(), "dispatcher-req");
   let selection = MailboxSelection::new()
-    .with_actor_requirement(MailboxRequirement::requires_deque())
+    .with_actor_requirement(MailboxRequirement::requires_control_aware())
     .with_dispatcher_requirement(MailboxRequirement::requires_multiple_consumer());
 
-  let selected = registry.select(&selection).expect("select dispatcher fallback");
+  let result = registry.select(&selection);
 
-  assert!(ArcShared::ptr_eq(&selected, &registry.resolve("dispatcher-req").expect("resolve dispatcher")));
+  assert!(matches!(result, Err(MailboxRegistryError::Unknown(_))));
 }
 
 #[test]
 fn select_returns_actor_requirement_error_without_dispatcher_fallback() {
   let mut registry = Mailboxes::new();
   registry.ensure_default();
-  let selection = MailboxSelection::new().with_actor_requirement(MailboxRequirement::requires_deque());
+  let selection = MailboxSelection::new().with_actor_requirement(MailboxRequirement::requires_control_aware());
 
   let result = registry.select(&selection);
 

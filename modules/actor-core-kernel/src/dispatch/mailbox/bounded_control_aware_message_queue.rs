@@ -93,7 +93,9 @@ impl MessageQueue for BoundedControlAwareMessageQueue {
     envelope: Envelope,
     clock: Option<&MailboxClock>,
   ) -> Result<EnqueueOutcome, EnqueueError> {
-    if let (Some(timeout), Some(clock)) = (self.push_timeout, clock) {
+    if self.overflow != MailboxOverflowStrategy::Grow
+      && let (Some(timeout), Some(clock)) = (self.push_timeout, clock)
+    {
       return self.enqueue_with_push_timeout(envelope, timeout, clock);
     }
     self.inner.with_write(|inner| match self.overflow {

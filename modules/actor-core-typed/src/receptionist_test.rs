@@ -549,7 +549,7 @@ fn get_registers_receptionist_extension_even_when_bootstrap_actor_is_missing() {
 
   assert_eq!(first.r#ref().pid(), second.r#ref().pid());
   assert_eq!(first.r#ref().pid(), registered.with_ref(|receptionist| receptionist.r#ref().pid()));
-  assert!(system.receptionist_ref().is_none());
+  assert_eq!(system.receptionist_ref().expect("extension receptionist").pid(), first.r#ref().pid());
 }
 
 #[test]

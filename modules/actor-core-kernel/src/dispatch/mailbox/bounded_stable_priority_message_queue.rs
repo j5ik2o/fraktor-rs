@@ -72,7 +72,9 @@ impl MessageQueue for BoundedStablePriorityMessageQueue {
     clock: Option<&MailboxClock>,
   ) -> Result<EnqueueOutcome, EnqueueError> {
     let priority = self.generator.priority(envelope.payload());
-    if let (Some(timeout), Some(clock)) = (self.push_timeout, clock) {
+    if self.overflow != MailboxOverflowStrategy::Grow
+      && let (Some(timeout), Some(clock)) = (self.push_timeout, clock)
+    {
       return self.enqueue_with_push_timeout(envelope, priority, timeout, clock);
     }
     self.state_shared.with_write(|state| {

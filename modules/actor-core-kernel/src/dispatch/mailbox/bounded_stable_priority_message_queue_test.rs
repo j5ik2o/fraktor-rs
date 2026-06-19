@@ -187,11 +187,18 @@ fn grow_ignores_capacity() {
   let state_shared = BoundedStablePriorityMessageQueueStateShared::new(
     BoundedStablePriorityMessageQueueState::with_capacity(capacity(2)),
   );
-  let queue = BoundedStablePriorityMessageQueue::new(pgen, state_shared, capacity(2), MailboxOverflowStrategy::Grow);
+  let queue = BoundedStablePriorityMessageQueue::new_with_push_timeout(
+    pgen,
+    state_shared,
+    capacity(2),
+    MailboxOverflowStrategy::Grow,
+    Duration::ZERO,
+  );
+  let clock = fixed_zero_clock();
 
   queue.enqueue(Envelope::new(AnyMessage::new(30_i32))).expect("enqueue 30");
   queue.enqueue(Envelope::new(AnyMessage::new(10_i32))).expect("enqueue 10");
-  let result = queue.enqueue(Envelope::new(AnyMessage::new(20_i32)));
+  let result = queue.enqueue_with_mailbox_clock(Envelope::new(AnyMessage::new(20_i32)), Some(&clock));
   assert!(matches!(result, Ok(EnqueueOutcome::Accepted)), "Grow must keep reporting Accepted, got {result:?}");
   assert_eq!(queue.number_of_messages(), 3);
 

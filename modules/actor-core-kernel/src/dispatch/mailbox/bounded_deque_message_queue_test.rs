@@ -21,10 +21,11 @@ fn fixed_zero_clock() -> MailboxClock {
 #[test]
 fn grow_accepts_beyond_capacity() {
   let cap = NonZeroUsize::new(2).unwrap();
-  let queue = BoundedDequeMessageQueue::new(cap, MailboxOverflowStrategy::Grow);
+  let queue = BoundedDequeMessageQueue::new_with_push_timeout(cap, MailboxOverflowStrategy::Grow, Duration::ZERO);
+  let clock = fixed_zero_clock();
 
   for i in 0..3_u32 {
-    let result = queue.enqueue(Envelope::new(AnyMessage::new(i)));
+    let result = queue.enqueue_with_mailbox_clock(Envelope::new(AnyMessage::new(i)), Some(&clock));
     assert!(matches!(result, Ok(EnqueueOutcome::Accepted)), "enqueue {i} must be Accepted, got {result:?}");
   }
   assert_eq!(queue.number_of_messages(), 3);
@@ -140,12 +141,13 @@ fn clean_up_removes_all_messages() {
 fn grow_enqueue_first_bypasses_capacity() {
   // Grow は push_front でも capacity を無視する (spec: "Grow: capacity 無視で push_front")。
   let cap = NonZeroUsize::new(1).unwrap();
-  let queue = BoundedDequeMessageQueue::new(cap, MailboxOverflowStrategy::Grow);
+  let queue = BoundedDequeMessageQueue::new_with_push_timeout(cap, MailboxOverflowStrategy::Grow, Duration::ZERO);
+  let clock = fixed_zero_clock();
 
   queue.enqueue(Envelope::new(AnyMessage::new(1_u32))).expect("enqueue A");
 
   let deque = queue.as_deque().expect("deque capability");
-  deque.enqueue_first(Envelope::new(AnyMessage::new(0_u32))).expect("enqueue_first B");
+  deque.enqueue_first_with_mailbox_clock(Envelope::new(AnyMessage::new(0_u32)), Some(&clock)).expect("enqueue_first B");
   assert_eq!(queue.number_of_messages(), 2);
 
   let first = queue.dequeue().expect("dequeue front");

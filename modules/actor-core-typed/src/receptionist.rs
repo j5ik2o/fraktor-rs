@@ -12,6 +12,7 @@ mod service_key;
 mod tests;
 
 pub use deregistered::Deregistered;
+pub(crate) use extension::ReceptionistExtensionId;
 pub use extension::{Receptionist, SYSTEM_RECEPTIONIST_TOP_LEVEL};
 pub use listing::Listing;
 pub use receptionist_command::ReceptionistCommand;

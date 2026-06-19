@@ -136,6 +136,43 @@ async fn half_open_failure_reopens() {
 }
 
 #[tokio::test]
+async fn transition_listeners_can_read_shared_state() {
+  let clock = FakeClock::new();
+  let cb = shared_with_clock(1, Duration::from_millis(10), clock.clone());
+  let observed = Arc::new(AtomicU64::new(0));
+
+  SharedAccess::with_write(&cb, |inner| {
+    let observed_open = observed.clone();
+    let cb_open = cb.clone();
+    inner.on_open(move || {
+      assert_eq!(cb_open.state(), CircuitBreakerState::Open);
+      observed_open.fetch_or(1, Ordering::SeqCst);
+    });
+
+    let observed_half_open = observed.clone();
+    let cb_half_open = cb.clone();
+    inner.on_half_open(move || {
+      assert_eq!(cb_half_open.state(), CircuitBreakerState::HalfOpen);
+      observed_half_open.fetch_or(2, Ordering::SeqCst);
+    });
+
+    let observed_close = observed.clone();
+    let cb_close = cb.clone();
+    inner.on_close(move || {
+      assert_eq!(cb_close.state(), CircuitBreakerState::Closed);
+      observed_close.fetch_or(4, Ordering::SeqCst);
+    });
+  });
+
+  assert!(cb.call(|| async { Err::<(), _>("fail") }).await.is_err());
+  clock.advance(Duration::from_millis(20));
+  let result = cb.call(|| async { Ok::<_, &str>(()) }).await;
+
+  assert!(result.is_ok());
+  assert_eq!(observed.load(Ordering::SeqCst), 7);
+}
+
+#[tokio::test]
 async fn open_error_contains_remaining_duration() {
   let clock = FakeClock::new();
   let cb = shared_with_clock(1, Duration::from_secs(10), clock.clone());

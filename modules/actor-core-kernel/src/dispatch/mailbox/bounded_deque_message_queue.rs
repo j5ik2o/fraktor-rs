@@ -65,7 +65,9 @@ impl MessageQueue for BoundedDequeMessageQueue {
     envelope: Envelope,
     clock: Option<&MailboxClock>,
   ) -> Result<EnqueueOutcome, EnqueueError> {
-    if let (Some(timeout), Some(clock)) = (self.push_timeout, clock) {
+    if self.overflow != MailboxOverflowStrategy::Grow
+      && let (Some(timeout), Some(clock)) = (self.push_timeout, clock)
+    {
       return self.enqueue_back_with_push_timeout(envelope, timeout, clock);
     }
     self.inner.with_write(|inner| match self.overflow {
@@ -130,7 +132,9 @@ impl DequeMessageQueue for BoundedDequeMessageQueue {
     envelope: Envelope,
     clock: Option<&MailboxClock>,
   ) -> Result<(), SendError> {
-    if let (Some(timeout), Some(clock)) = (self.push_timeout, clock) {
+    if self.overflow != MailboxOverflowStrategy::Grow
+      && let (Some(timeout), Some(clock)) = (self.push_timeout, clock)
+    {
       return self.enqueue_front_with_push_timeout(envelope, timeout, clock);
     }
     self.inner.with_write(|inner| match self.overflow {

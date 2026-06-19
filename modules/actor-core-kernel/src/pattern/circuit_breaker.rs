@@ -8,6 +8,7 @@
 use alloc::{boxed::Box, vec::Vec};
 use core::{
   fmt::{Debug, Formatter, Result as FmtResult},
+  mem,
   time::Duration,
 };
 
@@ -19,7 +20,14 @@ use super::{
 #[path = "circuit_breaker_test.rs"]
 mod tests;
 
-type CircuitBreakerListener = dyn FnMut() + Send + 'static;
+pub(crate) type CircuitBreakerListener = dyn FnMut() + Send + 'static;
+
+#[derive(Clone, Copy)]
+pub(crate) enum CircuitBreakerTransition {
+  Open,
+  HalfOpen,
+  Closed,
+}
 
 /// Three-state circuit breaker (Closed / Open / HalfOpen).
 ///
@@ -196,15 +204,23 @@ impl<C: Clock> CircuitBreaker<C> {
   /// circuit is open and the reset timeout has not yet elapsed, or when a probe
   /// call is already in progress during the HalfOpen state.
   pub fn is_call_permitted(&mut self) -> Result<(), CircuitBreakerOpenError> {
+    let (_, transition) = self.permit_call()?;
+    self.notify_transition(transition);
+    Ok(())
+  }
+
+  pub(crate) fn permit_call(
+    &mut self,
+  ) -> Result<(CircuitBreakerState, Option<CircuitBreakerTransition>), CircuitBreakerOpenError> {
     match self.state {
-      | CircuitBreakerState::Closed => Ok(()),
+      | CircuitBreakerState::Closed => Ok((CircuitBreakerState::Closed, None)),
       | CircuitBreakerState::Open => {
         let opened_at = self.opened_at_or_now();
         let elapsed = self.clock.elapsed_since(opened_at);
         if elapsed >= self.open_reset_timeout {
           // HalfOpen に遷移してプローブ呼び出しを許可する
-          self.transition_to_half_open();
-          Ok(())
+          let transition = self.transition_to_half_open();
+          Ok((CircuitBreakerState::HalfOpen, Some(transition)))
         } else {
           Err(CircuitBreakerOpenError::new(self.open_reset_timeout - elapsed))
         }
@@ -221,32 +237,14 @@ impl<C: Clock> CircuitBreaker<C> {
 
   /// Records a successful call, transitioning to **Closed** if in **HalfOpen**.
   pub fn record_success(&mut self) {
-    match self.state {
-      | CircuitBreakerState::HalfOpen => {
-        self.transition_to_closed();
-      },
-      | CircuitBreakerState::Closed => {
-        // 成功時に連続失敗カウントをリセットする
-        self.failure_count = 0;
-      },
-      | CircuitBreakerState::Open => {},
-    }
+    let transition = self.record_success_for(self.state == CircuitBreakerState::HalfOpen);
+    self.notify_transition(transition);
   }
 
   /// Records a failed call, potentially transitioning to **Open**.
   pub fn record_failure(&mut self) {
-    match self.state {
-      | CircuitBreakerState::Closed => {
-        self.failure_count += 1;
-        if self.failure_count >= self.max_failures {
-          self.transition_to_open();
-        }
-      },
-      | CircuitBreakerState::HalfOpen => {
-        self.transition_to_open();
-      },
-      | CircuitBreakerState::Open => {},
-    }
+    let transition = self.record_failure_for(self.state == CircuitBreakerState::HalfOpen);
+    self.notify_transition(transition);
   }
 
   /// Records a successful call, aware of whether this call was a HalfOpen probe.
@@ -254,11 +252,11 @@ impl<C: Clock> CircuitBreaker<C> {
   /// When `was_half_open` is true, the call was the probe — only then does success
   /// transition HalfOpen → Closed. Non-probe calls that complete after a state
   /// change are handled safely without corrupting the state machine.
-  pub(crate) fn record_success_for(&mut self, was_half_open: bool) {
+  pub(crate) fn record_success_for(&mut self, was_half_open: bool) -> Option<CircuitBreakerTransition> {
     if was_half_open {
       // probe 成功 — 現在の状態が HalfOpen なら Closed に遷移
       if self.state == CircuitBreakerState::HalfOpen {
-        self.transition_to_closed();
+        return Some(self.transition_to_closed());
       }
     } else {
       // 通常の呼び出し — Closed の場合のみ失敗カウントをリセット
@@ -266,44 +264,46 @@ impl<C: Clock> CircuitBreaker<C> {
         self.failure_count = 0;
       }
     }
+    None
   }
 
   /// Records a failed call, aware of whether this call was a HalfOpen probe.
   ///
   /// When `was_half_open` is true, failure re-opens the circuit. Non-probe calls
   /// that complete after a state change only affect Closed state.
-  pub(crate) fn record_failure_for(&mut self, was_half_open: bool) {
+  pub(crate) fn record_failure_for(&mut self, was_half_open: bool) -> Option<CircuitBreakerTransition> {
     if was_half_open {
       // probe 失敗 — HalfOpen なら Open に戻す
       if self.state == CircuitBreakerState::HalfOpen {
-        self.transition_to_open();
+        return Some(self.transition_to_open());
       }
     } else {
       // 通常の呼び出し — Closed の場合のみ失敗カウントを増やす
       if self.state == CircuitBreakerState::Closed {
         self.failure_count += 1;
         if self.failure_count >= self.max_failures {
-          self.transition_to_open();
+          return Some(self.transition_to_open());
         }
       }
     }
+    None
   }
 
-  fn transition_to_open(&mut self) {
+  fn transition_to_open(&mut self) -> CircuitBreakerTransition {
     self.state = CircuitBreakerState::Open;
     self.open_reset_timeout = self.next_reset_timeout;
     self.opened_at = Some(self.clock.now());
-    self.notify_open();
     self.advance_next_reset_timeout();
+    CircuitBreakerTransition::Open
   }
 
-  fn transition_to_closed(&mut self) {
+  const fn transition_to_closed(&mut self) -> CircuitBreakerTransition {
     self.state = CircuitBreakerState::Closed;
     self.failure_count = 0;
     self.opened_at = None;
     self.open_reset_timeout = self.reset_timeout;
     self.next_reset_timeout = self.reset_timeout;
-    self.notify_close();
+    CircuitBreakerTransition::Closed
   }
 
   fn opened_at_or_now(&self) -> C::Instant {
@@ -314,9 +314,43 @@ impl<C: Clock> CircuitBreaker<C> {
     self.opened_at.map_or(Duration::ZERO, |at| self.open_reset_timeout.saturating_sub(self.clock.elapsed_since(at)))
   }
 
-  fn transition_to_half_open(&mut self) {
+  const fn transition_to_half_open(&mut self) -> CircuitBreakerTransition {
     self.state = CircuitBreakerState::HalfOpen;
-    self.notify_half_open();
+    CircuitBreakerTransition::HalfOpen
+  }
+
+  fn notify_transition(&mut self, transition: Option<CircuitBreakerTransition>) {
+    match transition {
+      | Some(CircuitBreakerTransition::Open) => self.notify_open(),
+      | Some(CircuitBreakerTransition::HalfOpen) => self.notify_half_open(),
+      | Some(CircuitBreakerTransition::Closed) => self.notify_close(),
+      | None => {},
+    }
+  }
+
+  pub(crate) fn take_transition_listeners(
+    &mut self,
+    transition: CircuitBreakerTransition,
+  ) -> Vec<Box<CircuitBreakerListener>> {
+    mem::take(self.listeners_for(transition))
+  }
+
+  pub(crate) fn restore_transition_listeners(
+    &mut self,
+    transition: CircuitBreakerTransition,
+    listeners: Vec<Box<CircuitBreakerListener>>,
+  ) {
+    let target = self.listeners_for(transition);
+    let new_listeners = mem::replace(target, listeners);
+    target.extend(new_listeners);
+  }
+
+  fn listeners_for(&mut self, transition: CircuitBreakerTransition) -> &mut Vec<Box<CircuitBreakerListener>> {
+    match transition {
+      | CircuitBreakerTransition::Open => &mut self.open_listeners,
+      | CircuitBreakerTransition::HalfOpen => &mut self.half_open_listeners,
+      | CircuitBreakerTransition::Closed => &mut self.close_listeners,
+    }
   }
 
   fn notify_open(&mut self) {

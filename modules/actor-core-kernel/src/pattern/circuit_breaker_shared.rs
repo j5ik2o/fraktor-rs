@@ -5,8 +5,10 @@ use core::future::Future;
 use fraktor_utils_core_rs::sync::{DefaultMutex, SharedAccess, SharedLock};
 
 use super::{
-  circuit_breaker::CircuitBreaker, circuit_breaker_call_error::CircuitBreakerCallError,
-  circuit_breaker_open_error::CircuitBreakerOpenError, circuit_breaker_state::CircuitBreakerState, clock::Clock,
+  circuit_breaker::{CircuitBreaker, CircuitBreakerTransition},
+  circuit_breaker_call_error::CircuitBreakerCallError,
+  circuit_breaker_state::CircuitBreakerState,
+  clock::Clock,
 };
 
 #[cfg(test)]
@@ -61,13 +63,10 @@ impl<C: Clock + 'static> CircuitBreakerShared<C> {
     Fut: Future<Output = Result<T, E>>, {
     // 許可判定時の状態を記録する。await 後に状態が変わっている可能性があるため、
     // 結果反映時にこの情報を使って HalfOpen probe の判定を正しく行う。
-    let state_at_permit = self
-      .with_write(|cb| {
-        cb.is_call_permitted()?;
-        Ok::<_, CircuitBreakerOpenError>(cb.state())
-      })
-      .map_err(CircuitBreakerCallError::Open)?;
+    let state_at_permit = self.with_write(|cb| cb.permit_call()).map_err(CircuitBreakerCallError::Open)?;
 
+    let (state_at_permit, transition) = state_at_permit;
+    self.notify_transition(transition);
     let was_half_open = state_at_permit == CircuitBreakerState::HalfOpen;
     let mut guard = CallGuard { cb: self.clone(), was_half_open, disarmed: false };
 
@@ -77,11 +76,13 @@ impl<C: Clock + 'static> CircuitBreakerShared<C> {
 
     match result {
       | Ok(value) => {
-        self.with_write(|cb| cb.record_success_for(was_half_open));
+        let transition = self.with_write(|cb| cb.record_success_for(was_half_open));
+        self.notify_transition(transition);
         Ok(value)
       },
       | Err(e) => {
-        self.with_write(|cb| cb.record_failure_for(was_half_open));
+        let transition = self.with_write(|cb| cb.record_failure_for(was_half_open));
+        self.notify_transition(transition);
         Err(CircuitBreakerCallError::Failed(e))
       },
     }
@@ -97,6 +98,17 @@ impl<C: Clock + 'static> CircuitBreakerShared<C> {
   #[must_use]
   pub fn failure_count(&self) -> u32 {
     self.with_read(|cb| cb.failure_count())
+  }
+
+  fn notify_transition(&self, transition: Option<CircuitBreakerTransition>) {
+    let Some(transition) = transition else {
+      return;
+    };
+    let mut listeners = self.with_write(|cb| cb.take_transition_listeners(transition));
+    for listener in &mut listeners {
+      listener();
+    }
+    self.with_write(|cb| cb.restore_transition_listeners(transition, listeners));
   }
 }
 
@@ -114,7 +126,8 @@ struct CallGuard<C: Clock + 'static> {
 impl<C: Clock + 'static> Drop for CallGuard<C> {
   fn drop(&mut self) {
     if !self.disarmed {
-      self.cb.with_write(|cb| cb.record_failure_for(self.was_half_open));
+      let transition = self.cb.with_write(|cb| cb.record_failure_for(self.was_half_open));
+      self.cb.notify_transition(transition);
     }
   }
 }

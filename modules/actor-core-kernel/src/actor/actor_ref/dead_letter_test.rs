@@ -173,6 +173,26 @@ fn dead_letter_reason_supports_suppressed_and_dropped() {
 }
 
 #[test]
+fn suppressed_dead_letter_publishes_entry_without_warn_log() {
+  let stream = EventStreamShared::default();
+  let events = ArcShared::new(SpinSyncMutex::new(Vec::new()));
+  let subscriber = subscriber_handle(RecordingSubscriber::new(events.clone()));
+  let _subscription = stream.subscribe(&subscriber);
+  let dead_letter = DeadLetterShared::with_default_capacity(stream);
+
+  dead_letter.record_entry(
+    AnyMessage::dead_letter_suppressed(PoisonPill),
+    DeadLetterReason::MailboxFull,
+    Some(Pid::new(21, 0)),
+    Duration::from_millis(1),
+  );
+
+  let events = events.lock().clone();
+  assert!(events.iter().any(|event| matches!(event, EventStreamEvent::DeadLetter(_))));
+  assert!(!events.iter().any(|event| matches!(event, EventStreamEvent::Log(log) if log.level() == LogLevel::Warn)));
+}
+
+#[test]
 fn dead_letter_capacity_drops_oldest_entry() {
   let mut dead_letter = DeadLetter::with_capacity(2);
   assert_eq!(dead_letter.capacity(), 2);

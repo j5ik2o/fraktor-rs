@@ -31,7 +31,7 @@ use fraktor_actor_core_kernel_rs::{
   support::futures::ActorFutureShared,
   system::{ActorSystem, TerminationSignal, state::SystemStateShared},
 };
-use fraktor_utils_core_rs::sync::ArcShared;
+use fraktor_utils_core_rs::sync::{ArcShared, shared::Shared};
 
 use crate::{
   ActorRefResolver, TypedActorRef, TypedActorSystemConfig, TypedActorSystemLog,
@@ -41,7 +41,7 @@ use crate::{
   eventstream::EventStreamCommand,
   internal::{GuardianStartupActor, GuardianStartupStart, TypedSchedulerShared},
   props::TypedProps,
-  receptionist::{Receptionist, ReceptionistCommand, SYSTEM_RECEPTIONIST_TOP_LEVEL},
+  receptionist::{Receptionist, ReceptionistCommand, ReceptionistExtensionId, SYSTEM_RECEPTIONIST_TOP_LEVEL},
   scheduler::Scheduler,
 };
 
@@ -301,6 +301,9 @@ where
   /// Returns the system receptionist reference when the bootstrap installed it.
   #[must_use]
   pub fn receptionist_ref(&self) -> Option<TypedActorRef<ReceptionistCommand>> {
+    if let Some(receptionist) = self.extension(&ReceptionistExtensionId::new()) {
+      return Some(receptionist.with_ref(|receptionist| receptionist.r#ref()));
+    }
     self.inner.state().extra_top_level(SYSTEM_RECEPTIONIST_TOP_LEVEL).map(TypedActorRef::from_untyped)
   }
 

@@ -911,12 +911,18 @@ fn adapter_not_found_routes_to_dead_letter() {
   let mut untyped = actor.as_untyped().clone();
 
   let payload = AdapterPayload::new(7_u64);
-  let envelope = AdapterEnvelope::new(payload, None);
+  let envelope = AdapterEnvelope::with_flags(payload, None, true, true);
   untyped.tell(AnyMessage::new(envelope));
 
   wait_until(|| !system.dead_letter_entries().is_empty());
   let entries: Vec<DeadLetterEntry> = system.dead_letter_entries();
-  assert!(entries.iter().any(|entry| entry.reason() == DeadLetterReason::ExplicitRouting));
+  let entry = entries
+    .iter()
+    .find(|entry| entry.message().payload().downcast_ref::<u64>().is_some())
+    .expect("adapter dead letter");
+  assert_eq!(entry.reason(), DeadLetterReason::SuppressedDeadLetter);
+  assert!(entry.message().is_dead_letter_suppressed());
+  assert!(entry.message().is_possibly_harmful());
 
   system.terminate().expect("terminate");
 }

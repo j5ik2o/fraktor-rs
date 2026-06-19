@@ -127,7 +127,9 @@ fn drop_newest_rejects_incoming_when_full() {
 #[test]
 fn grow_accepts_beyond_capacity_and_preserves_priority() {
   let cap = NonZeroUsize::new(2).unwrap();
-  let queue = BoundedControlAwareMessageQueue::new(cap, MailboxOverflowStrategy::Grow);
+  let queue =
+    BoundedControlAwareMessageQueue::new_with_push_timeout(cap, MailboxOverflowStrategy::Grow, Duration::ZERO);
+  let clock = fixed_zero_clock();
 
   queue.enqueue(Envelope::new(AnyMessage::control(10_u32))).expect("enqueue control_X");
   queue.enqueue(Envelope::new(AnyMessage::new(1_u32))).expect("enqueue normal_A");
@@ -138,7 +140,7 @@ fn grow_accepts_beyond_capacity_and_preserves_priority() {
     Envelope::new(AnyMessage::new(3_u32)),
     Envelope::new(AnyMessage::control(20_u32)),
   ] {
-    let result = queue.enqueue(envelope);
+    let result = queue.enqueue_with_mailbox_clock(envelope, Some(&clock));
     assert!(matches!(result, Ok(EnqueueOutcome::Accepted)), "Grow must return Accepted, got {result:?}");
   }
   assert_eq!(queue.number_of_messages(), 5);

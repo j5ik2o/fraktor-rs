@@ -52,6 +52,7 @@ fn poison_pill_public_message_is_stored_as_distinct_payload_in_any_message() {
   assert!(view.downcast_ref::<PoisonPill>().is_some());
   assert!(view.downcast_ref::<SystemMessage>().is_none());
   assert!(!view.dead_letter_suppressed());
+  assert!(!view.possibly_harmful());
 }
 
 #[test]
@@ -88,6 +89,7 @@ fn kill_public_message_is_stored_as_distinct_payload_in_any_message() {
   let view = stored.as_view();
   assert!(view.downcast_ref::<Kill>().is_some());
   assert!(view.downcast_ref::<SystemMessage>().is_none());
+  assert!(!view.dead_letter_suppressed());
   assert!(!view.possibly_harmful());
 }
 

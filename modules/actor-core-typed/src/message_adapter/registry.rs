@@ -116,7 +116,7 @@ fn wrap_adapter_message(message: AnyMessage) -> AnyMessage {
   let (erased, sender, is_control, not_influence_receive_timeout, dead_letter_suppressed, possibly_harmful) =
     message.into_parts();
   let payload = AdapterPayload::from_erased(erased);
-  let envelope = AdapterEnvelope::new(payload, sender);
+  let envelope = AdapterEnvelope::with_flags(payload, sender, dead_letter_suppressed, possibly_harmful);
   let envelope_payload: ArcShared<dyn Any + Send + Sync + 'static> = ArcShared::new(envelope);
   AnyMessage::from_parts_with_flags(
     envelope_payload,

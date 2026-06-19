@@ -13,18 +13,25 @@ use crate::message_adapter::AdapterPayload;
 
 /// Wraps adapted payloads alongside metadata for typed actors.
 pub(crate) struct AdapterEnvelope {
-  type_id: TypeId,
-  payload: SharedLock<Option<AdapterPayload>>,
-  sender:  Option<ActorRef>,
+  type_id:                TypeId,
+  payload:                SharedLock<Option<AdapterPayload>>,
+  sender:                 Option<ActorRef>,
+  dead_letter_suppressed: bool,
+  possibly_harmful:       bool,
 }
 
 impl AdapterEnvelope {
-  /// Creates a new envelope from the provided payload and sender.
+  /// Creates a new envelope from the provided payload, sender, and message flags.
   #[must_use]
-  pub(crate) fn new(payload: AdapterPayload, sender: Option<ActorRef>) -> Self {
+  pub(crate) fn with_flags(
+    payload: AdapterPayload,
+    sender: Option<ActorRef>,
+    dead_letter_suppressed: bool,
+    possibly_harmful: bool,
+  ) -> Self {
     let type_id = payload.type_id();
     let storage = SharedLock::new_with_driver::<DefaultMutex<_>>(Some(payload));
-    Self { type_id, payload: storage, sender }
+    Self { type_id, payload: storage, sender, dead_letter_suppressed, possibly_harmful }
   }
 
   /// Returns the [`TypeId`] of the underlying adapter payload.
@@ -37,6 +44,18 @@ impl AdapterEnvelope {
   #[must_use]
   pub(crate) const fn sender(&self) -> Option<&ActorRef> {
     self.sender.as_ref()
+  }
+
+  /// Returns whether the original message requested dead-letter suppression.
+  #[must_use]
+  pub(crate) const fn is_dead_letter_suppressed(&self) -> bool {
+    self.dead_letter_suppressed
+  }
+
+  /// Returns whether the original message was marked as possibly harmful.
+  #[must_use]
+  pub(crate) const fn is_possibly_harmful(&self) -> bool {
+    self.possibly_harmful
   }
 
   /// Takes ownership of the payload, returning `None` if it was already consumed.
