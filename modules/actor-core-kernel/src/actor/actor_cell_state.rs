@@ -3,8 +3,12 @@
 use alloc::{collections::VecDeque, string::String, vec::Vec};
 
 use crate::actor::{
-  ChildrenContainer, FailedInfo, Pid, WatchKind, context_pipe::ContextPipeTask, error::ActorErrorReason,
-  message_adapter::AdapterRefHandle, messaging::AnyMessage, scheduler::SchedulerHandle,
+  ChildrenContainer, FailedInfo, Pid, WatchKind,
+  context_pipe::{ContextPipeTask, ContextPipeTaskId},
+  error::ActorErrorReason,
+  message_adapter::AdapterRefHandle,
+  messaging::AnyMessage,
+  scheduler::SchedulerHandle,
 };
 
 /// Runtime-owned mutable state for a live [`ActorCell`].
@@ -42,6 +46,8 @@ pub(crate) struct ActorCellState {
   pub(crate) stashed_messages:        VecDeque<AnyMessage>,
   pub(crate) timer_handles:           Vec<(String, SchedulerHandle)>,
   pub(crate) pipe_tasks:              Vec<ContextPipeTask>,
+  pub(crate) polling_pipe_tasks:      Vec<ContextPipeTaskId>,
+  pub(crate) pending_pipe_task_wakes: Vec<ContextPipeTaskId>,
   pub(crate) adapter_handles:         Vec<AdapterRefHandle>,
   pub(crate) adapter_handle_counter:  u64,
   pub(crate) pipe_task_counter:       u64,
@@ -68,6 +74,8 @@ impl ActorCellState {
       stashed_messages:        VecDeque::new(),
       timer_handles:           Vec::new(),
       pipe_tasks:              Vec::new(),
+      polling_pipe_tasks:      Vec::new(),
+      pending_pipe_task_wakes: Vec::new(),
       adapter_handles:         Vec::new(),
       adapter_handle_counter:  0,
       pipe_task_counter:       0,

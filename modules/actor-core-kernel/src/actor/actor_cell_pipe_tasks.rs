@@ -9,7 +9,7 @@ use crate::{
     actor_ref::ActorRef,
     context_pipe::{ContextPipeFuture, ContextPipeTask, ContextPipeTaskId},
     error::PipeSpawnError,
-    messaging::AnyMessage,
+    messaging::{AnyMessage, system_message::SystemMessage},
   },
   event::logging::LogLevel,
 };
@@ -48,11 +48,7 @@ impl ActorCell {
   }
 
   fn poll_pipe_task(&self, task_id: ContextPipeTaskId) {
-    let task = self.state.with_write(|state| {
-      let tasks = &mut state.pipe_tasks;
-      let index = tasks.iter().position(|task| task.id() == task_id)?;
-      Some(tasks.swap_remove(index))
-    });
+    let task = self.take_pipe_task_for_poll(task_id);
 
     let Some(mut task) = task else {
       return;
@@ -61,12 +57,51 @@ impl ActorCell {
     match task.poll() {
       | Poll::Ready(Some(message)) => {
         let target = task.take_delivery_target();
+        self.finish_pipe_task_poll(task_id, None);
         self.deliver_pipe_task_result(message, target);
       },
-      | Poll::Ready(None) => {},
-      | Poll::Pending => {
-        self.state.with_write(|state| state.pipe_tasks.push(task));
+      | Poll::Ready(None) => {
+        self.finish_pipe_task_poll(task_id, None);
       },
+      | Poll::Pending => {
+        let should_repoll = self.finish_pipe_task_poll(task_id, Some(task));
+        if should_repoll {
+          self.schedule_pipe_task_repoll(task_id);
+        }
+      },
+    }
+  }
+
+  fn take_pipe_task_for_poll(&self, task_id: ContextPipeTaskId) -> Option<ContextPipeTask> {
+    self.state.with_write(|state| {
+      let Some(index) = state.pipe_tasks.iter().position(|task| task.id() == task_id) else {
+        if state.polling_pipe_tasks.contains(&task_id) && !state.pending_pipe_task_wakes.contains(&task_id) {
+          state.pending_pipe_task_wakes.push(task_id);
+        }
+        return None;
+      };
+      if !state.polling_pipe_tasks.contains(&task_id) {
+        state.polling_pipe_tasks.push(task_id);
+      }
+      Some(state.pipe_tasks.swap_remove(index))
+    })
+  }
+
+  fn finish_pipe_task_poll(&self, task_id: ContextPipeTaskId, task: Option<ContextPipeTask>) -> bool {
+    self.state.with_write(|state| {
+      state.polling_pipe_tasks.retain(|id| *id != task_id);
+      let should_repoll = state.pending_pipe_task_wakes.contains(&task_id);
+      state.pending_pipe_task_wakes.retain(|id| *id != task_id);
+      if let Some(task) = task {
+        state.pipe_tasks.push(task);
+      }
+      should_repoll
+    })
+  }
+
+  fn schedule_pipe_task_repoll(&self, task_id: ContextPipeTaskId) {
+    if let Err(send_error) = self.system().send_system_message(self.pid(), SystemMessage::PipeTask(task_id)) {
+      self.system().record_send_error(Some(self.pid()), &send_error);
     }
   }
 
