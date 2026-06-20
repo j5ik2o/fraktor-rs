@@ -85,3 +85,100 @@ fn empty_unstash_is_noop_even_without_deque_mailbox() {
   assert_eq!(cell.unstash_messages().expect("empty unstash all"), 0);
   assert_eq!(cell.unstash_messages_with_limit(1, Ok).expect("empty unstash limit"), 0);
 }
+
+#[test]
+fn unstash_message_restores_message_when_mailbox_prepend_fails() {
+  let state = ActorSystem::new_empty().state();
+  let props = Props::from_fn(|| ProbeActor).with_stash_mailbox();
+  let cell = ActorCell::create(state.clone(), Pid::new(65, 0), None, "unstash-closed".to_string(), &props)
+    .expect("create actor cell");
+
+  cell.stash_message_with_limit(AnyMessage::new(1_i32), usize::MAX).expect("stash");
+  cell.mailbox().become_closed();
+
+  let error = cell.unstash_message().expect_err("closed mailbox should reject prepend");
+
+  assert!(!ActorContext::is_stash_requires_deque_error(&error));
+  assert_eq!(cell.stashed_message_len(), 1);
+  cell.with_stashed_messages(|messages| {
+    assert_eq!(messages.front().and_then(|message| message.payload().downcast_ref::<i32>()).copied(), Some(1));
+  });
+}
+
+#[test]
+fn unstash_messages_restores_all_messages_when_mailbox_prepend_fails() {
+  let state = ActorSystem::new_empty().state();
+  let props = Props::from_fn(|| ProbeActor).with_stash_mailbox();
+  let cell = ActorCell::create(state.clone(), Pid::new(66, 0), None, "unstash-all-closed".to_string(), &props)
+    .expect("create actor cell");
+
+  cell.stash_message_with_limit(AnyMessage::new(1_i32), usize::MAX).expect("stash 1");
+  cell.stash_message_with_limit(AnyMessage::new(2_i32), usize::MAX).expect("stash 2");
+  cell.mailbox().become_closed();
+
+  let error = cell.unstash_messages().expect_err("closed mailbox should reject prepend");
+
+  assert!(!ActorContext::is_stash_requires_deque_error(&error));
+  assert_eq!(cell.stashed_message_len(), 2);
+  cell.with_stashed_messages(|messages| {
+    let values =
+      messages.iter().filter_map(|message| message.payload().downcast_ref::<i32>().copied()).collect::<Vec<_>>();
+    assert_eq!(values, vec![1, 2]);
+  });
+}
+
+#[test]
+fn unstash_messages_with_limit_zero_leaves_stash_untouched() {
+  let state = ActorSystem::new_empty().state();
+  let props = Props::from_fn(|| ProbeActor).with_stash_mailbox();
+  let cell = ActorCell::create(state.clone(), Pid::new(67, 0), None, "unstash-limit-zero".to_string(), &props)
+    .expect("create actor cell");
+
+  cell.stash_message_with_limit(AnyMessage::new(1_i32), usize::MAX).expect("stash");
+
+  assert_eq!(cell.unstash_messages_with_limit(0, Ok).expect("limit zero"), 0);
+  assert_eq!(cell.stashed_message_len(), 1);
+}
+
+#[test]
+fn unstash_messages_with_limit_restores_original_messages_when_wrap_fails() {
+  let state = ActorSystem::new_empty().state();
+  let props = Props::from_fn(|| ProbeActor).with_stash_mailbox();
+  let cell = ActorCell::create(state.clone(), Pid::new(68, 0), None, "unstash-wrap-fail".to_string(), &props)
+    .expect("create actor cell");
+
+  cell.stash_message_with_limit(AnyMessage::new(1_i32), usize::MAX).expect("stash 1");
+  cell.stash_message_with_limit(AnyMessage::new(2_i32), usize::MAX).expect("stash 2");
+
+  let error = cell
+    .unstash_messages_with_limit(2, |_| Err(ActorError::recoverable("wrap failed")))
+    .expect_err("wrap failure should be returned");
+
+  assert_eq!(error, ActorError::recoverable("wrap failed"));
+  cell.with_stashed_messages(|messages| {
+    let values =
+      messages.iter().filter_map(|message| message.payload().downcast_ref::<i32>().copied()).collect::<Vec<_>>();
+    assert_eq!(values, vec![1, 2]);
+  });
+}
+
+#[test]
+fn unstash_messages_with_limit_restores_original_messages_when_prepend_fails() {
+  let state = ActorSystem::new_empty().state();
+  let props = Props::from_fn(|| ProbeActor).with_stash_mailbox();
+  let cell = ActorCell::create(state.clone(), Pid::new(69, 0), None, "unstash-limit-closed".to_string(), &props)
+    .expect("create actor cell");
+
+  cell.stash_message_with_limit(AnyMessage::new(1_i32), usize::MAX).expect("stash 1");
+  cell.stash_message_with_limit(AnyMessage::new(2_i32), usize::MAX).expect("stash 2");
+  cell.mailbox().become_closed();
+
+  let error = cell.unstash_messages_with_limit(2, Ok).expect_err("closed mailbox should reject prepend");
+
+  assert!(!ActorContext::is_stash_requires_deque_error(&error));
+  cell.with_stashed_messages(|messages| {
+    let values =
+      messages.iter().filter_map(|message| message.payload().downcast_ref::<i32>().copied()).collect::<Vec<_>>();
+    assert_eq!(values, vec![1, 2]);
+  });
+}

@@ -28,6 +28,7 @@ impl ActorCell {
 
   /// Returns the number of messages currently held in the stash.
   #[must_use]
+  #[cfg_attr(not(test), allow(dead_code))]
   pub(crate) fn stashed_message_len(&self) -> usize {
     self.state.with_read(|state| state.stashed_messages.len())
   }
@@ -53,15 +54,7 @@ impl ActorCell {
   ///
   /// Returns an error when mailbox enqueue fails. Remaining messages stay stashed.
   pub(crate) fn unstash_message(&self) -> Result<usize, ActorError> {
-    if self.stashed_message_len() == 0 {
-      return Ok(0);
-    }
-
     let mailbox = self.mailbox();
-    let Some(user_deque) = mailbox.user_deque() else {
-      return Err(ActorError::recoverable(STASH_REQUIRES_DEQUE_REASON));
-    };
-
     let message = self.state.with_write(|state| state.stashed_messages.pop_front());
 
     let Some(message) = message else {
@@ -70,6 +63,15 @@ impl ActorCell {
 
     let mut pending = VecDeque::new();
     pending.push_back(message);
+
+    let Some(user_deque) = mailbox.user_deque() else {
+      self.state.with_write(|state| {
+        if let Some(message) = pending.pop_front() {
+          state.stashed_messages.push_front(message);
+        }
+      });
+      return Err(ActorError::recoverable(STASH_REQUIRES_DEQUE_REASON));
+    };
 
     if let Err(error) = mailbox.prepend_user_messages_deque(user_deque, &pending) {
       self.state.with_write(|state| {
@@ -91,20 +93,17 @@ impl ActorCell {
   ///
   /// Returns an error when mailbox enqueue fails. Remaining messages stay stashed.
   pub(crate) fn unstash_messages(&self) -> Result<usize, ActorError> {
-    if self.stashed_message_len() == 0 {
-      return Ok(0);
-    }
-
     let mailbox = self.mailbox();
-    let Some(user_deque) = mailbox.user_deque() else {
-      return Err(ActorError::recoverable(STASH_REQUIRES_DEQUE_REASON));
-    };
-
     let pending = self.state.with_write(|state| mem::take(&mut state.stashed_messages));
 
     if pending.is_empty() {
       return Ok(0);
     }
+
+    let Some(user_deque) = mailbox.user_deque() else {
+      self.state.with_write(|state| state.stashed_messages = pending);
+      return Err(ActorError::recoverable(STASH_REQUIRES_DEQUE_REASON));
+    };
 
     if let Err(error) = mailbox.prepend_user_messages_deque(user_deque, &pending) {
       self.state.with_write(|state| state.stashed_messages = pending);
@@ -128,15 +127,7 @@ impl ActorCell {
       return Ok(0);
     }
 
-    if self.stashed_message_len() == 0 {
-      return Ok(0);
-    }
-
     let mailbox = self.mailbox();
-    let Some(user_deque) = mailbox.user_deque() else {
-      return Err(ActorError::recoverable(STASH_REQUIRES_DEQUE_REASON));
-    };
-
     let original_messages = self.state.with_write(|state| {
       let take_count = limit.min(state.stashed_messages.len());
       let mut messages = VecDeque::with_capacity(take_count);
@@ -151,6 +142,11 @@ impl ActorCell {
     if original_messages.is_empty() {
       return Ok(0);
     }
+
+    let Some(user_deque) = mailbox.user_deque() else {
+      self.restore_stashed_messages(original_messages);
+      return Err(ActorError::recoverable(STASH_REQUIRES_DEQUE_REASON));
+    };
 
     let mut wrapped_messages = VecDeque::with_capacity(original_messages.len());
     for message in original_messages.iter().cloned() {

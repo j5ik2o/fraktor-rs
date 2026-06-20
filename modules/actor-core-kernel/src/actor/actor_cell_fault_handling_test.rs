@@ -1,4 +1,57 @@
 use super::*;
+use crate::actor::messaging::system_message::FailurePayload;
+
+struct PostRestartFailingActor;
+
+impl Actor for PostRestartFailingActor {
+  fn receive(&mut self, _ctx: &mut ActorContext<'_>, _message: AnyMessageView<'_>) -> Result<(), ActorError> {
+    Ok(())
+  }
+
+  fn post_restart(&mut self, _ctx: &mut ActorContext<'_>, _reason: &ActorErrorReason) -> Result<(), ActorError> {
+    Err(ActorError::recoverable("post_restart failed"))
+  }
+}
+
+struct DirectiveSupervisorActor {
+  directive:            SupervisorDirective,
+  kind:                 SupervisorStrategyKind,
+  fail_on_child_failed: bool,
+}
+
+impl DirectiveSupervisorActor {
+  const fn new(directive: SupervisorDirective, kind: SupervisorStrategyKind) -> Self {
+    Self { directive, kind, fail_on_child_failed: false }
+  }
+
+  const fn with_child_failed_error(directive: SupervisorDirective, kind: SupervisorStrategyKind) -> Self {
+    Self { directive, kind, fail_on_child_failed: true }
+  }
+}
+
+impl Actor for DirectiveSupervisorActor {
+  fn receive(&mut self, _ctx: &mut ActorContext<'_>, _message: AnyMessageView<'_>) -> Result<(), ActorError> {
+    Ok(())
+  }
+
+  fn supervisor_strategy(&self, _ctx: &mut ActorContext<'_>) -> SupervisorStrategyConfig {
+    let directive = self.directive;
+    SupervisorStrategy::with_decider(move |_| directive).with_kind(self.kind).into()
+  }
+
+  fn on_child_failed(
+    &mut self,
+    _ctx: &mut ActorContext<'_>,
+    _child: Pid,
+    _error: &ActorError,
+  ) -> Result<(), ActorError> {
+    if self.fail_on_child_failed { Err(ActorError::recoverable("on_child_failed failed")) } else { Ok(()) }
+  }
+}
+
+fn child_failure_payload(child: Pid, reason: &'static str) -> FailurePayload {
+  FailurePayload::from_error(child, &ActorError::recoverable(reason), None, Duration::from_millis(1))
+}
 
 #[test]
 fn ac_h3_t4_report_failure_suspends_children_before_reporting() {
@@ -26,6 +79,7 @@ fn ac_h3_t4_report_failure_suspends_children_before_reporting() {
 
   let mut parent_invoker = ActorCellInvoker { cell: parent.downgrade() };
   parent_invoker.system_invoke(SystemMessage::Create).expect("parent create");
+  parent_invoker.invoke(AnyMessage::new(())).expect("non-failing user message");
 
   assert!(!child.mailbox().is_suspended(), "pre-condition: 子は未 suspend である");
   assert!(!parent.mailbox().is_suspended(), "pre-condition: 親は未 suspend である");
@@ -949,4 +1003,174 @@ fn al_h1_t3_overridden_pre_restart_replaces_default_child_stop() {
     parent.children_state_is_terminating(),
     "AL-H1: live child があるため ChildrenContainer は Terminating(Recreation) で待機"
   );
+}
+
+#[test]
+fn finish_recreate_post_restart_error_marks_cell_failed_fatally() {
+  let state = ActorSystem::new_empty().state();
+  let props = Props::from_fn(|| PostRestartFailingActor);
+  let cell =
+    ActorCell::create(state.clone(), Pid::new(840, 0), None, "post-restart-fail".to_string(), &props).expect("cell");
+  state.register_cell(cell.clone());
+  let mut invoker = ActorCellInvoker { cell: cell.downgrade() };
+  invoker.system_invoke(SystemMessage::Create).expect("create");
+  invoker.invoke(AnyMessage::new(())).expect("normal receive");
+  cell.mailbox().suspend();
+
+  let error = invoker
+    .system_invoke(SystemMessage::Recreate(ActorErrorReason::new("post-restart-cause")))
+    .expect_err("post_restart failure should be returned");
+
+  assert_eq!(error, ActorError::recoverable("post_restart failed"));
+  assert!(cell.is_failed_fatally(), "post_restart failure should mark the cell fatally failed");
+}
+
+#[test]
+fn handle_failure_reports_on_child_failed_error_as_parent_failure() {
+  let state = ActorSystem::new_empty().state();
+  let parent_props = Props::from_fn(|| {
+    DirectiveSupervisorActor::with_child_failed_error(SupervisorDirective::Resume, SupervisorStrategyKind::OneForOne)
+  });
+  let parent =
+    ActorCell::create(state.clone(), Pid::new(841, 0), None, "child-failed-parent".to_string(), &parent_props)
+      .expect("parent");
+  let child_props = Props::from_fn(|| ProbeActor);
+  let child = ActorCell::create(
+    state.clone(),
+    Pid::new(842, 0),
+    Some(parent.pid()),
+    "child-failed-child".to_string(),
+    &child_props,
+  )
+  .expect("child");
+  state.register_cell(parent.clone());
+  state.register_cell(child.clone());
+  parent.register_child(child.pid());
+  let mut parent_invoker = ActorCellInvoker { cell: parent.downgrade() };
+  parent_invoker.invoke(AnyMessage::new(())).expect("normal receive");
+
+  parent.handle_failure(&child_failure_payload(child.pid(), "child boom"));
+
+  assert!(parent.is_failed(), "on_child_failed error should be routed through report_failure");
+  assert!(parent.mailbox().is_suspended(), "parent failure reporting should suspend the parent mailbox");
+}
+
+#[test]
+fn all_for_one_restart_suspends_sibling_before_recreate_dispatch() {
+  let state = ActorSystem::new_empty().state();
+  let parent_props =
+    Props::from_fn(|| DirectiveSupervisorActor::new(SupervisorDirective::Restart, SupervisorStrategyKind::AllForOne));
+  let parent =
+    ActorCell::create(state.clone(), Pid::new(843, 0), None, "all-for-one-parent".to_string(), &parent_props)
+      .expect("parent");
+  let child_a_props = Props::from_fn(|| ProbeActor);
+  let child_a =
+    ActorCell::create(state.clone(), Pid::new(844, 0), Some(parent.pid()), "all-for-one-a".to_string(), &child_a_props)
+      .expect("child a");
+  let child_b_props = Props::from_fn(|| ProbeActor);
+  let child_b =
+    ActorCell::create(state.clone(), Pid::new(845, 0), Some(parent.pid()), "all-for-one-b".to_string(), &child_b_props)
+      .expect("child b");
+  state.register_cell(parent.clone());
+  state.register_cell(child_a.clone());
+  state.register_cell(child_b.clone());
+  parent.register_child(child_a.pid());
+  parent.register_child(child_b.pid());
+  child_a.mailbox().suspend();
+
+  parent.handle_failure(&child_failure_payload(child_a.pid(), "restart all"));
+
+  assert!(state.dead_letters().is_empty(), "registered AllForOne children should receive Recreate without deadletters");
+}
+
+#[test]
+fn restart_failure_records_parent_failure_when_child_mailbox_is_closed() {
+  let state = ActorSystem::new_empty().state();
+  let parent_props =
+    Props::from_fn(|| DirectiveSupervisorActor::new(SupervisorDirective::Restart, SupervisorStrategyKind::OneForOne));
+  let parent =
+    ActorCell::create(state.clone(), Pid::new(846, 0), None, "restart-closed-parent".to_string(), &parent_props)
+      .expect("parent");
+  let missing_child = Pid::new(847, 0);
+  state.register_cell(parent.clone());
+  parent.register_child(missing_child);
+
+  parent.handle_failure(&child_failure_payload(missing_child, "restart missing"));
+
+  assert!(parent.is_failed(), "failed restart delivery should escalate through parent report_failure");
+  assert!(
+    state.dead_letters().iter().any(|entry| {
+      entry.recipient() == Some(missing_child)
+        && entry
+          .message()
+          .downcast_ref::<SystemMessage>()
+          .is_some_and(|message| matches!(message, SystemMessage::Recreate(_)))
+    }),
+    "failed Recreate delivery should be recorded"
+  );
+}
+
+#[test]
+fn stop_escalate_and_resume_directives_record_closed_child_send_errors() {
+  for (index, directive) in
+    [SupervisorDirective::Stop, SupervisorDirective::Escalate, SupervisorDirective::Resume].into_iter().enumerate()
+  {
+    let state = ActorSystem::new_empty().state();
+    let parent_pid = Pid::new(850 + index as u64 * 2, 0);
+    let missing_child = Pid::new(851 + index as u64 * 2, 0);
+    let parent_props =
+      Props::from_fn(move || DirectiveSupervisorActor::new(directive, SupervisorStrategyKind::OneForOne));
+    let parent = ActorCell::create(state.clone(), parent_pid, None, "directive-parent".to_string(), &parent_props)
+      .expect("parent");
+    state.register_cell(parent.clone());
+    parent.register_child(missing_child);
+
+    parent.handle_failure(&child_failure_payload(missing_child, "directive missing"));
+
+    assert!(
+      state.dead_letters().iter().any(|entry| {
+        entry.recipient() == Some(missing_child)
+          && entry.message().downcast_ref::<SystemMessage>().is_some_and(|message| match directive {
+            | SupervisorDirective::Stop | SupervisorDirective::Escalate => matches!(message, SystemMessage::Stop),
+            | SupervisorDirective::Resume => matches!(message, SystemMessage::Resume),
+            | SupervisorDirective::Restart => unreachable!("restart is covered separately"),
+          })
+      }),
+      "{directive:?} should record closed child send error"
+    );
+  }
+}
+
+#[test]
+fn handle_child_failure_on_terminated_container_falls_back_to_stop_with_no_affected_children() {
+  let state = ActorSystem::new_empty().state();
+  let parent_props =
+    Props::from_fn(|| DirectiveSupervisorActor::new(SupervisorDirective::Stop, SupervisorStrategyKind::AllForOne));
+  let parent = ActorCell::create(state.clone(), Pid::new(856, 0), None, "terminated-parent".to_string(), &parent_props)
+    .expect("parent");
+  let child_props = Props::from_fn(|| ProbeActor);
+  let child = ActorCell::create(
+    state.clone(),
+    Pid::new(857, 0),
+    Some(parent.pid()),
+    "terminated-child".to_string(),
+    &child_props,
+  )
+  .expect("child");
+  state.register_cell(parent.clone());
+  state.register_cell(child.clone());
+  parent.register_child(child.pid());
+  parent.register_watching(child.pid());
+  let mut parent_invoker = ActorCellInvoker { cell: parent.downgrade() };
+  parent_invoker.system_invoke(SystemMessage::Stop).expect("stop parent");
+  parent.handle_death_watch_notification(child.pid()).expect("finish terminate");
+
+  let (directive, affected) = parent.handle_child_failure(
+    Pid::new(858, 0),
+    &ActorError::recoverable("after terminated"),
+    Duration::from_millis(1),
+  );
+
+  assert_eq!(directive, SupervisorDirective::Stop);
+  assert!(affected.is_empty(), "terminated child container should not produce affected children");
 }

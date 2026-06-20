@@ -1,4 +1,5 @@
 use super::*;
+use crate::system::guardian::GuardianKind;
 
 #[test]
 fn create_system_message_runs_pre_start() {
@@ -42,4 +43,39 @@ fn recreate_system_message_invokes_post_stop_then_pre_start() {
 
   let snapshot = log.lock().clone();
   assert_eq!(snapshot, vec!["pre_start", "post_stop", "pre_start"]);
+}
+
+#[test]
+fn stopping_root_guardian_marks_system_terminated() {
+  let state = ActorSystem::new_empty().state();
+  let props = Props::from_fn(|| ProbeActor);
+  let root =
+    ActorCell::create(state.clone(), Pid::new(44, 0), None, "root-guardian".to_string(), &props).expect("root");
+  state.register_cell(root.clone());
+  state.set_root_guardian(&root);
+  let mut invoker = ActorCellInvoker { cell: root.downgrade() };
+
+  invoker.system_invoke(SystemMessage::Stop).expect("stop root guardian");
+
+  assert!(state.is_terminated(), "root guardian stop should terminate the system");
+}
+
+#[test]
+fn stopping_user_guardian_after_root_has_stopped_marks_system_terminated() {
+  let state = ActorSystem::new_empty().state();
+  let props = Props::from_fn(|| ProbeActor);
+  let root =
+    ActorCell::create(state.clone(), Pid::new(45, 0), None, "root-guardian".to_string(), &props).expect("root");
+  let user = ActorCell::create(state.clone(), Pid::new(46, 0), Some(root.pid()), "user-guardian".to_string(), &props)
+    .expect("user");
+  state.register_cell(root.clone());
+  state.register_cell(user.clone());
+  state.set_root_guardian(&root);
+  state.set_user_guardian(&user);
+  state.mark_guardian_stopped(GuardianKind::Root);
+  let mut invoker = ActorCellInvoker { cell: user.downgrade() };
+
+  invoker.system_invoke(SystemMessage::Stop).expect("stop user guardian");
+
+  assert!(state.is_terminated(), "user guardian stop after root stop should terminate the system");
 }

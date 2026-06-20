@@ -22,11 +22,7 @@ impl ActorCell {
 
   fn store_timer_handle(&self, key: String, handle: SchedulerHandle) {
     self.state.with_write(|state| {
-      if let Some((_, existing_handle)) = state.timer_handles.iter_mut().find(|(existing, _)| existing == &key) {
-        *existing_handle = handle;
-      } else {
-        state.timer_handles.push((key, handle));
-      }
+      state.timer_handles.push((key, handle));
     });
   }
 

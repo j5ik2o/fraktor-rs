@@ -25,9 +25,6 @@ impl ActorCell {
   }
 
   fn spawn_pipe_task_inner(&self, future: ContextPipeFuture, target: Option<ActorRef>) -> Result<(), PipeSpawnError> {
-    if self.is_terminated() {
-      return Err(PipeSpawnError::TargetStopped);
-    }
     let id = self.state.with_write(|state| {
       if self.is_terminated() {
         return Err(PipeSpawnError::TargetStopped);

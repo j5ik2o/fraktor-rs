@@ -1,4 +1,45 @@
 use super::*;
+use crate::{
+  actor::{
+    actor_ref::{ActorRef, ActorRefSender, SendOutcome},
+    error::SendError,
+  },
+  dispatch::mailbox::metrics_event::MailboxPressureEvent,
+};
+
+struct FailingReplySender;
+
+impl ActorRefSender for FailingReplySender {
+  fn send(&mut self, message: AnyMessage) -> Result<SendOutcome, SendError> {
+    Err(SendError::closed(message))
+  }
+}
+
+struct MailboxPressureProbeActor {
+  calls: ArcShared<SpinSyncMutex<Vec<u8>>>,
+  fail:  bool,
+}
+
+impl MailboxPressureProbeActor {
+  fn new(calls: ArcShared<SpinSyncMutex<Vec<u8>>>, fail: bool) -> Self {
+    Self { calls, fail }
+  }
+}
+
+impl Actor for MailboxPressureProbeActor {
+  fn receive(&mut self, _ctx: &mut ActorContext<'_>, _message: AnyMessageView<'_>) -> Result<(), ActorError> {
+    Ok(())
+  }
+
+  fn on_mailbox_pressure(
+    &mut self,
+    _ctx: &mut ActorContext<'_>,
+    event: &MailboxPressureEvent,
+  ) -> Result<(), ActorError> {
+    self.calls.lock().push(event.utilization());
+    if self.fail { Err(ActorError::recoverable("mailbox pressure failed")) } else { Ok(()) }
+  }
+}
 
 #[test]
 fn identify_replies_with_actor_identity_without_invoking_actor() {
@@ -37,6 +78,27 @@ fn identify_replies_with_actor_identity_without_invoking_actor() {
   let correlation_id = replies[0].correlation_id().payload().downcast_ref::<&str>().expect("&str");
   assert_eq!(*correlation_id, "corr");
   assert_eq!(replies[0].actor_ref().expect("actor ref").pid(), target.pid());
+}
+
+#[test]
+fn identify_without_sender_is_dropped_without_invoking_actor() {
+  let system = ActorSystem::new_empty().state();
+  let actor_received = ArcShared::new(SpinSyncMutex::new(0usize));
+  let actor_replies = ArcShared::new(SpinSyncMutex::new(Vec::new()));
+  let actor_props = Props::from_fn({
+    let actor_received = actor_received.clone();
+    let actor_replies = actor_replies.clone();
+    move || IdentityProbeActor::new(actor_received.clone(), actor_replies.clone())
+  });
+  let target = ActorCell::create(system.clone(), Pid::new(62, 0), None, "target-no-sender".to_string(), &actor_props)
+    .expect("target");
+  system.register_cell(target.clone());
+
+  let mut invoker = ActorCellInvoker { cell: target.downgrade() };
+  invoker.invoke(AnyMessage::new(Identify::new(AnyMessage::new("corr")))).expect("identify");
+
+  assert_eq!(*actor_received.lock(), 0, "identify should not reach the actor receive method");
+  assert!(actor_replies.lock().is_empty(), "identify without sender should not produce a reply");
 }
 
 #[test]
@@ -194,4 +256,117 @@ fn system_queue_is_drained_before_user_queue() {
 
   let snapshot = log.lock().clone();
   assert_eq!(snapshot, vec!["pre_start", "receive"]);
+}
+
+#[test]
+fn dropped_actor_cell_invoker_ignores_user_system_and_pressure_messages() {
+  let state = ActorSystem::new_empty().state();
+  let props = Props::from_fn(|| ProbeActor);
+  let cell =
+    ActorCell::create(state.clone(), Pid::new(430, 0), None, "dropped".to_string(), &props).expect("create actor cell");
+  let mut invoker = ActorCellInvoker { cell: cell.downgrade() };
+  let event = MailboxPressureEvent::new(Pid::new(430, 0), 8, 10, 80, Duration::from_millis(1), Some(7));
+
+  drop(cell);
+
+  invoker.invoke(AnyMessage::new(1_i32)).expect("dropped user invoke is ignored");
+  invoker.system_invoke(SystemMessage::Create).expect("dropped system invoke is ignored");
+  invoker.invoke_mailbox_pressure(&event).expect("dropped pressure invoke is ignored");
+}
+
+#[test]
+fn terminated_actor_cell_invoker_ignores_user_and_system_messages() {
+  let state = ActorSystem::new_empty().state();
+  let log = ArcShared::new(SpinSyncMutex::new(Vec::new()));
+  let props = Props::from_fn({
+    let log = log.clone();
+    move || LifecycleRecorderActor::new(log.clone())
+  });
+  let cell = ActorCell::create(state.clone(), Pid::new(431, 0), None, "terminated".to_string(), &props)
+    .expect("create actor cell");
+  state.register_cell(cell.clone());
+  let mut invoker = ActorCellInvoker { cell: cell.downgrade() };
+  invoker.system_invoke(SystemMessage::Create).expect("create");
+  cell.mark_terminated();
+
+  invoker.invoke(AnyMessage::new(())).expect("terminated user invoke is ignored");
+  invoker.system_invoke(SystemMessage::Stop).expect("terminated system invoke is ignored");
+
+  assert_eq!(log.lock().clone(), vec!["pre_start"]);
+}
+
+#[test]
+fn non_auto_receive_system_message_payload_is_delivered_as_user_message() {
+  let state = ActorSystem::new_empty().state();
+  let log = ArcShared::new(SpinSyncMutex::new(Vec::new()));
+  let props = Props::from_fn({
+    let log = log.clone();
+    move || LifecycleRecorderActor::new(log.clone())
+  });
+  let cell =
+    ActorCell::create(state.clone(), Pid::new(432, 0), None, "system-payload".to_string(), &props).expect("cell");
+  state.register_cell(cell.clone());
+  let mut invoker = ActorCellInvoker { cell: cell.downgrade() };
+  invoker.system_invoke(SystemMessage::Create).expect("create");
+
+  invoker.invoke(AnyMessage::new(SystemMessage::Create)).expect("user payload");
+
+  assert_eq!(log.lock().clone(), vec!["pre_start", "receive"]);
+}
+
+#[test]
+fn identify_reply_send_error_is_reported_to_caller() {
+  let state = ActorSystem::new_empty().state();
+  let target_props = Props::from_fn(|| ProbeActor);
+  let target =
+    ActorCell::create(state.clone(), Pid::new(433, 0), None, "target".to_string(), &target_props).expect("target");
+  state.register_cell(target.clone());
+  let reply_to = ActorRef::new_with_builtin_lock(Pid::new(434, 0), FailingReplySender);
+  let identify = Identify::new(AnyMessage::new("closed-reply"));
+  let message = AnyMessage::new(identify).with_sender(reply_to);
+  let mut invoker = ActorCellInvoker { cell: target.downgrade() };
+
+  let result = invoker.invoke(message);
+
+  assert!(result.is_err(), "closed reply mailbox should surface send error");
+}
+
+#[test]
+fn mailbox_pressure_invokes_actor_hook() {
+  let state = ActorSystem::new_empty().state();
+  let calls = ArcShared::new(SpinSyncMutex::new(Vec::new()));
+  let props = Props::from_fn({
+    let calls = calls.clone();
+    move || MailboxPressureProbeActor::new(calls.clone(), false)
+  });
+  let cell = ActorCell::create(state.clone(), Pid::new(435, 0), None, "pressure".to_string(), &props).expect("cell");
+  state.register_cell(cell.clone());
+  let event = MailboxPressureEvent::new(cell.pid(), 9, 10, 90, Duration::from_millis(1), Some(8));
+  let mut invoker = ActorCellInvoker { cell: cell.downgrade() };
+
+  invoker.invoke(AnyMessage::new(())).expect("user receive");
+  invoker.invoke_mailbox_pressure(&event).expect("pressure hook");
+
+  assert_eq!(calls.lock().clone(), vec![90]);
+}
+
+#[test]
+fn mailbox_pressure_failure_reports_actor_failure() {
+  let state = ActorSystem::new_empty().state();
+  let calls = ArcShared::new(SpinSyncMutex::new(Vec::new()));
+  let props = Props::from_fn({
+    let calls = calls.clone();
+    move || MailboxPressureProbeActor::new(calls.clone(), true)
+  });
+  let cell =
+    ActorCell::create(state.clone(), Pid::new(436, 0), None, "pressure-fail".to_string(), &props).expect("cell");
+  state.register_cell(cell.clone());
+  let event = MailboxPressureEvent::new(cell.pid(), 10, 10, 100, Duration::from_millis(1), Some(8));
+  let mut invoker = ActorCellInvoker { cell: cell.downgrade() };
+
+  let error = invoker.invoke_mailbox_pressure(&event).expect_err("pressure hook failure");
+
+  assert_eq!(error, ActorError::recoverable("mailbox pressure failed"));
+  assert!(cell.is_failed(), "pressure hook errors should be routed through report_failure");
+  assert_eq!(calls.lock().clone(), vec![100]);
 }

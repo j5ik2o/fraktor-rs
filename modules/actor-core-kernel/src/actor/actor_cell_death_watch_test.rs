@@ -1,4 +1,16 @@
 use super::*;
+use crate::actor::{
+  actor_ref::{ActorRef, ActorRefSender, SendOutcome},
+  error::SendError,
+};
+
+struct FailingTempSender;
+
+impl ActorRefSender for FailingTempSender {
+  fn send(&mut self, message: AnyMessage) -> Result<SendOutcome, SendError> {
+    Err(SendError::closed(message))
+  }
+}
 
 #[test]
 fn handle_watch_is_idempotent() {
@@ -365,4 +377,104 @@ fn watch_registration_kind_ignores_supervision_only_entry() {
     WatchRegistrationKind::None,
     "Supervision kind の watching entry は user-level 判定に影響しない"
   );
+}
+
+#[test]
+fn handle_watch_records_send_error_when_target_already_terminated_and_watcher_closed() {
+  let state = ActorSystem::new_empty().state();
+  let target_props = Props::from_fn(|| ProbeActor);
+  let target = ActorCell::create(state.clone(), Pid::new(570, 0), None, "terminated-target".to_string(), &target_props)
+    .expect("create target");
+  let watcher_pid = Pid::new(571, 0);
+  let watcher_ref = ActorRef::new_with_builtin_lock(watcher_pid, FailingTempSender);
+  state.register_cell(target.clone());
+  let _ = state.register_temp_actor(watcher_ref);
+  target.mark_terminated();
+
+  target.handle_watch(watcher_pid);
+
+  assert!(
+    state.dead_letters().iter().any(|entry| {
+      entry.recipient() == Some(watcher_pid)
+        && entry
+          .message()
+          .downcast_ref::<SystemMessage>()
+          .is_some_and(|message| matches!(message, SystemMessage::DeathWatchNotification(pid) if *pid == target.pid()))
+    }),
+    "immediate DeathWatchNotification send failure should be recorded"
+  );
+}
+
+#[test]
+fn notify_watchers_on_stop_records_closed_watcher_mailbox_error() {
+  let state = ActorSystem::new_empty().state();
+  let target_props = Props::from_fn(|| ProbeActor);
+  let target = ActorCell::create(state.clone(), Pid::new(572, 0), None, "notify-target".to_string(), &target_props)
+    .expect("target");
+  let watcher_pid = Pid::new(573, 0);
+  let watcher_ref = ActorRef::new_with_builtin_lock(watcher_pid, FailingTempSender);
+  state.register_cell(target.clone());
+  let _ = state.register_temp_actor(watcher_ref);
+  target.handle_watch(watcher_pid);
+
+  target.notify_watchers_on_stop();
+
+  assert!(
+    state.dead_letters().iter().any(|entry| {
+      entry.recipient() == Some(watcher_pid)
+        && entry
+          .message()
+          .downcast_ref::<SystemMessage>()
+          .is_some_and(|message| matches!(message, SystemMessage::DeathWatchNotification(pid) if *pid == target.pid()))
+    }),
+    "watcher notification failure should be recorded"
+  );
+  assert!(target.watchers_snapshot().is_empty());
+}
+
+#[test]
+fn duplicate_death_watch_notification_is_dropped_while_terminated_marker_exists() {
+  let state = ActorSystem::new_empty().state();
+  let log = ArcShared::new(SpinSyncMutex::new(Vec::new()));
+  let watcher_props = Props::from_fn({
+    let log = log.clone();
+    move || RecordingActor::new(log.clone())
+  });
+  let watcher = ActorCell::create(state.clone(), Pid::new(574, 0), None, "queued-watcher".to_string(), &watcher_props)
+    .expect("watcher");
+  state.register_cell(watcher.clone());
+  let target_pid = Pid::new(575, 0);
+  watcher.register_watching(target_pid);
+  watcher.state.with_write(|state| state.terminated_queued.push(target_pid));
+
+  watcher.handle_death_watch_notification(target_pid).expect("duplicate notification is ignored");
+
+  assert_eq!(log.lock().len(), 0);
+  assert_eq!(watcher.terminated_queued(), vec![target_pid]);
+  assert!(watcher.is_watching(target_pid), "watching entry should be left untouched for in-flight handler");
+}
+
+#[test]
+fn death_watch_completion_preserves_watch_with_delivery_error() {
+  let state = ActorSystem::new_empty().state();
+  let parent_props = Props::from_fn(|| ProbeActor);
+  let parent = ActorCell::create(state.clone(), Pid::new(576, 0), None, "watch-parent".to_string(), &parent_props)
+    .expect("parent");
+  let child_props = Props::from_fn(|| ProbeActor);
+  let child =
+    ActorCell::create(state.clone(), Pid::new(577, 0), Some(parent.pid()), "watch-child".to_string(), &child_props)
+      .expect("child");
+  state.register_cell(parent.clone());
+  state.register_cell(child.clone());
+  parent.register_child(child.pid());
+  parent.register_watching(child.pid());
+  parent.register_watch_with(child.pid(), AnyMessage::new(42_i32));
+  parent.mark_child_dying(child.pid());
+  parent.mailbox().become_closed();
+
+  let result = parent.handle_death_watch_notification(child.pid());
+
+  assert!(result.is_err(), "watch_with self-delivery failure should win over completion result");
+  assert!(parent.children().is_empty(), "child state change should still be consumed");
+  assert!(parent.terminated_queued().is_empty(), "dedup marker should be cleared after handling");
 }

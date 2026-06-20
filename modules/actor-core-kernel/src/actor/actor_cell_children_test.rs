@@ -167,3 +167,39 @@ fn ac_h3_t5_suspended_child_does_not_drain_user_messages() {
     "suspended 中は user queue が温存され、count が保持されていなければならない"
   );
 }
+
+#[test]
+fn suspend_and_resume_children_record_closed_child_mailbox_errors() {
+  let state = ActorSystem::new_empty().state();
+  let parent_props = Props::from_fn(|| ProbeActor);
+  let parent = ActorCell::create(state.clone(), Pid::new(242, 0), None, "closed-parent".to_string(), &parent_props)
+    .expect("create parent");
+  let missing_child = Pid::new(243, 0);
+  state.register_cell(parent.clone());
+  parent.register_child(missing_child);
+
+  parent.suspend_children();
+  parent.resume_children();
+
+  let dead_letters = state.dead_letters();
+  assert!(
+    dead_letters.iter().any(|entry| {
+      entry.recipient() == Some(missing_child)
+        && entry
+          .message()
+          .downcast_ref::<SystemMessage>()
+          .is_some_and(|message| matches!(message, SystemMessage::Suspend))
+    }),
+    "Suspend delivery failure should be recorded"
+  );
+  assert!(
+    dead_letters.iter().any(|entry| {
+      entry.recipient() == Some(missing_child)
+        && entry
+          .message()
+          .downcast_ref::<SystemMessage>()
+          .is_some_and(|message| matches!(message, SystemMessage::Resume))
+    }),
+    "Resume delivery failure should be recorded"
+  );
+}

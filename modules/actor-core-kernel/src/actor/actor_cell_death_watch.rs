@@ -108,15 +108,6 @@ impl ActorCell {
   }
 
   pub(crate) fn handle_watch(&self, watcher: Pid) {
-    if self.is_terminated() {
-      if let Err(send_error) =
-        self.system().send_system_message(watcher, SystemMessage::DeathWatchNotification(self.pid))
-      {
-        self.system().record_send_error(Some(watcher), &send_error);
-      }
-      return;
-    }
-
     let notify_immediately = self.state.with_write(|state| {
       if self.is_terminated() {
         return true;
