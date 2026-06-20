@@ -1066,12 +1066,6 @@ impl RemoteEventRecorder {
   }
 }
 
-impl Default for RemoteEventRecorder {
-  fn default() -> Self {
-    Self::new(ArcShared::new(SpinSyncMutex::new(Vec::new())))
-  }
-}
-
 impl EventStreamSubscriber for RemoteEventRecorder {
   fn on_event(&mut self, event: &EventStreamEvent) {
     self.events.lock().push(event.clone());
@@ -1106,12 +1100,6 @@ struct LogRecorder {
 impl LogRecorder {
   fn new(events: ArcShared<SpinSyncMutex<Vec<EventStreamEvent>>>) -> Self {
     Self { events }
-  }
-}
-
-impl Default for LogRecorder {
-  fn default() -> Self {
-    Self::new(ArcShared::new(SpinSyncMutex::new(Vec::new())))
   }
 }
 
