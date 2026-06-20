@@ -2,6 +2,14 @@
 
 - すべて日本語でやりとりすること
 
+## Agent skills
+
+Matt Pocock の engineering skills は `CLAUDE.md` と `docs/agents/` に設定する。
+
+- Issue tracker: GitHub Issues を使う。詳細は `docs/agents/issue-tracker.md` を見る。
+- Triage labels: mattpocock/skills の default labels を使う。詳細は `docs/agents/triage-labels.md` を見る。
+- Domain docs: single-context repo として root `CONTEXT.md` と `docs/adr/` を使う。詳細は `docs/agents/domain.md` を見る。
+
 ## Review exclusion settings
 
 - 人間の明示的な許可なしに `.coderabbit.yml` / `.coderabbit.yaml` を変更しないこと。
