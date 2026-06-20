@@ -165,3 +165,27 @@ fn poll_pipe_task_records_repoll_send_error_when_dispatcher_rejects() {
     "failed PipeTask re-poll scheduling should be recorded"
   );
 }
+
+#[test]
+fn drop_pipe_tasks_clears_poll_tracking_state() {
+  let actor_system = ActorSystem::new_empty();
+  let system = actor_system.state();
+  let props = Props::from_fn(|| ProbeActor);
+  let cell =
+    ActorCell::create(system.clone(), Pid::new(917, 0), None, "pipe-drop-tracking".to_string(), &props).expect("cell");
+  system.register_cell(cell.clone());
+
+  let task_id = ContextPipeTaskId::new(7);
+  cell.state.with_write(|state| {
+    state.polling_pipe_tasks.push(task_id);
+    state.pending_pipe_task_wakes.push(task_id);
+  });
+
+  cell.drop_pipe_tasks();
+
+  cell.state.with_read(|state| {
+    assert!(state.pipe_tasks.is_empty(), "drop_pipe_tasks should drain registered pipe tasks");
+    assert!(state.polling_pipe_tasks.is_empty(), "drop_pipe_tasks should clear in-flight poll markers");
+    assert!(state.pending_pipe_task_wakes.is_empty(), "drop_pipe_tasks should clear pending reentrant wake markers");
+  });
+}

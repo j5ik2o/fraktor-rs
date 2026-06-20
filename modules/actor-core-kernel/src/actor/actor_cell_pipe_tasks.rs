@@ -133,7 +133,11 @@ impl ActorCell {
   }
 
   pub(super) fn drop_pipe_tasks(&self) {
-    let tasks = self.state.with_write(|state| mem::take(&mut state.pipe_tasks));
+    let tasks = self.state.with_write(|state| {
+      state.polling_pipe_tasks.clear();
+      state.pending_pipe_task_wakes.clear();
+      mem::take(&mut state.pipe_tasks)
+    });
     drop(tasks);
   }
 
