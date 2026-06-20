@@ -10,16 +10,24 @@ Matt Pocock の engineering skills は `CLAUDE.md`及び`AGENTS.md` と `docs/ag
 - Triage labels: mattpocock/skills の default labels を使う。詳細は `docs/agents/triage-labels.md` を見る。
 - Domain docs: single-context repo として root `CONTEXT.md` と `docs/adr/` を使う。詳細は `docs/agents/domain.md` を見る。
 
-## Domain Context Preflight
+## Domain / Spec Decision Preflight
 
-Kiro / SDD / OpenSpec / 設計レビュー / 実装計画に入る前に、必ず以下を確認する。
+Kiro / SDD / OpenSpec / 設計レビュー / 実装計画に入る前に、必ず以下を設計判断の入力として確認する。
 
-- root `CONTEXT.md`
+- root `CONTEXT.md`: canonical terms / avoid terms / invariants
 - root `CONTEXT-MAP.md` があれば関連 context
-- `docs/adr/` のうち対象機能に関係する ADR
-- 対象機能に近接する既存 `.kiro/specs/**`
+- `docs/adr/`: 既に受け入れられた不可逆な設計判断
+- `.kiro/steering/`: project-wide steering / product / tech / structure
+- `.kiro/specs/**`: feature-level requirements / design / tasks
+- `openspec/**`: public contract / capability-level requirements
 
-`CONTEXT.md` の canonical terms / avoid terms / invariants と ADR の制約は、requirements / design / tasks / review / implementation の前提として扱う。
+`CONTEXT.md` の canonical terms / avoid terms / invariants、ADR の制約、Kiro / OpenSpec の仕様は、requirements / design / tasks / review / implementation の前提として扱う。
+
+未定義のドメイン用語を見つけた場合は、直接 `CONTEXT.md` に追加せず、`/domain-modeling` または `/grill-with-docs` 経由で用語を確定する。
+
+既存 ADR と矛盾する spec / design を見つけた場合は、黙って上書きせず矛盾を明示する。
+
+ADR は spec の台帳ではない。Kiro / OpenSpec に、不可逆・非自明・trade-off を伴う設計判断が含まれる場合のみ `/domain-modeling` 経由で ADR 化を検討する。
 
 ## Review exclusion settings
 
