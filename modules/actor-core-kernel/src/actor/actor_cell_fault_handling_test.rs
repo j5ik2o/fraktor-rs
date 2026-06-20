@@ -1116,6 +1116,26 @@ fn restart_failure_records_parent_failure_when_child_mailbox_is_closed() {
 }
 
 #[test]
+fn stop_directive_preserves_child_stats_while_container_is_terminating() {
+  let state = ActorSystem::new_empty().state();
+  let parent_props =
+    Props::from_fn(|| DirectiveSupervisorActor::new(SupervisorDirective::Stop, SupervisorStrategyKind::OneForOne));
+  let parent =
+    ActorCell::create(state.clone(), Pid::new(848, 0), None, "stop-terminating-parent".to_string(), &parent_props)
+      .expect("parent");
+  let child = Pid::new(849, 0);
+  state.register_cell(parent.clone());
+  parent.register_child(child);
+  parent.mark_child_dying(child);
+  assert!(parent.children_state_is_terminating(), "precondition: child container is already terminating");
+
+  parent.handle_failure(&child_failure_payload(child, "stop while terminating"));
+
+  assert!(parent.children_state_is_terminating(), "Stop cleanup must not collapse a terminating container");
+  assert_eq!(parent.children(), vec![child], "terminating child stats must remain until DeathWatch removes them");
+}
+
+#[test]
 fn stop_escalate_and_resume_directives_record_closed_child_send_errors() {
   #[derive(Clone, Copy)]
   enum ExpectedClosedChildMessage {

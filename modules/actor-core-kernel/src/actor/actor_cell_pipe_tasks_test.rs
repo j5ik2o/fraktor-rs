@@ -5,11 +5,21 @@ use core::{
   task::{Context, Poll},
 };
 
-use crate::actor::{
-  actor_cell::tests::*,
-  actor_cell_dispatch::ActorCellInvoker,
-  context_pipe::ContextPipeTaskId,
-  messaging::{message_invoker::MessageInvoker, system_message::SystemMessage},
+use crate::{
+  actor::{
+    actor_cell::tests::*,
+    actor_cell_dispatch::ActorCellInvoker,
+    context_pipe::ContextPipeTaskId,
+    error::SendError,
+    messaging::{message_invoker::MessageInvoker, system_message::SystemMessage},
+  },
+  dispatch::{
+    dispatcher::{
+      DispatcherConfig, DispatcherCore, ExecutorShared, InlineExecutor, MessageDispatcher, MessageDispatcherFactory,
+      MessageDispatcherShared, TrampolineState,
+    },
+    mailbox::Mailbox,
+  },
 };
 
 struct ReentrantPipeFuture {
@@ -34,6 +44,43 @@ impl Future for ReentrantPipeFuture {
 
     Poll::Ready(None)
   }
+}
+
+struct FailingSystemDispatcherFactory;
+
+impl MessageDispatcherFactory for FailingSystemDispatcherFactory {
+  fn dispatcher(&self) -> MessageDispatcherShared {
+    let throughput = NonZeroUsize::new(1).expect("throughput");
+    let settings = DispatcherConfig::new("pipe-repoll-failing", throughput, None, Duration::from_secs(1));
+    let executor = ExecutorShared::new(Box::new(InlineExecutor::new()), TrampolineState::new());
+    MessageDispatcherShared::new(Box::new(FailingSystemDispatcher { core: DispatcherCore::new(&settings, executor) }))
+  }
+}
+
+struct FailingSystemDispatcher {
+  core: DispatcherCore,
+}
+
+impl MessageDispatcher for FailingSystemDispatcher {
+  fn core(&self) -> &DispatcherCore {
+    &self.core
+  }
+
+  fn core_mut(&mut self) -> &mut DispatcherCore {
+    &mut self.core
+  }
+
+  fn system_dispatch(
+    &mut self,
+    _receiver: &ArcShared<ActorCell>,
+    message: SystemMessage,
+  ) -> Result<Vec<ArcShared<Mailbox>>, SendError> {
+    Err(SendError::closed(AnyMessage::new(message)))
+  }
+}
+
+fn failing_system_dispatcher_factory() -> ArcShared<Box<dyn MessageDispatcherFactory>> {
+  ArcShared::new(Box::new(FailingSystemDispatcherFactory) as Box<dyn MessageDispatcherFactory>)
 }
 
 #[test]
@@ -85,4 +132,36 @@ fn poll_pipe_task_preserves_reentrant_wake_while_future_is_polling() {
     .expect("spawn pipe task");
 
   assert_eq!(*polls.lock(), 2, "reentrant wake should be replayed after the pending poll completes");
+}
+
+#[test]
+fn poll_pipe_task_records_repoll_send_error_when_dispatcher_rejects() {
+  let actor_system = ActorSystem::new_empty_with(|config| {
+    config.with_dispatcher_factory("pipe-repoll-failing", failing_system_dispatcher_factory())
+  });
+  let system = actor_system.state();
+  let props = Props::from_fn(|| ProbeActor).with_dispatcher_id("pipe-repoll-failing");
+  let cell =
+    ActorCell::create(system.clone(), Pid::new(916, 0), None, "pipe-repoll-failing".to_string(), &props).expect("cell");
+  system.register_cell(cell.clone());
+
+  let polls = ArcShared::new(SpinSyncMutex::new(0_usize));
+  let task_id = ContextPipeTaskId::new(1);
+  cell
+    .spawn_pipe_task(Box::pin(ReentrantPipeFuture { cell: cell.clone(), task_id, polls: polls.clone() }))
+    .expect("spawn pipe task");
+
+  assert_eq!(*polls.lock(), 1, "failing dispatcher should reject the scheduled re-poll");
+  assert!(
+    system.dead_letters().iter().any(|entry| {
+      entry.recipient() == Some(cell.pid())
+        && entry.message().downcast_ref::<SystemMessage>().is_some_and(|message| {
+          matches!(
+            message,
+            SystemMessage::PipeTask(id) if *id == task_id
+          )
+        })
+    }),
+    "failed PipeTask re-poll scheduling should be recorded"
+  );
 }
