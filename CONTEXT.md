@@ -4,6 +4,34 @@ fraktor-rs は、actor / remote / cluster / stream / persistence の各ドメイ
 
 ## Language
 
+### Actor Execution
+
+**Actor Cell (アクターセル)**:
+actor instance の mailbox dispatch、lifecycle、supervision、children relation、DeathWatch (死亡監視)、context side effects を調停する actor-core-kernel の実行コンテナ。Actor (アクター) の user behavior や ActorRef (アクター参照) の address identity とは別の実行境界である。
+_Avoid_: Runtime, Actor, ActorRef, Mailbox Owner
+
+**Actor Cell Facet (アクターセルファセット)**:
+Actor Cell (アクターセル) の同一型実装を dispatch、lifecycle、fault handling、children、DeathWatch (死亡監視)、Receive Timeout (受信タイムアウト) などの責務単位で追跡するための内部実装境界。public trait や利用者向け API を増やすための境界ではない。
+_Avoid_: Runtime, Public Facet API, Trait Facet, ActorCell Subclass
+
+**Actor System State (アクターシステム状態)**:
+actor system scoped state を既存 accessor 経由で扱う façade。実行補助、dispatcher / mailbox、event / logging、guardian / cells、remote / provider、scheduler / lifecycle などの System State Registry (システム状態レジストリ) を束ねるが、それぞれの subsystem behavior を直接所有する概念ではない。
+_Avoid_: Runtime, Global State, God Object, Shared State Bag
+
+**System State Registry (システム状態レジストリ)**:
+Actor System State (アクターシステム状態) の内側で、dispatcher / mailbox、event / logging、guardian / cells など単一 subsystem の state ownership を担う private registry。外部 crate に公開する registry handle ではなく、既存 façade から委譲される内部境界である。
+_Avoid_: Runtime, Public Registry Handle, Shared Global Registry, Service Locator
+
+**DeathWatch (死亡監視)**:
+ある actor が別の actor の termination を観測し、終了通知を受け取る actor 実行上の観測契約。Lifecycle Event (ライフサイクルイベント) の発行や child registry の所有とは区別する。
+_Avoid_: Runtime, Lifecycle Event, Child Registry, Failure Detection
+
+**Receive Timeout (受信タイムアウト)**:
+actor が一定期間 timeout に影響する user message を受信しなかったときに timeout signal を届ける実行契約。scheduler の停止や mailbox の idle 状態そのものではなく、actor behavior に見える inactivity signal である。
+_Avoid_: Runtime, Scheduler Timeout, Mailbox Idle Timeout, Shutdown Timeout
+
+### Cluster Execution
+
 **Failure Detector (故障検出器)**:
 Cluster Member (クラスタメンバー) が available / unavailable に見えるかを観測する cluster 実行上の関心事。Availability Evidence (可用性観測証拠) を生成するが、それ自体は Member Removal (メンバー除去) を決定しない。
 _Avoid_: Downing Strategy, Membership Removal Policy
