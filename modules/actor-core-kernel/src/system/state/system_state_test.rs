@@ -44,17 +44,17 @@ use crate::{
 impl SystemState {
   pub(crate) fn remove_cell(&mut self, pid: &Pid) {
     let reservation_source =
-      self.actor_path_registry.get(pid).map(|handle| (handle.canonical_uri().to_string(), handle.uid()));
+      self.identity_path.actor_path_registry.get(pid).map(|handle| (handle.canonical_uri().to_string(), handle.uid()));
 
     if let Some((canonical, Some(uid))) = reservation_source
       && let Ok(actor_path) = ActorPathParser::parse(&canonical)
     {
       let now_secs = self.monotonic_now().as_secs();
-      drop(self.actor_path_registry.reserve_uid(&actor_path, uid, now_secs, None));
+      drop(self.identity_path.actor_path_registry.reserve_uid(&actor_path, uid, now_secs, None));
     }
 
-    self.actor_path_registry.unregister(pid);
-    let _ = self.cells.with_write(|cells| cells.remove(pid));
+    self.identity_path.actor_path_registry.unregister(pid);
+    let _ = self.guardian_cell.cells.with_write(|cells| cells.remove(pid));
   }
 
   #[must_use]
@@ -420,7 +420,7 @@ fn system_state_reassign_name_to_allocated_pid_updates_registry() {
 
   let _name = state.assign_name(None, Some("test-actor"), reserved_pid).expect("reserved name");
   let actual_pid = state.reassign_name_to_allocated_pid(None, "test-actor", reserved_pid).expect("reassigned name");
-  let registry = state.registries.get_mut(&None).expect("root registry");
+  let registry = state.guardian_cell.registries.get_mut(&None).expect("root registry");
 
   assert_eq!(registry.resolve("test-actor"), Some(actual_pid));
 }

@@ -1,0 +1,101 @@
+# 実装計画
+
+- [x] 1. 基盤
+- [x] 1.1 private registry module の配線と初期化境界を作る
+  - state 配下の registry module が private sibling として宣言され、外部 crate から到達できない状態になる
+  - `SystemState` の構築経路が registry 初期化を通す形に整理され、既存の初期状態スナップショットが変わらない
+  - module wiring と sibling test 配置が project lint 前提に沿っていることを確認できる
+  - _Requirements:_ 1.2, 2.1, 4.3, 5.1
+  - _Boundary:_ StateModuleWiring
+  - _Depends:_ none
+
+- [x] 2. registry leaf の抽出
+- [x] 2.1 (P) RuntimeSupportRegistry を抽出する
+  - pid allocation、monotonic clock、ask futures、extensions、invoke guard、circuit breaker config の状態所有を単一 registry に移す
+  - pid と timestamp の単調性、ask future drain、extension lookup、circuit breaker config lookup が分割前と同じ観測結果を返す
+  - runtime support の変更が dispatcher、event、guardian、remote、scheduler の状態を触らずに完結する
+  - _Requirements:_ 1.1, 2.1, 3.1, 4.1, 5.2
+  - _Boundary:_ RuntimeSupportRegistry
+  - _Depends:_ 1.1
+- [x] 2.2 (P) IdentityPathRegistry を抽出する
+  - system identity、canonical authority、actor path、temp actor、extra top-level の状態所有を単一 registry に移す
+  - 既存の path resolution と temp actor lookup が同じ戻り値を返すことを registry 単位で確認できる
+  - `SystemState` 外へ registry 型を露出せずに既存 accessor から利用できる状態になる
+  - _Requirements:_ 1.1, 1.2, 2.4, 3.2, 5.2
+  - _Boundary:_ IdentityPathRegistry
+  - _Depends:_ 1.1
+- [x] 2.3 (P) GuardianCellRegistry を抽出する
+  - cells、name registry、guardian state、guardian alive flag の状態所有を単一 registry に移す
+  - guardian pid / alive、cell register / remove、name assign / release の代表操作が分割前と同じ観測結果を返す
+  - children state は `ActorCell` 側の children facet に残り、`child_pids` は cell lookup 経由の façade として維持される
+  - cell table と guardian の変更が event、remote、scheduler の状態を触らずに完結する
+  - _Requirements:_ 1.1, 2.1, 2.4, 3.1, 5.2
+  - _Boundary:_ GuardianCellRegistry
+  - _Depends:_ 1.1
+- [x] 2.4 (P) DispatchMailboxRegistry を抽出する
+  - dispatchers、mailboxes、mailbox shared set の状態所有を単一 registry に移す
+  - dispatcher lookup、canonical dispatcher id、mailbox factory / queue creation が既存の成功・失敗契約を維持する
+  - dispatcher / mailbox の変更が event、guardian、remote、scheduler の状態を触らずに完結する
+  - _Requirements:_ 1.1, 2.1, 2.2, 3.1, 4.2, 5.2
+  - _Boundary:_ DispatchMailboxRegistry
+  - _Depends:_ 1.1
+- [x] 2.5 (P) EventLoggingRegistry を抽出する
+  - event stream、dead letter store、logging filter、failure telemetry の状態所有を単一 registry に移す
+  - publish、dead letter snapshot、log level filtering、failure outcome recording の代表操作が分割前と同じ観測結果を返す
+  - EventBus / logging の変更が mailbox、guardian、remote、scheduler の状態を触らずに完結する
+  - _Requirements:_ 1.1, 2.1, 2.3, 3.1, 5.2
+  - _Boundary:_ EventLoggingRegistry
+  - _Depends:_ 1.1
+- [x] 2.6 (P) RemoteProviderRegistry を抽出する
+  - actor ref provider、provider caller、remote deployment / watch hook、remote authority、deployment factory と serialization-adjacent setup の状態所有を単一 registry に移す
+  - remote authority transition、provider lookup、hook registration が既存の error contract と event emission を維持する
+  - remote / provider の変更が dispatcher、event、guardian、scheduler の状態を触らずに完結する
+  - _Requirements:_ 1.1, 2.1, 3.1, 4.2, 5.2
+  - _Boundary:_ RemoteProviderRegistry
+  - _Depends:_ 1.1
+- [x] 2.7 (P) SchedulerLifecycleRegistry を抽出する
+  - scheduler context、tick driver、termination state、root startup、start time の状態所有を単一 registry に移す
+  - scheduler handle、delay provider、tick driver snapshot、termination signal、shutdown scheduler の代表操作が分割前と同じ観測結果を返す
+  - scheduler / shutdown の変更が mailbox、event、guardian、remote の状態を触らずに完結する
+  - _Requirements:_ 1.1, 2.1, 3.1, 4.1, 4.2, 5.2
+  - _Boundary:_ SchedulerLifecycleRegistry
+  - _Depends:_ 1.1
+
+- [x] 3. façade 統合
+- [x] 3.1 SystemState を registry façade に縮小する
+  - `SystemState` の field が registry grouping へ置き換わり、構築・config 適用・既存 accessor の signature が維持される
+  - registry 間 coordination が必要な操作は `SystemState` 上の integration method として残り、leaf registry 同士が相互依存しない
+  - public / crate-visible caller は新しい registry 型を知らずに既存呼び出しを継続できる
+  - _Requirements:_ 1.1, 1.2, 2.1, 2.2, 2.3, 2.4, 5.3
+  - _Boundary:_ SystemState
+  - _Depends:_ 2.1, 2.2, 2.3, 2.4, 2.5, 2.6, 2.7
+- [x] 3.2 SystemStateShared の cached handle と closure-based 委譲を維持する
+  - `SystemStateShared::new` と `from_shared_rw_lock` が分割後 registry から既存 cached handle を取得し、clone 後も同じ underlying state を参照する
+  - read-then-act を増やさず、更新操作が `with_write` または既存 shared handle の closure-based API 内で完結する
+  - 直接 `Arc`、`Rc`、`std::sync::Mutex`、`spin::Mutex`、`spin::RwLock` を新規導入していないことを確認できる
+  - _Requirements:_ 1.3, 3.1, 3.2, 3.3, 3.4
+  - _Boundary:_ SystemStateShared
+  - _Depends:_ 3.1
+- [x] 3.3 typed / kernel の既存統合経路を維持する
+  - typed facade の `event_stream()`、`scheduler()`、`dispatchers()`、`child_pids()` が分割後も既存の観測結果を返す
+  - kernel 側の spawn、path resolution、dead letter、remote authority、scheduler shutdown の既存 call path が registry façade 経由で動作する
+  - downstream spec が参照する registry 境界と設計ドキュメントの境界名が一致している
+  - _Requirements:_ 1.1, 1.3, 5.1, 5.2, 5.3
+  - _Boundary:_ SystemStateIntegration
+  - _Depends:_ 3.2
+
+- [x] 4. 検証
+- [x] 4.1 targeted regression を通す
+  - actor-core-kernel の system state 関連 unit test が通過し、各 registry の代表 accessor 委譲が確認できる
+  - actor-core-typed の event stream、scheduler、dispatchers、child lookup の既存 regression が通過する
+  - dispatcher / mailbox、event / logging、guardian / cell table、remote authority、scheduler / lifecycle coordination の代表経路がすべてテストで観測できる
+  - _Requirements:_ 1.1, 1.3, 5.1, 5.2
+  - _Boundary:_ TargetedValidation
+  - _Depends:_ 3.3
+- [x] 4.2 no_std / lint / full CI 境界を確認する
+  - `actor-core-kernel` が `no_std` + `alloc` 境界を維持し、host runtime dependency を追加していないことを確認できる
+  - module wiring、test placement、FQCN import、direct shared primitive 禁止の lint 前提を満たす
+  - 仕上げの `./scripts/ci-check.sh ai all` が通過し、quick spec の構造整理が実装可能な状態になる
+  - _Requirements:_ 3.4, 4.1, 4.2, 4.3, 5.1, 5.3
+  - _Boundary:_ FinalValidation
+  - _Depends:_ 4.1
