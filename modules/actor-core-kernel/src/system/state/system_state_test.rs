@@ -51,10 +51,13 @@ impl SystemState {
       && let Ok(actor_path) = ActorPathParser::parse(&canonical)
     {
       let now_secs = self.monotonic_now().as_secs();
+      // Intentionally ignoring reservation failures in this test helper; callers assert the post-removal
+      // registry state.
       drop(self.identity_path.actor_path_registry.reserve_uid(&actor_path, uid, now_secs, None));
     }
 
     self.identity_path.actor_path_registry.unregister(pid);
+    // Intentionally discarding the removed cell; this is a HashMap::remove equivalent.
     let _ = self.guardian_cell.cells.with_write(|cells| cells.remove(pid));
   }
 

@@ -1,5 +1,7 @@
 use core::time::Duration;
 
+use portable_atomic::Ordering;
+
 use super::SchedulerLifecycleRegistry;
 use crate::{
   actor::scheduler::{
@@ -20,7 +22,7 @@ fn scheduler_lifecycle_registry_starts_unstarted_and_unterminated() {
   let bundle = TickDriverBundle::new(next_tick_driver_id(), TickDriverKind::Auto, resolution, feed);
   let registry = SchedulerLifecycleRegistry::new(context, bundle);
 
-  assert!(!registry.root_started.load(portable_atomic::Ordering::Acquire));
+  assert!(!registry.root_started.load(Ordering::Acquire));
   assert_eq!(registry.start_time, Duration::ZERO);
   assert!(registry.tick_driver_snapshot.is_none());
   assert!(registry.tick_driver_stopper.is_none());

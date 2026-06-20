@@ -10,13 +10,13 @@ use core::time::Duration;
 use fraktor_utils_core_rs::sync::ArcShared;
 use portable_atomic::AtomicBool;
 
-use super::super::termination_state::TerminationState;
 use crate::{
   actor::scheduler::{
     SchedulerContext,
     tick_driver::{TickDriverBundle, TickDriverStopper},
   },
   event::stream::TickDriverSnapshot,
+  system::termination_state::TerminationState,
 };
 
 /// Owns scheduler handles and actor system lifecycle state.

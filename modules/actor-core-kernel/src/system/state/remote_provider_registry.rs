@@ -4,11 +4,13 @@
 #[path = "remote_provider_registry_test.rs"]
 mod tests;
 
-use super::{
-  ActorRefProviderCallers, ActorRefProviders, RemoteAuthorityRegistry, RemoteDeploymentHookDynShared,
-  RemoteWatchHookDynShared,
+use crate::{
+  actor::{deploy::Deployer, props::DeployableActorFactoryRegistry},
+  system::state::{
+    ActorRefProviderCallers, ActorRefProviders, RemoteAuthorityRegistry, RemoteDeploymentHookDynShared,
+    RemoteWatchHookDynShared,
+  },
 };
-use crate::actor::{deploy::Deployer, props::DeployableActorFactoryRegistry};
 
 /// Owns provider, remote hook, authority, and deployment state.
 pub(crate) struct RemoteProviderRegistry {
