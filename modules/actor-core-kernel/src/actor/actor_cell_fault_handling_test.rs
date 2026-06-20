@@ -1112,8 +1112,19 @@ fn restart_failure_records_parent_failure_when_child_mailbox_is_closed() {
 
 #[test]
 fn stop_escalate_and_resume_directives_record_closed_child_send_errors() {
-  for (index, directive) in
-    [SupervisorDirective::Stop, SupervisorDirective::Escalate, SupervisorDirective::Resume].into_iter().enumerate()
+  #[derive(Clone, Copy)]
+  enum ExpectedClosedChildMessage {
+    Stop,
+    Resume,
+  }
+
+  for (index, (directive, expected_message)) in [
+    (SupervisorDirective::Stop, ExpectedClosedChildMessage::Stop),
+    (SupervisorDirective::Escalate, ExpectedClosedChildMessage::Stop),
+    (SupervisorDirective::Resume, ExpectedClosedChildMessage::Resume),
+  ]
+  .into_iter()
+  .enumerate()
   {
     let state = ActorSystem::new_empty().state();
     let parent_pid = Pid::new(850 + index as u64 * 2, 0);
@@ -1130,10 +1141,9 @@ fn stop_escalate_and_resume_directives_record_closed_child_send_errors() {
     assert!(
       state.dead_letters().iter().any(|entry| {
         entry.recipient() == Some(missing_child)
-          && entry.message().downcast_ref::<SystemMessage>().is_some_and(|message| match directive {
-            | SupervisorDirective::Stop | SupervisorDirective::Escalate => matches!(message, SystemMessage::Stop),
-            | SupervisorDirective::Resume => matches!(message, SystemMessage::Resume),
-            | SupervisorDirective::Restart => unreachable!("restart is covered separately"),
+          && entry.message().downcast_ref::<SystemMessage>().is_some_and(|message| match expected_message {
+            | ExpectedClosedChildMessage::Stop => matches!(message, SystemMessage::Stop),
+            | ExpectedClosedChildMessage::Resume => matches!(message, SystemMessage::Resume),
           })
       }),
       "{directive:?} should record closed child send error"
