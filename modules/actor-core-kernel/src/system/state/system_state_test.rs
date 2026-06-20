@@ -1,5 +1,6 @@
 use alloc::{boxed::Box, string::ToString, vec, vec::Vec};
 use core::{
+  any::{Any, TypeId},
   sync::atomic::{AtomicUsize, Ordering},
   time::Duration,
 };
@@ -14,6 +15,7 @@ use crate::{
       ActorPath, ActorPathParser, ActorPathScheme, ActorUid, GuardianKind as PathGuardianKind, PathResolutionError,
     },
     actor_ref::{ActorRef, ActorRefSender, SendOutcome},
+    actor_ref_provider::{ActorRefProvider, ActorRefProviderHandleShared},
     error::{ActorError, SendError},
     messaging::{
       AnyMessage, AnyMessageView,
@@ -27,7 +29,7 @@ use crate::{
         TickFeedHandle, next_tick_driver_id, tests::TestTickDriver,
       },
     },
-    setup::ActorSystemConfig,
+    setup::{ActorSystemConfig, CircuitBreakerConfig},
   },
   dispatch::dispatcher::{
     DefaultDispatcherFactory, DispatcherConfig, ExecuteError, Executor, MessageDispatcherFactory, TrampolineState,
@@ -44,17 +46,20 @@ use crate::{
 impl SystemState {
   pub(crate) fn remove_cell(&mut self, pid: &Pid) {
     let reservation_source =
-      self.actor_path_registry.get(pid).map(|handle| (handle.canonical_uri().to_string(), handle.uid()));
+      self.identity_path.actor_path_registry.get(pid).map(|handle| (handle.canonical_uri().to_string(), handle.uid()));
 
     if let Some((canonical, Some(uid))) = reservation_source
       && let Ok(actor_path) = ActorPathParser::parse(&canonical)
     {
       let now_secs = self.monotonic_now().as_secs();
-      drop(self.actor_path_registry.reserve_uid(&actor_path, uid, now_secs, None));
+      // Intentionally ignoring reservation failures in this test helper; callers assert the post-removal
+      // registry state.
+      drop(self.identity_path.actor_path_registry.reserve_uid(&actor_path, uid, now_secs, None));
     }
 
-    self.actor_path_registry.unregister(pid);
-    let _ = self.cells.with_write(|cells| cells.remove(pid));
+    self.identity_path.actor_path_registry.unregister(pid);
+    // Intentionally discarding the removed cell; this is a HashMap::remove equivalent.
+    let _ = self.guardian_cell.cells.with_write(|cells| cells.remove(pid));
   }
 
   #[must_use]
@@ -85,6 +90,25 @@ fn system_state_build_from_config_provides_scheduler_and_tick_driver_bundle() {
 fn system_state_build_from_config_sets_non_zero_start_time_by_default() {
   let state = build_state();
   assert_ne!(state.start_time(), Duration::ZERO);
+}
+
+#[test]
+fn system_state_build_from_config_applies_start_time_and_circuit_breakers() {
+  let start_time = Duration::from_secs(42);
+  let default_config = CircuitBreakerConfig::new(3, Duration::from_secs(10));
+  let named_config = CircuitBreakerConfig::new(7, Duration::from_secs(20));
+  let config = base_config()
+    .with_start_time(start_time)
+    .with_default_circuit_breaker_config(default_config)
+    .with_named_circuit_breaker_config("payments", named_config);
+
+  let state = SystemState::build_from_owned_config(config).expect("state");
+
+  assert_eq!(state.start_time(), start_time);
+  assert_eq!(state.default_circuit_breaker_config(), default_config);
+  assert_eq!(state.circuit_breaker_config("payments"), named_config);
+  assert_eq!(state.circuit_breaker_config("missing"), default_config);
+  assert_eq!(state.named_circuit_breaker_config().get("payments"), Some(&named_config));
 }
 
 fn base_config() -> ActorSystemConfig {
@@ -212,6 +236,16 @@ fn system_state_mark_terminated() {
   assert!(!state.is_terminated());
   state.mark_terminated();
   assert!(state.is_terminated());
+}
+
+#[test]
+fn system_state_begin_termination_marks_terminating() {
+  let state = build_state();
+  assert!(!state.is_terminating());
+
+  assert!(state.begin_termination());
+
+  assert!(state.is_terminating());
 }
 
 #[test]
@@ -420,7 +454,7 @@ fn system_state_reassign_name_to_allocated_pid_updates_registry() {
 
   let _name = state.assign_name(None, Some("test-actor"), reserved_pid).expect("reserved name");
   let actual_pid = state.reassign_name_to_allocated_pid(None, "test-actor", reserved_pid).expect("reassigned name");
-  let registry = state.registries.get_mut(&None).expect("root registry");
+  let registry = state.guardian_cell.registries.get_mut(&None).expect("root registry");
 
   assert_eq!(registry.resolve("test-actor"), Some(actual_pid));
 }
@@ -429,6 +463,19 @@ fn system_state_reassign_name_to_allocated_pid_updates_registry() {
 fn system_state_user_guardian_pid() {
   let state = build_state();
   assert!(state.user_guardian_pid().is_none());
+}
+
+#[test]
+fn system_state_guardian_pid_returns_registered_guardian() {
+  let mut state = build_state();
+  let shared = SystemStateShared::new(build_state());
+  let pid = shared.allocate_pid();
+  let props = Props::from_fn(|| RestartProbeActor);
+  let cell = ActorCell::create(shared, pid, None, "root".to_string(), &props).expect("root cell");
+
+  state.set_root_guardian(&cell);
+
+  assert_eq!(state.guardian_pid(GuardianKind::Root), Some(pid));
 }
 
 #[test]
@@ -476,6 +523,25 @@ fn system_state_publish_event() {
   state.publish_event(&event);
 }
 
+struct MarkerExtension {
+  value: u8,
+}
+
+#[test]
+fn system_state_extensions_round_trip_through_runtime_registry() {
+  let mut state = build_state();
+  let type_id = TypeId::of::<MarkerExtension>();
+  let extension = ArcShared::new(MarkerExtension { value: 7 });
+  let erased: ArcShared<dyn Any + Send + Sync + 'static> = extension.clone();
+
+  state.insert_extension(type_id, erased);
+
+  assert!(state.has_extension(type_id));
+  assert!(state.extension_raw(&type_id).is_some());
+  assert_eq!(state.extension::<MarkerExtension>(type_id).expect("extension").value, 7);
+  assert_eq!(state.extension_by_type::<MarkerExtension>().expect("extension by type").value, 7);
+}
+
 #[test]
 fn system_state_emit_log() {
   use alloc::string::String;
@@ -498,6 +564,13 @@ fn system_state_emit_log() {
 
   let named_log = named_log.expect("named logger log event should be published");
   assert_eq!(named_log.logger_name(), Some("my_logger"));
+}
+
+#[test]
+fn system_state_reports_enabled_log_level_from_logging_registry() {
+  let state = build_state();
+
+  assert!(state.is_log_level_enabled(LogLevel::Info));
 }
 
 #[test]
@@ -542,6 +615,25 @@ fn system_state_temp_actor_round_trip() {
   assert!(state.temp_actor(&name).is_some());
   state.unregister_temp_actor(&name);
   assert!(state.temp_actor(&name).is_none());
+}
+
+#[test]
+fn system_state_next_temp_actor_name_with_prefix_shares_temp_counter() {
+  let state = build_state();
+
+  assert_eq!(state.next_temp_actor_name_with_prefix("ask"), "ask-t1");
+  assert_eq!(state.next_temp_actor_name(), "t2");
+}
+
+#[test]
+fn system_state_actor_path_returns_registry_path_without_cell() {
+  let mut state = build_state();
+  let pid = state.allocate_pid();
+  let path = ActorPath::root_with_guardian(state.path_guardian_kind()).child("temp").child("t1");
+
+  state.register_actor_path(pid, &path);
+
+  assert_eq!(state.actor_path(&pid), Some(path));
 }
 
 #[test]
@@ -606,6 +698,26 @@ fn system_state_remote_authority_events() {
   let events_snapshot = events_shared.lock().clone();
   assert!(events_snapshot.iter().any(|event| matches!(event, EventStreamEvent::RemoteAuthority(remote)
     if remote.authority() == "node:2552" && matches!(remote.state(), AuthorityState::Connected))));
+}
+
+#[test]
+fn system_state_remote_authority_deferred_messages_round_trip() {
+  let mut state = build_state();
+  let authority = "node:2552";
+
+  state.remote_authority_try_defer(authority, AnyMessage::new(42_i32)).expect("defer message");
+
+  assert!(
+    state
+      .remote_authority_snapshots()
+      .iter()
+      .any(|(snapshot_authority, state)| snapshot_authority == authority && *state == AuthorityState::Unresolved)
+  );
+
+  let drained = state.remote_authority_set_connected(authority).expect("drained messages");
+
+  assert_eq!(drained.len(), 1);
+  assert_eq!(state.remote_authority_state(authority), AuthorityState::Connected);
 }
 
 #[test]
@@ -833,6 +945,36 @@ fn system_state_logs_failure_with_pid_origin() {
 
 struct RestartProbeActor;
 
+struct StubActorRefProvider;
+
+impl ActorRefProvider for StubActorRefProvider {
+  fn supported_schemes(&self) -> &'static [ActorPathScheme] {
+    &[ActorPathScheme::FraktorTcp]
+  }
+
+  fn actor_ref(&mut self, _path: ActorPath) -> Result<ActorRef, ActorError> {
+    Ok(ActorRef::null())
+  }
+
+  fn termination_signal(&self) -> TerminationSignal {
+    TerminationSignal::already_terminated()
+  }
+}
+
+#[test]
+fn system_state_actor_ref_provider_round_trip() {
+  let mut state = build_state();
+  let provider = ActorRefProviderHandleShared::new(StubActorRefProvider);
+  let path = ActorPath::root_with_guardian(state.path_guardian_kind()).child("provider");
+
+  state.install_actor_ref_provider(&provider);
+
+  let actor_ref = provider.get_actor_ref(path).expect("actor ref");
+  assert_eq!(actor_ref.pid(), ActorRef::null().pid());
+  assert!(provider.termination_signal().is_terminated());
+  assert!(state.actor_ref_provider::<StubActorRefProvider>().is_some());
+}
+
 #[derive(Default)]
 struct RemoteWatchHookCalls {
   watch_calls:        usize,
@@ -928,12 +1070,6 @@ impl RemoteEventRecorder {
   }
 }
 
-impl Default for RemoteEventRecorder {
-  fn default() -> Self {
-    Self::new(ArcShared::new(SpinSyncMutex::new(Vec::new())))
-  }
-}
-
 impl EventStreamSubscriber for RemoteEventRecorder {
   fn on_event(&mut self, event: &EventStreamEvent) {
     self.events.lock().push(event.clone());
@@ -968,12 +1104,6 @@ struct LogRecorder {
 impl LogRecorder {
   fn new(events: ArcShared<SpinSyncMutex<Vec<EventStreamEvent>>>) -> Self {
     Self { events }
-  }
-}
-
-impl Default for LogRecorder {
-  fn default() -> Self {
-    Self::new(ArcShared::new(SpinSyncMutex::new(Vec::new())))
   }
 }
 
