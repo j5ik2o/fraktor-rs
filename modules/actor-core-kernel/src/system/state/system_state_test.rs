@@ -965,9 +965,13 @@ impl ActorRefProvider for StubActorRefProvider {
 fn system_state_actor_ref_provider_round_trip() {
   let mut state = build_state();
   let provider = ActorRefProviderHandleShared::new(StubActorRefProvider);
+  let path = ActorPath::root_with_guardian(state.path_guardian_kind()).child("provider");
 
   state.install_actor_ref_provider(&provider);
 
+  let actor_ref = provider.get_actor_ref(path).expect("actor ref");
+  assert_eq!(actor_ref.pid(), ActorRef::null().pid());
+  assert!(provider.termination_signal().is_terminated());
   assert!(state.actor_ref_provider::<StubActorRefProvider>().is_some());
 }
 
