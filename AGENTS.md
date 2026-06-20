@@ -4,11 +4,22 @@
 
 ## Agent skills
 
-Matt Pocock の engineering skills は `CLAUDE.md` と `docs/agents/` に設定する。
+Matt Pocock の engineering skills は `CLAUDE.md`及び`AGENTS.md` と `docs/agents/` に設定する。
 
 - Issue tracker: GitHub Issues を使う。詳細は `docs/agents/issue-tracker.md` を見る。
 - Triage labels: mattpocock/skills の default labels を使う。詳細は `docs/agents/triage-labels.md` を見る。
 - Domain docs: single-context repo として root `CONTEXT.md` と `docs/adr/` を使う。詳細は `docs/agents/domain.md` を見る。
+
+## Domain Context Preflight
+
+Kiro / SDD / OpenSpec / 設計レビュー / 実装計画に入る前に、必ず以下を確認する。
+
+- root `CONTEXT.md`
+- root `CONTEXT-MAP.md` があれば関連 context
+- `docs/adr/` のうち対象機能に関係する ADR
+- 対象機能に近接する既存 `.kiro/specs/**`
+
+`CONTEXT.md` の canonical terms / avoid terms / invariants と ADR の制約は、requirements / design / tasks / review / implementation の前提として扱う。
 
 ## Review exclusion settings
 
