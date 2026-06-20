@@ -1,0 +1,22 @@
+{
+  "feature_name": "actor-cell-facet-structure",
+  "created_at": "2026-06-19T12:25:53Z",
+  "updated_at": "2026-06-19T14:35:39Z",
+  "language": "ja",
+  "phase": "tasks-generated",
+  "approvals": {
+    "requirements": {
+      "generated": true,
+      "approved": true
+    },
+    "design": {
+      "generated": true,
+      "approved": true
+    },
+    "tasks": {
+      "generated": true,
+      "approved": true
+    }
+  },
+  "ready_for_implementation": true
+}
