@@ -477,7 +477,7 @@ fn actor_context_stash_with_limit_detects_overflow() {
   let error = context.stash_with_limit(1).expect_err("overflow should fail");
 
   assert!(ActorContext::is_stash_overflow_error(&error));
-  assert_eq!(cell.stashed_message_len(), 1);
+  assert_eq!(cell.with_stashed_messages(|messages| messages.len()), 1);
 }
 
 #[test]
@@ -497,7 +497,7 @@ fn actor_context_stash_uses_default_capacity_limit() {
   let error = context.stash().expect_err("default stash limit overflow should fail");
 
   assert!(ActorContext::is_stash_overflow_error(&error));
-  assert_eq!(cell.stashed_message_len(), 1000);
+  assert_eq!(cell.with_stashed_messages(|messages| messages.len()), 1000);
 }
 
 #[test]
@@ -534,13 +534,13 @@ fn actor_context_unstash_replays_single_message_and_unstash_all_replays_remainin
 
   let first = context.unstash().expect("unstash single");
   assert_eq!(first, 1);
-  assert_eq!(cell.stashed_message_len(), 1);
+  assert_eq!(cell.with_stashed_messages(|messages| messages.len()), 1);
   wait_until(|| !received.lock().is_empty());
   assert_eq!(received.lock().clone(), vec![1]);
 
   let remaining = context.unstash_all().expect("unstash all");
   assert_eq!(remaining, 1);
-  assert_eq!(cell.stashed_message_len(), 0);
+  assert_eq!(cell.with_stashed_messages(|messages| messages.len()), 0);
   wait_until(|| received.lock().len() == 2);
   assert_eq!(received.lock().clone(), vec![1, 2]);
 }
@@ -576,7 +576,7 @@ fn actor_context_stash_snapshot_clear_and_limited_unstash() {
     })
     .expect("limited unstash");
   assert_eq!(replayed, 1);
-  assert_eq!(cell.stashed_message_len(), 1);
+  assert_eq!(cell.with_stashed_messages(|messages| messages.len()), 1);
   wait_until(|| received.lock().len() == 1);
   assert_eq!(received.lock().clone(), vec![11]);
 

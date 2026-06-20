@@ -51,10 +51,6 @@ mod suspend_reason;
 mod watch_kind;
 mod watch_registration_kind;
 
-#[cfg(test)]
-#[path = "actor/actor_cell_test.rs"]
-mod tests;
-
 pub use actor_cell::ActorCell;
 pub(crate) use actor_cell_state::ActorCellState;
 pub(crate) use actor_cell_state_shared::ActorCellStateShared;

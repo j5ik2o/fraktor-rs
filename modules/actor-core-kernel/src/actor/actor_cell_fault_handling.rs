@@ -16,6 +16,10 @@ use crate::{
   system::state::system_state::FailureOutcome,
 };
 
+#[cfg(test)]
+#[path = "actor_cell_fault_handling_test.rs"]
+mod tests;
+
 impl ActorCell {
   /// Returns whether the cell currently has a failure recorded (Pekko
   /// `isFailed`).
@@ -128,8 +132,8 @@ impl ActorCell {
       let dispatcher = self.new_dispatcher_shared();
       let pre_restart_result =
         dispatcher.run_with_drive_guard(|| self.actor.with_write(|actor| actor.pre_restart(&mut ctx, cause)));
-      pre_restart_result?;
       ctx.clear_sender();
+      pre_restart_result?;
     }
 
     debug_assert!(
@@ -359,7 +363,9 @@ impl ActorCell {
     // Get supervisor strategy dynamically from actor instance
     let strategy = {
       let mut ctx = self.make_context();
-      self.actor.with_read(|actor| actor.supervisor_strategy(&mut ctx))
+      let strategy = self.actor.with_read(|actor| actor.supervisor_strategy(&mut ctx));
+      ctx.clear_sender();
+      strategy
     };
 
     let directive = {
@@ -397,12 +403,15 @@ impl ActorCell {
       return;
     }
     self.state.with_write(|state| {
+      if state.children_state.is_in_terminating_variant() {
+        return;
+      }
       // Pekko parity: when the strategy directive is `Stop`, affected children
-      // are removed from the container. We drop the returned state-change
-      // reasons — AC-H4 will consume them to drive `finishRecreate` /
-      // `finishTerminate`.
+      // are removed from the normal container. Terminating containers keep their
+      // state-change reason for DeathWatch notification handling.
       for pid in children {
-        let _ = state.children_state.remove_child_and_get_state_change(*pid);
+        let state_change = state.children_state.remove_child_and_get_state_change(*pid);
+        debug_assert!(state_change.is_none(), "normal child stats removal must not produce a deferred state change");
       }
     });
   }

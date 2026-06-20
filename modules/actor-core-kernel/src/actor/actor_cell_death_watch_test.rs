@@ -1,7 +1,10 @@
 use super::*;
 use crate::actor::{
+  actor_cell::tests::*,
+  actor_cell_dispatch::ActorCellInvoker,
   actor_ref::{ActorRef, ActorRefSender, SendOutcome},
   error::SendError,
+  messaging::message_invoker::MessageInvoker,
 };
 
 struct FailingTempSender;
@@ -237,9 +240,10 @@ fn ac_h5_t4_death_watch_notification_for_unwatched_target_is_dropped() {
 }
 
 #[test]
-fn ac_h5_t5_unwatch_removes_watching_and_terminated_queued_entries() {
-  // AC-H5: `unregister_watching` は watching と terminated_queued の両方から
-  // target を取り除く。DWN 処理の before/during に該当エントリを残さない契約。
+fn ac_h5_t5_unwatch_removes_watching_and_preserves_terminated_queued_entries() {
+  // AC-H5: `unregister_watching` は user-level watching だけを取り除く。
+  // `terminated_queued` は in-flight DeathWatchNotification の dedup marker
+  // なので、この経路からは消さない。
   let state = ActorSystem::new_empty().state();
   let watcher_props = Props::from_fn(|| ProbeActor);
   let watcher = ActorCell::create(state.clone(), Pid::new(540, 0), None, "h5-unwatch".to_string(), &watcher_props)
@@ -248,14 +252,15 @@ fn ac_h5_t5_unwatch_removes_watching_and_terminated_queued_entries() {
 
   let target_pid = Pid::new(541, 0);
   watcher.register_watching(target_pid);
+  watcher.state.with_write(|state| state.terminated_queued.push(target_pid));
   assert!(watcher.is_watching(target_pid), "事前条件: watching に target が居る");
 
   watcher.unregister_watching(target_pid);
 
   assert!(!watcher.is_watching(target_pid), "AC-H5: unregister_watching で watching set から外れる");
   assert!(
-    watcher.terminated_queued().is_empty(),
-    "AC-H5: unregister_watching は terminated_queued もクリアする (race 対策)"
+    watcher.terminated_queued() == vec![target_pid],
+    "AC-H5: unregister_watching は terminated_queued の dedup marker を保持する"
   );
 }
 
@@ -371,6 +376,7 @@ fn watch_registration_kind_ignores_supervision_only_entry() {
 
   let child_pid = Pid::new(531, 0);
   parent.register_child(child_pid);
+  parent.register_supervision_watching(child_pid);
 
   assert_eq!(
     parent.watch_registration_kind(child_pid),

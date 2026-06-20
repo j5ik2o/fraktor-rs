@@ -7,6 +7,10 @@ use crate::actor::{
   ActorCell, STASH_OVERFLOW_REASON, STASH_REQUIRES_DEQUE_REASON, error::ActorError, messaging::AnyMessage,
 };
 
+#[cfg(test)]
+#[path = "actor_cell_stash_test.rs"]
+mod tests;
+
 impl ActorCell {
   /// Stashes a user message with an explicit stash capacity limit.
   ///
@@ -24,13 +28,6 @@ impl ActorCell {
       state.stashed_messages.push_back(message);
       Ok(())
     })
-  }
-
-  /// Returns the number of messages currently held in the stash.
-  #[must_use]
-  #[cfg_attr(not(test), allow(dead_code))]
-  pub(crate) fn stashed_message_len(&self) -> usize {
-    self.state.with_read(|state| state.stashed_messages.len())
   }
 
   /// Applies a read-only closure to the current stashed messages.

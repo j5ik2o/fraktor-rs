@@ -1,4 +1,4 @@
-use super::*;
+use crate::actor::actor_cell::tests::*;
 
 #[test]
 fn drop_adapter_refs_marks_lifecycle_stopped() {
@@ -24,8 +24,11 @@ fn remove_adapter_handle_stops_single_handle() {
   system.register_cell(cell.clone());
 
   let (id, lifecycle) = cell.acquire_adapter_handle();
+  let (_other_id, other_lifecycle) = cell.acquire_adapter_handle();
   assert!(lifecycle.is_alive());
+  assert!(other_lifecycle.is_alive());
 
   cell.remove_adapter_handle(id);
   assert!(!lifecycle.is_alive());
+  assert!(other_lifecycle.is_alive());
 }

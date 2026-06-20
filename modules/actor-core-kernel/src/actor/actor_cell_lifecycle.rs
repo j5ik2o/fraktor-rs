@@ -14,6 +14,10 @@ use crate::{
   system::guardian::GuardianKind,
 };
 
+#[cfg(test)]
+#[path = "actor_cell_lifecycle_test.rs"]
+mod tests;
+
 impl ActorCell {
   pub(super) fn mark_terminated(&self) {
     self.terminated.store(true, Ordering::Release);

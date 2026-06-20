@@ -1,7 +1,7 @@
 //! Actor cell pipe tasks facet for actor cells.
 
 use alloc::format;
-use core::task::Poll;
+use core::{mem, task::Poll};
 
 use crate::{
   actor::{
@@ -9,9 +9,14 @@ use crate::{
     actor_ref::ActorRef,
     context_pipe::{ContextPipeFuture, ContextPipeTask, ContextPipeTaskId},
     error::PipeSpawnError,
+    messaging::AnyMessage,
   },
   event::logging::LogLevel,
 };
+
+#[cfg(test)]
+#[path = "actor_cell_pipe_tasks_test.rs"]
+mod tests;
 
 impl ActorCell {
   /// Registers a new pipe task targeting the actor itself and schedules its first poll.
@@ -43,48 +48,58 @@ impl ActorCell {
   }
 
   fn poll_pipe_task(&self, task_id: ContextPipeTaskId) {
-    let result = self.state.with_write(|state| {
+    let task = self.state.with_write(|state| {
       let tasks = &mut state.pipe_tasks;
       let index = tasks.iter().position(|task| task.id() == task_id)?;
-      match tasks[index].poll() {
-        | Poll::Ready(message) => {
-          let mut task = tasks.swap_remove(index);
-          Some((message, task.take_delivery_target()))
-        },
-        | Poll::Pending => None,
-      }
+      Some(tasks.swap_remove(index))
     });
 
-    if let Some((Some(message), target)) = result {
-      if let Some(mut target_ref) = target {
-        let target_pid = target_ref.pid();
-        if let Err(send_error) = target_ref.try_tell(message) {
-          self.system().record_send_error(Some(target_pid), &send_error);
-          self.system().emit_log(
-            LogLevel::Warn,
-            format!("pipe_to delivery failed for target {:?}: {:?}", target_pid, send_error),
-            Some(self.pid()),
-            None,
-          );
-        }
-      } else {
-        let self_pid = self.pid();
-        let mut self_ref = self.actor_ref();
-        if let Err(send_error) = self_ref.try_tell(message) {
-          self.system().record_send_error(Some(self_pid), &send_error);
-          self.system().emit_log(
-            LogLevel::Warn,
-            format!("pipe_to_self delivery failed for {:?}: {:?}", self_pid, send_error),
-            Some(self_pid),
-            None,
-          );
-        }
+    let Some(mut task) = task else {
+      return;
+    };
+
+    match task.poll() {
+      | Poll::Ready(Some(message)) => {
+        let target = task.take_delivery_target();
+        self.deliver_pipe_task_result(message, target);
+      },
+      | Poll::Ready(None) => {},
+      | Poll::Pending => {
+        self.state.with_write(|state| state.pipe_tasks.push(task));
+      },
+    }
+  }
+
+  fn deliver_pipe_task_result(&self, message: AnyMessage, target: Option<ActorRef>) {
+    if let Some(mut target_ref) = target {
+      let target_pid = target_ref.pid();
+      if let Err(send_error) = target_ref.try_tell(message) {
+        self.system().record_send_error(Some(target_pid), &send_error);
+        self.system().emit_log(
+          LogLevel::Warn,
+          format!("pipe_to delivery failed for target {:?}: {:?}", target_pid, send_error),
+          Some(self.pid()),
+          None,
+        );
+      }
+    } else {
+      let self_pid = self.pid();
+      let mut self_ref = self.actor_ref();
+      if let Err(send_error) = self_ref.try_tell(message) {
+        self.system().record_send_error(Some(self_pid), &send_error);
+        self.system().emit_log(
+          LogLevel::Warn,
+          format!("pipe_to_self delivery failed for {:?}: {:?}", self_pid, send_error),
+          Some(self_pid),
+          None,
+        );
       }
     }
   }
 
   pub(super) fn drop_pipe_tasks(&self) {
-    self.state.with_write(|state| state.pipe_tasks.clear());
+    let tasks = self.state.with_write(|state| mem::take(&mut state.pipe_tasks));
+    drop(tasks);
   }
 
   pub(super) fn handle_pipe_task_ready(&self, task_id: ContextPipeTaskId) {

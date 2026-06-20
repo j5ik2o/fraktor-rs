@@ -1,5 +1,10 @@
 use super::*;
-use crate::actor::messaging::system_message::FailurePayload;
+use crate::actor::{
+  actor_cell::tests::*,
+  actor_cell_dispatch::ActorCellInvoker,
+  actor_ref::dead_letter::DeadLetterReason,
+  messaging::{message_invoker::MessageInvoker, system_message::FailurePayload},
+};
 
 struct PostRestartFailingActor;
 

@@ -1,18 +1,16 @@
-use alloc::{
+pub(crate) use alloc::{
   format,
   string::{String, ToString},
-  vec,
   vec::Vec,
 };
-use core::{hint::spin_loop, num::NonZeroUsize, time::Duration};
+pub(crate) use core::{hint::spin_loop, num::NonZeroUsize, time::Duration};
 
-use fraktor_utils_core_rs::sync::{ArcShared, SharedAccess, SpinSyncMutex};
+pub(crate) use fraktor_utils_core_rs::sync::{ArcShared, SharedAccess, SpinSyncMutex};
 
-use super::{ActorCell, actor_cell_dispatch::ActorCellInvoker};
-use crate::{
+pub(crate) use super::ActorCell;
+pub(crate) use crate::{
   actor::{
     Actor, ActorContext, Pid, ReceiveTimeoutState, WatchRegistrationKind,
-    actor_ref::dead_letter::DeadLetterReason,
     error::{ActorError, ActorErrorReason, PipeSpawnError},
     messaging::{
       ActorIdentity, AnyMessage, AnyMessageView, Identify, Kill, NotInfluenceReceiveTimeout, PoisonPill,
@@ -30,11 +28,11 @@ use crate::{
   system::ActorSystem,
 };
 
-struct NonInfluencingTick;
+pub(crate) struct NonInfluencingTick;
 
 impl NotInfluenceReceiveTimeout for NonInfluencingTick {}
 
-struct ReceiveTimeoutNoopActor;
+pub(crate) struct ReceiveTimeoutNoopActor;
 
 impl Actor for ReceiveTimeoutNoopActor {
   fn pre_start(&mut self, ctx: &mut ActorContext<'_>) -> Result<(), ActorError> {
@@ -47,7 +45,7 @@ impl Actor for ReceiveTimeoutNoopActor {
   }
 }
 
-fn current_schedule_generation(cell: &ActorCell) -> u64 {
+pub(crate) fn current_schedule_generation(cell: &ActorCell) -> u64 {
   cell
     .receive_timeout
     .as_shared_lock()
@@ -55,7 +53,7 @@ fn current_schedule_generation(cell: &ActorCell) -> u64 {
     .expect("receive timeout should be armed")
 }
 
-struct ProbeActor;
+pub(crate) struct ProbeActor;
 
 impl Actor for ProbeActor {
   fn receive(&mut self, _ctx: &mut ActorContext<'_>, _message: AnyMessageView<'_>) -> Result<(), ActorError> {
@@ -63,22 +61,22 @@ impl Actor for ProbeActor {
   }
 }
 
-struct RecordingActor {
+pub(crate) struct RecordingActor {
   log: ArcShared<SpinSyncMutex<Vec<Pid>>>,
 }
 
 impl RecordingActor {
-  fn new(log: ArcShared<SpinSyncMutex<Vec<Pid>>>) -> Self {
+  pub(crate) fn new(log: ArcShared<SpinSyncMutex<Vec<Pid>>>) -> Self {
     Self { log }
   }
 }
 
-struct LifecycleRecorderActor {
+pub(crate) struct LifecycleRecorderActor {
   log: ArcShared<SpinSyncMutex<Vec<&'static str>>>,
 }
 
 impl LifecycleRecorderActor {
-  fn new(log: ArcShared<SpinSyncMutex<Vec<&'static str>>>) -> Self {
+  pub(crate) fn new(log: ArcShared<SpinSyncMutex<Vec<&'static str>>>) -> Self {
     Self { log }
   }
 }
@@ -108,12 +106,12 @@ impl Actor for LifecycleRecorderActor {
 /// 委譲せず、`format!("pre_restart:{}", reason.as_str())` 形式で記録する。
 /// これにより「fault_recreate がいつ deferred されているか」「reason payload が
 /// 失われずに post_restart へ届いているか」を観測できる。
-struct RestartLifecycleRecorderActor {
+pub(crate) struct RestartLifecycleRecorderActor {
   log: ArcShared<SpinSyncMutex<Vec<String>>>,
 }
 
 impl RestartLifecycleRecorderActor {
-  fn new(log: ArcShared<SpinSyncMutex<Vec<String>>>) -> Self {
+  pub(crate) fn new(log: ArcShared<SpinSyncMutex<Vec<String>>>) -> Self {
     Self { log }
   }
 }
@@ -160,12 +158,12 @@ impl Actor for RecordingActor {
   }
 }
 
-struct OrderedMessageActor {
+pub(crate) struct OrderedMessageActor {
   received: ArcShared<SpinSyncMutex<Vec<i32>>>,
 }
 
 impl OrderedMessageActor {
-  fn new(received: ArcShared<SpinSyncMutex<Vec<i32>>>) -> Self {
+  pub(crate) fn new(received: ArcShared<SpinSyncMutex<Vec<i32>>>) -> Self {
     Self { received }
   }
 }
@@ -179,13 +177,16 @@ impl Actor for OrderedMessageActor {
   }
 }
 
-struct IdentityProbeActor {
+pub(crate) struct IdentityProbeActor {
   received: ArcShared<SpinSyncMutex<usize>>,
   replies:  ArcShared<SpinSyncMutex<Vec<ActorIdentity>>>,
 }
 
 impl IdentityProbeActor {
-  fn new(received: ArcShared<SpinSyncMutex<usize>>, replies: ArcShared<SpinSyncMutex<Vec<ActorIdentity>>>) -> Self {
+  pub(crate) fn new(
+    received: ArcShared<SpinSyncMutex<usize>>,
+    replies: ArcShared<SpinSyncMutex<Vec<ActorIdentity>>>,
+  ) -> Self {
     Self { received, replies }
   }
 }
@@ -200,7 +201,7 @@ impl Actor for IdentityProbeActor {
   }
 }
 
-struct ReceiveTimeoutFailingActor;
+pub(crate) struct ReceiveTimeoutFailingActor;
 
 impl Actor for ReceiveTimeoutFailingActor {
   fn pre_start(&mut self, ctx: &mut ActorContext<'_>) -> Result<(), ActorError> {
@@ -216,7 +217,7 @@ impl Actor for ReceiveTimeoutFailingActor {
   }
 }
 
-struct ResumeSupervisorActor;
+pub(crate) struct ResumeSupervisorActor;
 
 impl Actor for ResumeSupervisorActor {
   fn receive(&mut self, _ctx: &mut ActorContext<'_>, _message: AnyMessageView<'_>) -> Result<(), ActorError> {
@@ -245,7 +246,7 @@ impl Actor for ResumeSupervisorActor {
 
 /// AC-H3-T4 専用の失敗生成 actor。u32 メッセージを受けると recoverable 失敗を
 /// 返し、`ActorCellInvoker::invoke` の Err 経路経由で `report_failure` を発火する。
-struct FailingOnU32Actor;
+pub(crate) struct FailingOnU32Actor;
 
 impl Actor for FailingOnU32Actor {
   fn receive(&mut self, _ctx: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
@@ -344,27 +345,6 @@ impl Actor for FailingOnU32Actor {
 // Pekko `DeathWatch.scala:104` `watching.get(actor)` の 3 値セマンティクスを
 // fraktor-rs の split data structure (`watching` + `watch_with_messages`) と
 // `WatchKind::User` フィルタで合成できることを検証する。
-
-#[path = "actor_cell_adapter_handles_test.rs"]
-mod adapter_handles;
-#[path = "actor_cell_children_test.rs"]
-mod children;
-#[path = "actor_cell_death_watch_test.rs"]
-mod death_watch;
-#[path = "actor_cell_dispatch_test.rs"]
-mod dispatch;
-#[path = "actor_cell_fault_handling_test.rs"]
-mod fault_handling;
-#[path = "actor_cell_lifecycle_test.rs"]
-mod lifecycle;
-#[path = "actor_cell_pipe_tasks_test.rs"]
-mod pipe_tasks;
-#[path = "actor_cell_receive_timeout_test.rs"]
-mod receive_timeout;
-#[path = "actor_cell_stash_test.rs"]
-mod stash;
-#[path = "actor_cell_timers_test.rs"]
-mod timers;
 
 #[test]
 fn actor_cell_holds_components() {
@@ -469,7 +449,7 @@ fn tags_empty_when_props_has_no_tags() {
   assert!(cell.tags().is_empty());
 }
 
-fn wait_until(mut condition: impl FnMut() -> bool) {
+pub(crate) fn wait_until(mut condition: impl FnMut() -> bool) {
   for _ in 0..10_000 {
     if condition() {
       return;

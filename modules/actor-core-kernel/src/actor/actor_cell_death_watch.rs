@@ -11,6 +11,10 @@ use crate::actor::{
   messaging::{AnyMessage, system_message::SystemMessage},
 };
 
+#[cfg(test)]
+#[path = "actor_cell_death_watch_test.rs"]
+mod tests;
+
 impl ActorCell {
   /// Registers `target` as a user-level watch on this cell (Pekko
   /// `DeathWatch.watching += target`).

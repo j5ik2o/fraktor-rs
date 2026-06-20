@@ -2,6 +2,10 @@
 
 use crate::actor::{ActorCell, ActorContext, messaging::AnyMessage};
 
+#[cfg(test)]
+#[path = "actor_cell_receive_timeout_test.rs"]
+mod tests;
+
 impl ActorCell {
   pub(super) fn reschedule_receive_timeout_after_user_success(ctx: &mut ActorContext<'_>, message: &AnyMessage) {
     // Pekko `dungeon/ReceiveTimeout.scala:40-42`

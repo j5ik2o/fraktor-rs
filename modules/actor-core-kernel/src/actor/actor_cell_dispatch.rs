@@ -18,6 +18,10 @@ use crate::{
   dispatch::mailbox::{Mailbox, metrics_event::MailboxPressureEvent},
 };
 
+#[cfg(test)]
+#[path = "actor_cell_dispatch_test.rs"]
+mod tests;
+
 /// Installs the dispatcher invoker for the actor cell mailbox.
 pub(super) fn install_invoker(cell: &ArcShared<ActorCell>, mailbox: &ArcShared<Mailbox>) {
   let invoker: MessageInvokerShared = MessageInvokerShared::new(Box::new(ActorCellInvoker { cell: cell.downgrade() }));
@@ -174,6 +178,9 @@ impl MessageInvoker for ActorCellInvoker {
       // ActorCell has been dropped, silently ignore the notification
       return Ok(());
     };
+    if cell.is_terminated() {
+      return Ok(());
+    }
     let mut ctx = cell.make_context();
     let result = cell.actor.with_write(|actor| actor.on_mailbox_pressure(&mut ctx, event));
     if let Err(ref error) = result {

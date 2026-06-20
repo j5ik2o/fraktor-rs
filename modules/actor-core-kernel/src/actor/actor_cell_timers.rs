@@ -11,6 +11,10 @@ use crate::actor::{
   scheduler::{SchedulerCommand, SchedulerError, SchedulerHandle},
 };
 
+#[cfg(test)]
+#[path = "actor_cell_timers_test.rs"]
+mod tests;
+
 impl ActorCell {
   fn take_timer_handle(&self, key: &str) -> Option<SchedulerHandle> {
     self.state.with_write(|state| {
@@ -22,6 +26,7 @@ impl ActorCell {
 
   fn store_timer_handle(&self, key: String, handle: SchedulerHandle) {
     self.state.with_write(|state| {
+      state.timer_handles.retain(|(_, handle)| !handle.is_cancelled() && !handle.is_completed());
       state.timer_handles.push((key, handle));
     });
   }

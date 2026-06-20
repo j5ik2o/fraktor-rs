@@ -1,4 +1,10 @@
-use super::*;
+use crate::actor::{actor_cell::tests::*, messaging::system_message::SystemMessage};
+
+impl ActorCell {
+  fn stashed_message_len(&self) -> usize {
+    self.state.with_read(|state| state.stashed_messages.len())
+  }
+}
 
 #[test]
 fn unstash_messages_are_replayed_before_existing_mailbox_messages() {

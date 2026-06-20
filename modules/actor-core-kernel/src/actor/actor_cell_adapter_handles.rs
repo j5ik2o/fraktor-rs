@@ -7,6 +7,10 @@ use crate::actor::{
   message_adapter::{AdapterLifecycleState, AdapterRefHandle, AdapterRefHandleId},
 };
 
+#[cfg(test)]
+#[path = "actor_cell_adapter_handles_test.rs"]
+mod tests;
+
 impl ActorCell {
   /// Allocates and tracks a new adapter handle for message adapters.
   pub(crate) fn acquire_adapter_handle(&self) -> (AdapterRefHandleId, ArcShared<AdapterLifecycleState>) {

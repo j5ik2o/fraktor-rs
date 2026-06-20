@@ -6,6 +6,10 @@ use crate::actor::{
   ActorCell, Pid, SuspendReason, messaging::system_message::SystemMessage, supervision::RestartStatistics,
 };
 
+#[cfg(test)]
+#[path = "actor_cell_children_test.rs"]
+mod tests;
+
 impl ActorCell {
   /// Registers a child pid for supervision.
   pub fn register_child(&self, pid: Pid) {
@@ -52,13 +56,16 @@ impl ActorCell {
     // Skip when either the pid is not a live child or the container is already
     // terminating (`reason == Termination`), matching Pekko's guard that
     // prevents re-stopping during parent termination.
-    let should_stop = self
-      .state
-      .with_read(|state| state.children_state.children().contains(&pid) && !state.children_state.is_terminating());
+    let should_stop = self.state.with_write(|state| {
+      if !state.children_state.children().contains(&pid) || state.children_state.is_terminating() {
+        return false;
+      }
+      state.children_state.shall_die(pid);
+      true
+    });
     if !should_stop {
       return;
     }
-    self.mark_child_dying(pid);
     if let Err(send_error) = self.system().send_system_message(pid, SystemMessage::Stop) {
       self.system().record_send_error(Some(pid), &send_error);
     }

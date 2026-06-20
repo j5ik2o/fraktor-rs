@@ -1,6 +1,7 @@
 use super::*;
 use crate::{
   actor::{
+    actor_cell::tests::*,
     actor_ref::{ActorRef, ActorRefSender, SendOutcome},
     error::SendError,
   },
@@ -210,7 +211,7 @@ fn poison_pill_user_message_preserves_user_ordering() {
   // the ordering invariant below requires that it is not received.
   let second_result = cell.actor_ref().try_tell(AnyMessage::new(2_u8));
   assert!(
-    second_result.is_ok() || matches!(second_result, Err(crate::actor::error::SendError::Closed(_))),
+    second_result.is_ok() || matches!(second_result, Err(SendError::Closed(_))),
     "message 2 should be accepted or rejected as Closed, got {second_result:?}",
   );
 
@@ -275,7 +276,7 @@ fn dropped_actor_cell_invoker_ignores_user_system_and_pressure_messages() {
 }
 
 #[test]
-fn terminated_actor_cell_invoker_ignores_user_and_system_messages() {
+fn terminated_actor_cell_invoker_ignores_user_system_and_pressure_messages() {
   let state = ActorSystem::new_empty().state();
   let log = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let props = Props::from_fn({
@@ -288,9 +289,11 @@ fn terminated_actor_cell_invoker_ignores_user_and_system_messages() {
   let mut invoker = ActorCellInvoker { cell: cell.downgrade() };
   invoker.system_invoke(SystemMessage::Create).expect("create");
   cell.mark_terminated();
+  let event = MailboxPressureEvent::new(cell.pid(), 9, 10, 90, Duration::from_millis(1), Some(8));
 
   invoker.invoke(AnyMessage::new(())).expect("terminated user invoke is ignored");
   invoker.system_invoke(SystemMessage::Stop).expect("terminated system invoke is ignored");
+  invoker.invoke_mailbox_pressure(&event).expect("terminated pressure invoke is ignored");
 
   assert_eq!(log.lock().clone(), vec!["pre_start"]);
 }

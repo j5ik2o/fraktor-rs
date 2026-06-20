@@ -8,6 +8,7 @@ use portable_atomic::AtomicBool;
 use crate::{
   actor::{
     ActorCellState, ActorCellStateShared, ActorContext, ActorShared, Pid, ReceiveTimeoutStateShared,
+    actor_cell_dispatch::install_invoker,
     actor_ref::{ActorRef, ActorRefSenderShared},
     messaging::message_invoker::MessageInvokerPipeline,
     props::{ActorFactoryShared, Props},
@@ -23,6 +24,10 @@ use crate::{
     state::{SystemStateShared, SystemStateWeak},
   },
 };
+
+#[cfg(test)]
+#[path = "actor_cell_test.rs"]
+pub(crate) mod tests;
 
 /// Runtime container responsible for executing an actor instance.
 ///
@@ -181,7 +186,7 @@ impl ActorCell {
       // this actor cell. The invoker holds a weak reference to the cell to
       // break the ActorCell → Mailbox → Invoker → ActorCell ownership cycle.
       let mailbox_handle = cell.mailbox();
-      super::actor_cell_dispatch::install_invoker(&cell, &mailbox_handle);
+      install_invoker(&cell, &mailbox_handle);
       // Late-bind the weak actor handle to the mailbox so `Mailbox::run` can
       // early-return after the cell drops, and so detach paths can call
       // `Mailbox::clean_up` without re-deriving the back-reference.
