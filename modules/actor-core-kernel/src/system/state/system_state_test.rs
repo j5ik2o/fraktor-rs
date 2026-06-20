@@ -15,6 +15,7 @@ use crate::{
       ActorPath, ActorPathParser, ActorPathScheme, ActorUid, GuardianKind as PathGuardianKind, PathResolutionError,
     },
     actor_ref::{ActorRef, ActorRefSender, SendOutcome},
+    actor_ref_provider::{ActorRefProvider, ActorRefProviderHandleShared},
     error::{ActorError, SendError},
     messaging::{
       AnyMessage, AnyMessageView,
@@ -238,6 +239,16 @@ fn system_state_mark_terminated() {
 }
 
 #[test]
+fn system_state_begin_termination_marks_terminating() {
+  let state = build_state();
+  assert!(!state.is_terminating());
+
+  assert!(state.begin_termination());
+
+  assert!(state.is_terminating());
+}
+
+#[test]
 fn system_state_register_and_remove_cell() {
   let state = build_shared_state();
   let root_pid = state.allocate_pid();
@@ -455,6 +466,19 @@ fn system_state_user_guardian_pid() {
 }
 
 #[test]
+fn system_state_guardian_pid_returns_registered_guardian() {
+  let mut state = build_state();
+  let shared = SystemStateShared::new(build_state());
+  let pid = shared.allocate_pid();
+  let props = Props::from_fn(|| RestartProbeActor);
+  let cell = ActorCell::create(shared, pid, None, "root".to_string(), &props).expect("root cell");
+
+  state.set_root_guardian(&cell);
+
+  assert_eq!(state.guardian_pid(GuardianKind::Root), Some(pid));
+}
+
+#[test]
 fn system_state_child_pids() {
   let state = build_state();
   let parent_pid = state.allocate_pid();
@@ -540,6 +564,13 @@ fn system_state_emit_log() {
 
   let named_log = named_log.expect("named logger log event should be published");
   assert_eq!(named_log.logger_name(), Some("my_logger"));
+}
+
+#[test]
+fn system_state_reports_enabled_log_level_from_logging_registry() {
+  let state = build_state();
+
+  assert!(state.is_log_level_enabled(LogLevel::Info));
 }
 
 #[test]
@@ -667,6 +698,26 @@ fn system_state_remote_authority_events() {
   let events_snapshot = events_shared.lock().clone();
   assert!(events_snapshot.iter().any(|event| matches!(event, EventStreamEvent::RemoteAuthority(remote)
     if remote.authority() == "node:2552" && matches!(remote.state(), AuthorityState::Connected))));
+}
+
+#[test]
+fn system_state_remote_authority_deferred_messages_round_trip() {
+  let mut state = build_state();
+  let authority = "node:2552";
+
+  state.remote_authority_try_defer(authority, AnyMessage::new(42_i32)).expect("defer message");
+
+  assert!(
+    state
+      .remote_authority_snapshots()
+      .iter()
+      .any(|(snapshot_authority, state)| snapshot_authority == authority && *state == AuthorityState::Unresolved)
+  );
+
+  let drained = state.remote_authority_set_connected(authority).expect("drained messages");
+
+  assert_eq!(drained.len(), 1);
+  assert_eq!(state.remote_authority_state(authority), AuthorityState::Connected);
 }
 
 #[test]
@@ -893,6 +944,32 @@ fn system_state_logs_failure_with_pid_origin() {
 }
 
 struct RestartProbeActor;
+
+struct StubActorRefProvider;
+
+impl ActorRefProvider for StubActorRefProvider {
+  fn supported_schemes(&self) -> &'static [ActorPathScheme] {
+    &[ActorPathScheme::FraktorTcp]
+  }
+
+  fn actor_ref(&mut self, _path: ActorPath) -> Result<ActorRef, ActorError> {
+    Ok(ActorRef::null())
+  }
+
+  fn termination_signal(&self) -> TerminationSignal {
+    TerminationSignal::already_terminated()
+  }
+}
+
+#[test]
+fn system_state_actor_ref_provider_round_trip() {
+  let mut state = build_state();
+  let provider = ActorRefProviderHandleShared::new(StubActorRefProvider);
+
+  state.install_actor_ref_provider(&provider);
+
+  assert!(state.actor_ref_provider::<StubActorRefProvider>().is_some());
+}
 
 #[derive(Default)]
 struct RemoteWatchHookCalls {
