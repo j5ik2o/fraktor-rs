@@ -56,3 +56,7 @@
 - 英語で生成した requirements / design / tasks を後から機械的に日本語へ置換する。
 - 英語の一般論をそのまま持ち込み、既存の日本語ドメイン語彙とずれた spec を作る。
 - Kiro 系と OpenSpec 系の成果物の責務を曖昧にする。
+- 以下は`cc-sdd`の配布物なので人間の許可なく変更しないでください 
+  - `CC-SDD-CLAUDE.md`, `CC-SDD-CODEX.md`, `.kiro/settings`, `.agents/skills/kiro-*`, `.codex/skills/kiro-*`, `.claude/skills/kiro-*`
+- 以下は`openspec`の配布物なの人間の許可なく変更しないでください
+  - `.agents/skills/opsx-*`, `.codex/skills/opsx-*`, `.claude/skills/opsx-*`
