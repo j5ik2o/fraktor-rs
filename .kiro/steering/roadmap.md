@@ -58,8 +58,8 @@
 - [x] cluster-sharding-extractor-contract -- ShardingEnvelope / ShardingMessageExtractor SPI と HashCode / Murmur2 標準実装群を定義する。Dependencies: cluster-grain-typed-entity-facade（2026-06-13 完了、PR #1990）
 - [x] cluster-sharding-health-and-join-compat -- grain/placement の readiness check（core 完結の純粋判定 + 公開アクセサ）と sharding join compatibility の除外キー整備（required key の追加は config 所有化とともに後続スペックへ委譲）を定義する。Dependencies: cluster-active-compatibility-baseline（2026-06-13 完了、PR #1993）
 - [x] cluster-ddata-core-types -- ReplicatedData 基底 SPI、Key、SelfUniqueAddress、基本 CRDT（Flag / GCounter / PNCounter / PNCounterMap）、consistency levels、補助 protocol 型を新設 ddata モジュールに定義する。Dependencies: none
-- [ ] actor-cell-facet-structure -- ActorCell の dispatch / fault handling / death watch / children / receive timeout facet 分離と receive timeout 集約を行い、後続 API 追加の変更面を小さくする。Dependencies: none
-- [ ] actor-system-state-registry-split -- SystemState / SystemStateShared の dispatcher / mailbox / event / guardian / serialization / remote / scheduler registry 分離を行い、mailbox と EventBus workstream の変更点を独立させる。Dependencies: none
+- [x] actor-cell-facet-structure -- ActorCell の dispatch / fault handling / death watch / children / receive timeout facet 分離と receive timeout 集約を行い、後続 API 追加の変更面を小さくする。Dependencies: none
+- [x] actor-system-state-registry-split -- SystemState / SystemStateShared の dispatcher / mailbox / event / guardian / serialization / remote / scheduler registry 分離を行い、mailbox と EventBus workstream の変更点を独立させる。Dependencies: none
 - [ ] actor-typed-receptionist-setup -- typed receptionist の extension API と behavior 実装を分離し、ReceptionistSetup 相当の差し替え契約を定義する。Dependencies: none
 - [ ] actor-kernel-message-observability -- FSM transition subscription、DeadLetterSuppression / SuppressedDeadLetter 生成経路、PossiblyHarmful、WrappedMessage を kernel の message observability contract として定義する。Dependencies: actor-cell-facet-structure
 - [ ] actor-pattern-utility-parity -- FutureTimeoutSupport.after、ActorSelection ask、CircuitBreaker state listeners と exponential backoff / jitter を pattern utility parity として定義する。Dependencies: none
