@@ -15,11 +15,11 @@ Actor Cell (アクターセル) の同一型実装を dispatch、lifecycle、fau
 _Avoid_: Runtime, Public Facet API, Trait Facet, ActorCell Subclass
 
 **Actor System State (アクターシステム状態)**:
-actor system scoped state を既存 accessor 経由で扱う façade。実行補助、dispatcher / mailbox、event / logging、guardian / cells、remote / provider、scheduler / lifecycle などの System State Registry (システム状態レジストリ) を束ねるが、それぞれの subsystem behavior を直接所有する概念ではない。
+actor system scoped state を既存 accessor 経由で扱う facade。実行補助、dispatcher / mailbox、event / logging、guardian / cells、remote / provider、scheduler / lifecycle などの System State Registry (システム状態レジストリ) を束ねるが、それぞれの subsystem behavior を直接所有する概念ではない。
 _Avoid_: Runtime, Global State, God Object, Shared State Bag
 
 **System State Registry (システム状態レジストリ)**:
-Actor System State (アクターシステム状態) の内側で、dispatcher / mailbox、event / logging、guardian / cells など単一 subsystem の state ownership を担う private registry。外部 crate に公開する registry handle ではなく、既存 façade から委譲される内部境界である。
+Actor System State (アクターシステム状態) の内側で、dispatcher / mailbox、event / logging、guardian / cells など単一 subsystem の state ownership を担う private registry。外部 crate に公開する registry handle ではなく、既存 facade から委譲される内部境界である。
 _Avoid_: Runtime, Public Registry Handle, Shared Global Registry, Service Locator
 
 **DeathWatch (死亡監視)**:
@@ -54,12 +54,12 @@ _Avoid_: Mailbox Runtime, Queue Implementation, Blocking Wait
 actor system の shutdown phase に沿って task を登録・解除・実行し、actor termination を順序付きに待てる lifecycle contract。OS signal handling や process exit、full cluster shutdown command ではない。
 _Avoid_: Process Exit, OS Signal Handling, Full Cluster Shutdown Command
 
-**Typed Actor Facade (型付きアクターファサード)**:
+**Typed Actor API Boundary (型付きアクターAPI境界)**:
 untyped actor kernel の上に、message type、typed behavior、typed system setup、typed extension surface を載せる利用者向け actor API 境界。kernel の Actor Cell (アクターセル) や Actor System State (アクターシステム状態) そのものではない。
 _Avoid_: Kernel API, Actor Cell, Behavior Implementation
 
 **Typed Receptionist (型付きレセプショニスト)**:
-typed actor が service key に対する登録、解除、購読、検索を行うための discovery surface。Cluster Discovery や Cluster PubSub ではなく、Typed Actor Facade (型付きアクターファサード) 上の actor-local service discovery 契約である。
+typed actor が service key に対する登録、解除、購読、検索を行うための discovery surface。Cluster Discovery や Cluster PubSub ではなく、Typed Actor API Boundary (型付きアクターAPI境界) 上の actor-local service discovery 契約である。
 _Avoid_: Cluster Discovery, Cluster PubSub, Global Service Registry
 
 **Receptionist Setup (レセプショニスト設定)**:
