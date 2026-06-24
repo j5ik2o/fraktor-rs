@@ -26,14 +26,5 @@ description = "Ultra-fast worker for bounded mechanical edits with easy-to-revie
 config_file = "agents/spec-reviewer.toml"
 description = "Cross-spec consistency reviewer for detecting contradictions, boundary mismatches, and dependency-order problems."
 
-[[hooks.PostToolUse]]
-matcher = "^(apply_patch|Edit|Write)$"
-
-[[hooks.PostToolUse.hooks]]
-type = "command"
-command = '/usr/bin/python3 "$(git rev-parse --show-toplevel)/.agents/hooks/run_rust_checks_after_edit.py" --agent codex'
-timeout = 1800
-statusMessage = "Rust 変更後の fmt / dylint / clippy を確認中"
-
 [projects."/Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs"]
 trust_level = "trusted"

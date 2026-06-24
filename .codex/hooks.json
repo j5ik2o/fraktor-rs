@@ -1,0 +1,41 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$HOME/.agents/skills/agmsg/scripts/session-start.sh\" codex \"$(git rev-parse --show-toplevel)\"",
+            "commandWindows": "$b=$env:GIT_BASH; if (-not $b) { $b=$env:AGMSG_BASH }; if (-not $b) { $b='bash.exe' }; & $b -lc '\"$HOME/.agents/skills/agmsg/scripts/session-start.sh\" codex \"$(git rev-parse --show-toplevel)\"'"
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$HOME/.agents/skills/agmsg/scripts/session-end.sh\" codex \"$(git rev-parse --show-toplevel)\"",
+            "commandWindows": "$b=$env:GIT_BASH; if (-not $b) { $b=$env:AGMSG_BASH }; if (-not $b) { $b='bash.exe' }; & $b -lc '\"$HOME/.agents/skills/agmsg/scripts/session-end.sh\" codex \"$(git rev-parse --show-toplevel)\"'"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "^(apply_patch|Edit|Write)$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$(git rev-parse --show-toplevel)/.agents/hooks/run_rust_checks_after_edit.py\" --agent codex",
+            "timeout": 1800,
+            "statusMessage": "Rust 変更後の fmt / dylint / clippy を確認中"
+          }
+        ]
+      }
+    ]
+  }
+}
