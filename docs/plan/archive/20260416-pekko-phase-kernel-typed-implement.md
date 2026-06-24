@@ -14,7 +14,7 @@
 - `RoutingLogic::select(&self, ...)` 契約を守り、`&mut self` を導入しない
 - consistent hash は無状態で評価できる rendezvous hashing で表現する
 - smallest mailbox は既存の `ActorRef -> system_state -> cell -> mailbox().user_len()` 観測経路を使う
-- public API の見た目合わせではなく、Pekko の契約意図を Rust の既存パターンに翻訳する
+- public API の見た目を合わせるのではなく、Pekko の契約意図を Rust の既存パターンに翻訳する
 
 ## 変更対象
 - `modules/actor-core/src/core/kernel/routing/consistent_hashing_routing_logic.rs`

@@ -2,15 +2,15 @@
 
 ## 決定
 
-`cluster-*` は Apache Pekko Cluster / Cluster Sharding 互換クラスタではなく、Proto.Actor-Go 型の Virtual Actor / Grain runtime として位置づける。
+`cluster-*` は Apache Pekko Cluster / Cluster Sharding 互換のクラスタではなく、Proto.Actor-Go 型の Virtual Actor / Grain runtime として位置づける。
 
-Pekko は parity target ではない。大規模運用で必要になる membership、reachability、downing、placement、rebalance、remembered entities などの失敗ケースと設計論点を確認する参照実装として使う。
+Pekko は parity target ではない。大規模運用で必要になる membership、reachability、downing、placement、rebalance、remembered entities などの失敗ケースと設計上の論点を確認するための参照実装として使う。
 
 ## 背景
 
-現在の `cluster-core` は、`GrainRef`、`GrainKey`、`VirtualActorRegistry`、`PartitionIdentityLookup`、`PlacementCoordinatorCore` を中心に、ID から actor を解決して呼び出す Virtual Actor model をすでに持っている。この実装資産と利用者価値を主語にする方が、Pekko の広い cluster API parity を追うよりも焦点が明確になる。
+現在の `cluster-core` は、`GrainRef`、`GrainKey`、`VirtualActorRegistry`、`PartitionIdentityLookup`、`PlacementCoordinatorCore` を中心に、ID から actor を解決して呼び出す Virtual Actor model をすでに持っている。この実装資産と利用者への価値を主語にする方が、Pekko の広い cluster API parity を追うよりも焦点が明確になる。
 
-Pekko / Akka Cluster Sharding は大規模運用で成熟した semantics を持つ。一方で、ShardCoordinator や Cluster Singleton を中核にすると、ローリングアップデート時に coordinator の配置と移動を強く意識する必要がある。fraktor-rs ではそのモデルを中核に戻さず、Grain runtime が必要とする運用 contract を段階的に固める。
+Pekko / Akka Cluster Sharding は大規模運用で成熟した semantics を持つ。一方で、ShardCoordinator や Cluster Singleton を中核にすると、ローリングアップデート時に coordinator の配置と移動を強く意識する必要がある。fraktor-rs ではそのモデルを中核に戻さず、Grain runtime が必要とする運用上の contract を段階的に固める。
 
 ## 採用方針
 
@@ -29,7 +29,7 @@ Pekko から参照する論点:
 - Reachability の表現と failure observation
 - Split Brain Resolver / downing strategy の判断モデル
 - Shard rebalance の失敗ケース
-- Remembered entities が解いている復元要件
+- Remembered entities が解いている復元の要件
 - Distributed PubSub / Distributed Data が抱える registry replication の論点
 
 直近では主軸にしないもの:
@@ -49,7 +49,7 @@ Pros:
 
 - 既存の `cluster-core` 実装資産と一致する。
 - API の主語を「ID から actor を解決して呼ぶ」に絞れる。
-- ShardCoordinator / Cluster Singleton を中核にしないため、ローリングアップデート時の coordinator 配置問題を避けやすい。
+- ShardCoordinator / Cluster Singleton を中核にしないため、ローリングアップデート時の coordinator 配置の問題を避けやすい。
 - `no_std` core と `std` adaptor の分離と相性がよい。
 - Rust runtime としての差別化になる。
 
@@ -64,24 +64,24 @@ Cons:
 Pros:
 
 - Membership、reachability、SBR、Cluster Sharding、Distributed Data など、大規模クラスタの論点が揃っている。
-- Akka / Pekko 経験者には概念が伝わりやすい。
+- Akka / Pekko の経験者には概念が伝わりやすい。
 - gap analysis と実装タスクの対応が作りやすい。
 
 Cons:
 
 - ShardCoordinator、Cluster Singleton、Distributed Data などの実装とテストが重い。
-- coordinator 配置とローリングアップデート影響を設計の中心に戻してしまう。
+- coordinator の配置とローリングアップデートの影響を設計の中心に戻してしまう。
 - 既存の Grain API と二重モデルになりやすい。
 - Pekko parity を掲げると分母が大きくなり、戦略がぼやける。
 
 ## 直近の成功条件
 
-短期の成功条件は、大規模 Pekko parity ではなく、小中規模から安全に伸ばせる Grain runtime の運用 contract を固定すること。
+短期の成功条件は、大規模な Pekko parity ではなく、小中規模から安全に伸ばせる Grain runtime の運用上の contract を固定すること。
 
 - Grain identity resolution が安定している。
-- node join / leave / down に対して placement cache が破綻しない。
+- node の join / leave / down に対して placement cache が破綻しない。
 - rolling update 時に activation / routing がどう変わるか説明できる。
-- failure detector と downing の最小 contract がある。
+- failure detector と downing の最小の contract がある。
 - `cluster-adaptor-std` の local / static / AWS ECS provider の動作境界が明確である。
 
 ## Task slices
@@ -110,7 +110,7 @@ Cons:
 - ~~seed / discovery / lifecycle adapter の責務境界を明確にする。~~
 - ~~std adapter 実装で保持すべき subscription / driver lifetime を確認する。~~
 
-作業メモ: [2026-05-26_cluster-provider-boundary.md](2026-05-26_cluster-provider-boundary.md) で、DIP と port-and-adapter の向きを `cluster-core` が policy / port を所有し std が adapter 実装に留まる形として整理する。
+作業メモ: [2026-05-26_cluster-provider-boundary.md](2026-05-26_cluster-provider-boundary.md) で、DIP と port-and-adapter の向きを、`cluster-core` が policy / port を所有し std が adapter 実装に留まる形として整理する。
 
 ### ~~4. Failure detector and downing minimum~~
 
@@ -118,7 +118,7 @@ Cons:
 - ~~SBR 全面実装ではなく、最小 downing decision model を先に切る。~~
 - ~~Reachability matrix を入れるか、現在の suspect / unreachable event model を強化するかを比較する。~~
 
-作業メモ: [2026-05-26_failure-downing-boundary.md](2026-05-26_failure-downing-boundary.md) で、failure observation と member departure input を分離し、`DowningProvider` を decision port として扱う最小 contract を整理する。
+作業メモ: [2026-05-26_failure-downing-boundary.md](2026-05-26_failure-downing-boundary.md) で、failure observation と member departure input を分離し、`DowningProvider` を decision port として扱う最小の contract を整理する。
 
 ### ~~5. Placement scalability~~
 
@@ -126,11 +126,11 @@ Cons:
 - ~~rebalance を即実装する前に、join / leave / rolling update 時の movement と cache invalidation の期待値を固定する。~~
 - ~~remembered entities は persistence integration の要求が明確になるまで deferred とする。~~
 
-作業メモ: `define-placement-movement-contract` と `test-grain-pending-activation-contract` により、現行の bounded Placement scalability contract は `cluster-grain-runtime-operational-contract` に集約済み。今後の rebalance / remembered entities / recovery / drain は別 change として扱う。
+作業メモ: `define-placement-movement-contract` と `test-grain-pending-activation-contract` により、現行の bounded な Placement scalability contract は `cluster-grain-runtime-operational-contract` に集約済み。今後の rebalance / remembered entities / recovery / drain は別 change として扱う。
 
 ## Deferred scope
 
-以下は直近 roadmap から外す。必要になった時点で OpenSpec change として個別に切る。
+以下は直近の roadmap から外す。必要になった時点で OpenSpec change として個別に切る。
 
 - typed Cluster API wrapper
 - Cluster Singleton / ShardCoordinator parity
@@ -145,4 +145,4 @@ Cons:
 
 ## OpenSpec 境界
 
-この文書は方針とロードマップであり、API 仕様変更ではない。`ClusterProvider`、`DowningProvider`、`IdentityLookup`、`PlacementCoordinatorCore` などの公開 contract を変える段階で、個別の OpenSpec change を作成する。
+この文書は方針とロードマップであり、API の仕様変更ではない。`ClusterProvider`、`DowningProvider`、`IdentityLookup`、`PlacementCoordinatorCore` などの公開 contract を変える段階で、個別の OpenSpec change を作成する。

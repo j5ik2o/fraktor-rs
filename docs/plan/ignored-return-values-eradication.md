@@ -57,8 +57,8 @@ let_underscore_must_use = "deny"
 | ID | パターン | 既存 lint で検出不可の理由 |
 |----|----------|-------------------------|
 | P1 | `#[must_use]` 属性が付かない Result 風型・Handle 型の破棄（例: `oneshot::Sender::send(())`, `tokio::JoinHandle`） | 型自体が `#[must_use]` 付与されていないと `let_underscore_must_use` は発火しない |
-| P2 | `x.ok();`（`Result → Option` 変換で `must_use` 鎖が切れる） | `.ok()` の戻り値 `Option` は実装上 `#[must_use]` でも、式文はそのまま型エラーにならない |
-| P3 | default trait impl の `let _ = (key, now);` 引数破棄 | 引数 drop は `let_underscore_must_use` 対象外 |
+| P2 | `x.ok();`（`Result → Option` 変換で `must_use` の連鎖が切れる） | `.ok()` の戻り値 `Option` は実装上 `#[must_use]` でも、式文はそのまま型エラーにならない |
+| P3 | default trait impl の `let _ = (key, now);` による引数の破棄 | 引数の drop は `let_underscore_must_use` 対象外 |
 | P4 | `let _ = local_value;` でのライフタイム延長 | 右辺が RAII ガードなら `let_underscore_lock` などで拾える可能性はあるが未設定 |
 | P5 | `let _ = Box::from_raw(ptr);` などの明示 drop | `Box` は `#[must_use]` ではないため発火しない |
 
@@ -66,7 +66,7 @@ let_underscore_must_use = "deny"
 
 実サンプルを読んで分類を確認済み。
 
-- **A（純粋な違反 / Result 握りつぶし）**:
+- **A（純粋な違反 / Result の握りつぶし）**:
   - `modules/cluster-adaptor-std/src/std/tokio_gossiper.rs:97,99,100`（`oneshot::Sender::send`, `runtime.spawn`, `JoinHandle.await`）
   - `modules/actor-adaptor-std/src/std/tick_driver/tokio_tick_driver.rs:119-122`
   - `modules/actor-core/src/core/kernel/actor/scheduler/scheduler_core.rs:242,351,445`
@@ -79,7 +79,7 @@ let_underscore_must_use = "deny"
   - `modules/actor-core/tests/system_events.rs:49`
   - `modules/actor-core/tests/death_watch.rs:37,197`
   - `modules/cluster-core-kernel/src/core/cluster_core/tests.rs:1056`
-- **B（trait default impl の引数破棄）**:
+- **B（trait default impl の引数の破棄）**:
   - `modules/cluster-core-kernel/src/core/identity/identity_lookup.rs:49,59,71,82,92`
   - `modules/actor-core/src/core/kernel/dispatch/dispatcher/message_dispatcher.rs:122,132,177,182`
 - **C（ライフタイム延長 / 明示 drop）**:
@@ -99,7 +99,7 @@ let_underscore_must_use = "deny"
 |---|------|------|------|
 | 1 | `let _ = <Result/Option/#[must_use]>;` による握りつぶしを全件解消する | 明示 | ルール MUST NOT |
 | 2 | `.ok();` 式文による Result のエラー握りつぶしを全件解消する | 明示 | ルール MUST NOT |
-| 3 | 握りつぶしに見える `let _ = ...;` のうち引数破棄・ライフタイム延長・明示 drop を意図が明示される記法に置き換える | 暗黙（要件 1 由来） | 機械的強制のためには `let _ =` パターン自体を禁止する必要がある |
+| 3 | 握りつぶしに見える `let _ = ...;` のうち引数の破棄・ライフタイム延長・明示的な drop を、意図が明示される記法に置き換える | 暗黙（要件 1 由来） | 機械的強制のためには `let _ =` パターン自体を禁止する必要がある |
 | 4 | ルール §29 の許容例外には直前コメントで安全性を明示する | 明示 | ルール「許容例外」節 |
 | 5 | 既存の 2 lint で検出漏れするパターンを機械的に検出する強制手段を追加する | 暗黙（要件 1,2 由来） | 修正のみでは再発防止にならない |
 | 6 | 機械的強制を `scripts/ci-check.sh` 経由の CI に組み込む | 暗黙（要件 5 由来） | 既存 Dylint 群と同じ配線に載せる |
@@ -109,7 +109,7 @@ let_underscore_must_use = "deny"
 ### 5.1 対象
 
 - **ファイル範囲**: `modules/**/*.rs`
-  - production コード（`src/**`）
+  - プロダクションコード（`src/**`）
   - 統合テスト（`tests/**`）
   - モジュール内 `tests.rs`
 - **対象モジュール**: `actor-core`, `actor-adaptor-std`, `cluster-core`, `cluster-adaptor-std`, `persistence-core`, `remote-core`, `remote-adaptor-std`, `stream-core`, `stream-adaptor-std`, `utils-core`, `utils-adaptor-std`
@@ -163,16 +163,16 @@ D1 の「右辺の型に関係なく」は、P1〜P5 をすべて捕捉するた
 
 | カテゴリ | 方針 | 具体手段 |
 |---------|------|---------|
-| A | 失敗を観測可能にする | `?` 伝播、`if let Err(e) = ... { warn!("...") }`、テストは `.expect("...")`、shutdown best-effort は `// must-ignore:` コメント付き維持 |
-| B | 引数破棄自体を不要にする | trait impl の仮引数を `_name` 形式にリネームし `let _ = (...);` 自体を削除 |
-| C | 意図を明示する | `drop(x);` に置換、RAII ガードは `let _guard = ...;` に命名 |
-| D | 例外コメントを付与 | `// must-ignore: <理由>` を直前行に追加、または `drop(...)` 明示 |
+| A | 失敗を観測可能にする | `?` での伝播、`if let Err(e) = ... { warn!("...") }`、テストは `.expect("...")`、shutdown best-effort は `// must-ignore:` コメント付きで維持 |
+| B | 引数の破棄自体を不要にする | trait impl の仮引数を `_name` 形式にリネームし `let _ = (...);` 自体を削除する |
+| C | 意図を明示する | `drop(x);` に置換、RAII ガードは `let _guard = ...;` に命名する |
+| D | 例外コメントを付与する | `// must-ignore: <理由>` を直前行に追加、または `drop(...)` で明示する |
 
 ### 6.3 `no_std` / `std` 経路の遵守
 
-カテゴリ A でログ観測可能化する際の経路選択。
+カテゴリ A で失敗をログとして観測可能にする際の経路選択。
 
-- `modules/*-core/`（`no_std`）: `tracing` への新規直接依存は禁止。既存 `EventStream` / `log_event` 経路を使用
+- `modules/*-core/`（`no_std`）: `tracing` への新規の直接依存は禁止。既存の `EventStream` / `log_event` 経路を使用する
   - 参考: `modules/actor-core/src/core/kernel/event/stream/event_stream_events.rs`, `modules/actor-core/src/core/kernel/event/logging/`
 - `modules/*-adaptor-std/`（`std`）: `tracing::warn!` 使用可
 
@@ -180,11 +180,11 @@ D1 の「右辺の型に関係なく」は、P1〜P5 をすべて捕捉するた
 
 | アプローチ | 採否 | 理由 |
 |-----------|------|------|
-| 既存違反を全件修正のみ（lint 追加なし） | 不採用 | 再発防止なき修正は品質保証にならない（要件 5,6 不充足） |
-| `clippy::let_underscore_untyped` / `let_underscore_future` / `let_underscore_lock` を追加 | 不採用（fallback として保持） | P2（`.ok();`）と P3（引数破棄）は取りこぼす。Q1 で新 Dylint 不可の判断が出た場合の代替案 |
-| 新 Dylint `let-underscore-forbid-lint` を追加、`// must-ignore:` で例外許容 | **採用** | P1〜P5 全パターン捕捉。ルール §29 の「例外はコメント必須」を機械検証可能 |
-| `let _ = x;` → `drop(x);` の一括機械置換 | 不採用 | Result を drop しても Err は消える。盲目的置換は禁止 |
-| スコープを特定モジュール（例: `actor-core`）に先行縮小し段階実施 | 採否は Q2 に依存 | 560 箇所一括 PR は review 困難だが、Dylint 導入との同期を取る必要がある |
+| 既存違反を全件修正のみ（lint 追加なし） | 不採用 | 再発防止のない修正は品質保証にならない（要件 5,6 を満たさない） |
+| `clippy::let_underscore_untyped` / `let_underscore_future` / `let_underscore_lock` を追加 | 不採用（fallback として保持） | P2（`.ok();`）と P3（引数の破棄）は取りこぼす。Q1 で新 Dylint 不可の判断が出た場合の代替案 |
+| 新 Dylint `let-underscore-forbid-lint` を追加、`// must-ignore:` で例外を許容 | **採用** | P1〜P5 の全パターンを捕捉。ルール §29 の「例外はコメント必須」を機械的に検証可能 |
+| `let _ = x;` → `drop(x);` の一括機械置換 | 不採用 | Result を drop しても Err は消える。盲目的な置換は禁止 |
+| スコープを特定モジュール（例: `actor-core`）に先行して縮小し段階実施 | 採否は Q2 に依存 | 560 箇所の一括 PR はレビュー困難だが、Dylint 導入との同期を取る必要がある |
 
 ## 7. 実装方針
 
@@ -199,10 +199,10 @@ D1 の「右辺の型に関係なく」は、P1〜P5 をすべて捕捉するた
    - ルート `Cargo.toml` `[workspace.metadata.dylint].libraries` に `{ path = "lints/let-underscore-forbid-lint" }` を追加
    - `scripts/ci-check.sh` L654-665 の `lint_entries` 配列に `"let-underscore-forbid-lint:lints/let-underscore-forbid-lint"` を追加
 3. **既存違反の修正（カテゴリ別）**
-   - A: 失敗観測可能化
-   - B: 仮引数リネーム
+   - A: 失敗を観測可能にする
+   - B: 仮引数のリネーム
    - C: `drop(...)` / `let _guard` への置換
-   - D: `// must-ignore:` コメント付与
+   - D: `// must-ignore:` コメントの付与
 4. **検証**
    - `./scripts/ci-check.sh ai dylint let-underscore-forbid-lint` で全違反が解消されることを確認
    - `final-ci` ムーブメントで `./scripts/ci-check.sh ai all` を実行
@@ -211,11 +211,11 @@ D1 の「右辺の型に関係なく」は、P1〜P5 をすべて捕捉するた
 
 | 参照先 | 用途 |
 |-------|------|
-| `lints/ambiguous-suffix-lint/` | Cargo.toml 形式、lib.rs 全般構造、`should_ignore` の `target` 除外 |
+| `lints/ambiguous-suffix-lint/` | Cargo.toml の形式、lib.rs の全般的な構造、`should_ignore` の `target` 除外 |
 | `lints/use-placement-lint/` | `Local` / 式文ノードの AST 走査 |
 | `lints/rustdoc-lint/` | HIR 経由の doc コメント除外（本件では AST レベルで自動除外なので参考程度） |
-| `modules/actor-core/src/core/kernel/event/stream/event_stream_events.rs` | `no_std` 互換ログ経路 |
-| `modules/actor-core/src/core/kernel/dispatch/mailbox/bounded_priority_message_queue.rs:61` | 既存の自由記述コメント例（`// must-ignore:` への統一対象） |
+| `modules/actor-core/src/core/kernel/event/stream/event_stream_events.rs` | `no_std` 互換のログ経路 |
+| `modules/actor-core/src/core/kernel/dispatch/mailbox/bounded_priority_message_queue.rs:61` | 既存の自由記述コメントの例（`// must-ignore:` への統一対象） |
 
 ### 7.3 影響範囲（配線が必要な箇所）
 
@@ -224,9 +224,9 @@ D1 の「右辺の型に関係なく」は、P1〜P5 をすべて捕捉するた
 | 1 | `lints/let-underscore-forbid-lint/` | 新規作成（`Cargo.toml`, `rust-toolchain.toml`, `src/lib.rs`, `tests/ui.rs`, `tests/ui/`） |
 | 2 | ルート `Cargo.toml` `[workspace.metadata.dylint].libraries` | 1 行追加 |
 | 3 | `scripts/ci-check.sh` L654-665 `lint_entries` | 1 行追加 |
-| 4 | カテゴリ A の Result 伝播を行う関数シグネチャ | 呼び出し元チェーンに `Result` が伝播した関数のみ、伝播先すべてを修正 |
-| 5 | カテゴリ B の trait default impl の仮引数 | impl 側のみリネーム（trait 定義と呼び出し元は無変更） |
-| 6 | カテゴリ A のログ追加箇所（`no_std`） | `EventStream::log_event` 等の既存経路を呼び出し。新規 `tracing` 依存追加は禁止 |
+| 4 | カテゴリ A の Result を伝播する関数シグネチャ | 呼び出し元チェーンに `Result` が伝播した関数のみ、伝播先すべてを修正する |
+| 5 | カテゴリ B の trait default impl の仮引数 | impl 側のみリネームする（trait 定義と呼び出し元は変更しない） |
+| 6 | カテゴリ A のログ追加箇所（`no_std`） | `EventStream::log_event` 等の既存経路を呼び出す。新規の `tracing` 依存追加は禁止 |
 
 ### 7.4 到達経路・起動条件
 
@@ -239,11 +239,11 @@ D1 の「右辺の型に関係なく」は、P1〜P5 をすべて捕捉するた
 ## 8. 実装時の注意（アンチパターン）
 
 - `#[allow(clippy::let_underscore_must_use)]` / `#[allow(unused_must_use)]` / 新 lint への `#[allow(...)]` で違反を通すことは禁止（CLAUDE.md「lint エラーを安易に allow で回避しない」）
-- `let _ = x;` → `drop(x);` の盲目的一括置換を行わない（右辺が Result なら drop しても Err は消える）
+- `let _ = x;` → `drop(x);` の盲目的な一括置換を行わない（右辺が Result なら drop しても Err は消える）
 - `.ok();` をプロダクションコードで `.expect(...)` に置換する場合、panic 条件が本当に到達不能か検証すること
-- `let _ = (a, b);` はタプル展開せず、**仮引数名を `_a`, `_b` に直接リネームする**（冗長な bind を残さない）
-- 新 Dylint の検出ルールに既存 `lints/*/ui/` テストフィクスチャが衝突しないか事前点検
-- `no_std` モジュールで fire-and-forget をログ化する際、`tracing` への新規依存は追加しない（既存 `EventStream` 経路を使う）
+- `let _ = (a, b);` はタプル展開せず、**仮引数名を `_a`, `_b` に直接リネームする**（冗長な束縛を残さない）
+- 新 Dylint の検出ルールに既存の `lints/*/ui/` テストフィクスチャが衝突しないか事前に点検する
+- `no_std` モジュールで fire-and-forget をログ化する際、`tracing` への新規依存は追加しない（既存の `EventStream` 経路を使う）
 - 新 lint 名 `let-underscore-forbid-lint` は曖昧サフィックス禁止ルールに該当しない（Util/Manager 系でない動詞サフィックス `-lint` は既存の 10 lint すべてが採用する規約）
 
 ## 9. 確認事項（ユーザー判断を要する項目）
@@ -255,22 +255,22 @@ D1 の「右辺の型に関係なく」は、P1〜P5 をすべて捕捉するた
 
 - **問**: CLAUDE.md 「`.claude/rules/rust/` に集約されている。変更する場合は人間から許可を取ること」および「lint エラーを安易に allow で回避しない。allow を付ける場合は人間から許可を得ること」に準じ、新 lint の追加は人間許可が必要と解釈される。新 `let-underscore-forbid-lint` の追加を許可してよいか。
 - **推奨**: **追加を許可**。理由は §3.2 に示したとおり、既存 2 lint では P1〜P5 を取りこぼし、再発防止（要件 5,6）が達成できないため。
-- **不許可の場合の代替**: `[workspace.lints.clippy]` に `let_underscore_untyped = "deny"` / `let_underscore_future = "deny"` / `let_underscore_lock = "deny"` を追加。ただし P2（`.ok();`）と P3（引数破棄）は機械検出不可となり、コードレビューでの運用カバーが必要。
+- **不許可の場合の代替**: `[workspace.lints.clippy]` に `let_underscore_untyped = "deny"` / `let_underscore_future = "deny"` / `let_underscore_lock = "deny"` を追加。ただし P2（`.ok();`）と P3（引数の破棄）は機械的に検出できなくなり、コードレビューでの運用による補完が必要。
 
 ### Q2: 560 箇所一括修正 vs 段階実施
 
-- **問**: 新 Dylint 追加と同一 PR/ワークフロー内で全 560 箇所を修正するか、あるいは pilot モジュール（例: `actor-core` 単独）で先行実施し後続モジュールは別ワークフローに分割するか。
-- **推奨**: **pilot 先行 → 全モジュール展開**の 2 段階。第 1 段では `actor-core` のみを修正し、新 Dylint 追加 + `actor-core` の違反解消 + CI green を達成。第 2 段以降で残りのモジュールを順次対応。理由は以下。
-  - 560 箇所一括 PR はレビュー困難
-  - Dylint を先に `deny` 設定すると全モジュールで CI 赤化するため、段階展開時は一時的にモジュール単位で `#[allow]` を付けて段階剥がしする運用が必要となり、ルール違反（allow を付ける）になる
-  - pilot で「Dylint + 全修正」を 1 セットで閉じ、module ごとに CI を走らせて段階 merge する運用を推奨
-- **一括実施を選ぶ場合の留意点**: 560 箇所をカテゴリ別に集計し、機械置換可能な B, C, D から先に処理。A は人間判断を要するため最後にレビュー集中。
+- **問**: 新 Dylint 追加と同一 PR/ワークフロー内で全 560 箇所を修正するか、あるいは pilot モジュール（例: `actor-core` 単独）で先行して実施し、後続モジュールは別ワークフローに分割するか。
+- **推奨**: **pilot 先行 → 全モジュール展開**の 2 段階。第 1 段では `actor-core` のみを修正し、新 Dylint 追加 + `actor-core` の違反解消 + CI green を達成する。第 2 段以降で残りのモジュールを順次対応する。理由は以下。
+  - 560 箇所の一括 PR はレビュー困難
+  - Dylint を先に `deny` 設定すると全モジュールで CI が赤化するため、段階展開時は一時的にモジュール単位で `#[allow]` を付けて段階的に剥がす運用が必要となり、ルール違反（allow を付ける）になる
+  - pilot で「Dylint + 全修正」を 1 セットで閉じ、モジュールごとに CI を走らせて段階的に merge する運用を推奨する
+- **一括実施を選ぶ場合の留意点**: 560 箇所をカテゴリ別に集計し、機械置換可能な B, C, D から先に処理する。A は人間の判断を要するため最後にレビューを集中させる。
 
 ### Q3: `// must-ignore:` コメント規約の新設可否
 
 - **問**: プロジェクト既存の許容例外コメントは自由記述（例: `modules/actor-core/src/core/kernel/dispatch/mailbox/bounded_priority_message_queue.rs:61` の「Pekko 互換: ...」）。これを `// must-ignore: <理由>` プレフィックス規約に統一してよいか。
-- **推奨**: **プレフィックス規約を新設**。理由は自由記述では機械的検証が困難なため。既存の自由記述コメント（§3.3 カテゴリ D）は本計画の対象範囲内で `// must-ignore: <理由>` 形式に書き換える。
-- **既存コメント温存を選ぶ場合の代替**: 新 Dylint の例外検出を「直前行に任意のコメントがあれば例外とする」まで緩めるか、あるいは例外許容自体を廃止し全件コード修正にする。後者の場合、`Vec::pop` 相当パターン（ルール §29 許容例外 ③）も書き換えが必要となり、標準ライブラリ API の自然な使用が阻害される。
+- **推奨**: **プレフィックス規約を新設**。理由は自由記述では機械的な検証が困難なため。既存の自由記述コメント（§3.3 カテゴリ D）は本計画の対象範囲内で `// must-ignore: <理由>` 形式に書き換える。
+- **既存コメントの温存を選ぶ場合の代替**: 新 Dylint の例外検出を「直前行に任意のコメントがあれば例外とする」まで緩めるか、あるいは例外の許容自体を廃止し全件をコード修正にする。後者の場合、`Vec::pop` 相当のパターン（ルール §29 許容例外 ③）も書き換えが必要となり、標準ライブラリ API の自然な使用が阻害される。
 
 ## 10. スコープ外（明示的に対応しない項目）
 
@@ -290,34 +290,34 @@ D1 の「右辺の型に関係なく」は、P1〜P5 をすべて捕捉するた
   - 検出ルール D1 (`let _ = ...`) と D2 (`Result::ok();` の式文) を実装
   - 例外コメント: `// must-ignore: <理由>` を違反行の直前行に配置 (空行不可)
   - `lints/ambiguous-suffix-lint/` をテンプレートとして参照
-  - `cargo build --release` OK、手動実行で workspace 全体に対する違反検出を確認
+  - `cargo build --release` OK、手動実行で workspace 全体に対する違反の検出を確認
 
 ### 11.2 Phase 0.5: pilot 範囲 (この PR)
 
-**目的**: lint 本体の準備と、比較的影響が浅い `utils-core` / `actor-core` の違反を全件解消する。後続 PR で CI 配線 + 他 crate 修正を行う。
+**目的**: lint 本体の準備と、比較的影響が浅い `utils-core` / `actor-core` の違反を全件解消する。後続 PR で CI 配線と他 crate の修正を行う。
 
 件数サマリ (合計 **21 件**):
 
 | カテゴリ | 合計 | utils-core | actor-core |
 |----------|-----:|-----------:|-----------:|
 | **A** (`// must-ignore:`) | 6 | 0 | 6 |
-| **B** (仮引数リネーム `_foo`) | 7 | 1 | 6 |
-| **C** (`drop(...)` 明示) | 4 | 0 | 4 |
+| **B** (仮引数のリネーム `_foo`) | 7 | 1 | 6 |
+| **C** (`drop(...)` で明示) | 4 | 0 | 4 |
 | **D** (`drop(xs.pop())` で `Vec::pop` / `BinaryHeap::pop` の `Option<T>` を破棄) | 4 | 2 | 2 |
 
 修正済み crate:
 - `utils-core` (3 件): `arc_shared.rs:106` (B), `binary_heap_priority_backend.rs:81` (D), `vec_deque_backend.rs:83` (D)
 - `actor-core` (18 件):
-  - B: 仮引数リネーム — `actor_ref_provider/base.rs:114`, `message_dispatcher.rs` x4, `mailbox/base.rs:256` (引数 `_throughput_deadline`)
-  - C: `drop(...)` 明示 — `context_pipe/waker.rs:54`, `failure_message_snapshot.rs:60/61`, `system_queue.rs:146`
+  - B: 仮引数のリネーム — `actor_ref_provider/base.rs:114`, `message_dispatcher.rs` x4, `mailbox/base.rs:256` (引数 `_throughput_deadline`)
+  - C: `drop(...)` で明示 — `context_pipe/waker.rs:54`, `failure_message_snapshot.rs:60/61`, `system_queue.rs:146`
   - D: `drop(xs.pop())` — `bounded_priority_message_queue.rs:62`, `bounded_stable_priority_message_queue.rs:67`
-  - A: `// must-ignore:` コメント付与 — `scheduler/delay_provider.rs:48`, `scheduler_core.rs:242/351/445`, `mailbox_queue_state.rs:64/68`
+  - A: `// must-ignore:` コメントの付与 — `scheduler/delay_provider.rs:48`, `scheduler_core.rs:242/351/445`, `mailbox_queue_state.rs:64/68`
 
 ### 11.3 Phase 1: 後続 PR のスコープ
 
 - `Cargo.toml` の `[workspace.metadata.dylint].libraries` に `{ path = "lints/let-underscore-forbid-lint" }` を追加
 - `scripts/ci-check.sh` の `lint_entries` に `"let-underscore-forbid-lint:lints/let-underscore-forbid-lint"` を追加
-- 残 crate の違反修正 (lint 実行時にさらに奥の crate で検出されるものを順次):
+- 残りの crate の違反修正 (lint 実行時にさらに奥の crate で検出されるものを順次):
   - `actor-adaptor-std` (1 件 + 追加検出)
   - `remote-core` (6 件 + 追加検出)
   - `cluster-core` (13 件 + 追加検出)
@@ -325,12 +325,12 @@ D1 の「右辺の型に関係なく」は、P1〜P5 をすべて捕捉するた
   - `persistence-core`
   - `stream-core` (32 件 + 追加検出、最大級)
   - `stream-adaptor-std`
-- 残テストコード (約 500 件) の修正
+- 残りのテストコード (約 500 件) の修正
 
 ### 11.4 確定仕様: `// must-ignore:` は 1 行固定
 
 - `// must-ignore:` コメントは **1 行で記述することが仕様として確定** している。lint は違反行の直前 1 行のみを参照する
-- 根拠: ルール §29 の許容例外は 1 文で書ける粒度を前提としており、複数行必須な説明が必要なら設計自体を見直すべきサイン
-- rustfmt の `wrap_comments = true` + `comment_width = 100` で自動折り返されないよう、インデント込みで 100 文字以内に収める
+- 根拠: ルール §29 の許容例外は 1 文で書ける粒度を前提としており、複数行必須な説明が必要なら設計自体を見直すべきというサイン
+- rustfmt の `wrap_comments = true` + `comment_width = 100` で自動折り返しされないよう、インデント込みで 100 文字以内に収める
 - 100 文字を超えて説明したいケースは、コードを分割するか、別途 `///` ドキュメントコメントで補足する
-- 本プロジェクト外部環境で `lints/*/tests/ui/` の `cargo test --test ui` が libgit2 / cargo-platform 依存で失敗する。ci-check.sh の L770-774 経由では動作するが、手動 `cargo test` では再現性がない。UI テストの充実は現環境制約の解決と同時に対応
+- 本プロジェクトの外部環境で `lints/*/tests/ui/` の `cargo test --test ui` が libgit2 / cargo-platform 依存で失敗する。ci-check.sh の L770-774 経由では動作するが、手動の `cargo test` では再現しない。UI テストの充実は現環境の制約の解決と同時に対応する

@@ -2,7 +2,7 @@
 
 ## 目的
 
-`supervisor-validation.md` の `VAL-NEW-report-plan-routing-mismatch` と `VAL-NEW-report-scope-stale-artifacts` を解消し、Report Directory 内の整合性を最終着地に合わせる。
+`supervisor-validation.md` の `VAL-NEW-report-plan-routing-mismatch` と `VAL-NEW-report-scope-stale-artifacts` を解消し、Report Directory 内の整合性を最終的な着地点に合わせる。
 
 ## 手順
 

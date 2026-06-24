@@ -6,9 +6,9 @@
 
 ## 方針
 1. `modules/actor-core/src/core/kernel/routing/` に公開 `RoutingLogic` 実装を追加する
-2. `routing.rs` で module 配線と再公開を行う
+2. `routing.rs` でモジュール配線と再公開を行う
 3. 先行追加済みの `routing_logic/tests.rs` を満たす最小実装に限定する
-4. mailbox 長は既存 runtime の観測値だけを使い、追加の dispatch fallback は入れない
+4. メールボックス長は既存 runtime の観測値だけを使い、追加の dispatch フォールバックは入れない
 
 ## 変更予定
 | 種別 | ファイル |

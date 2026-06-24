@@ -2,7 +2,7 @@
 
 このリポジトリの issue と PRD は GitHub Issues で管理する。操作には `gh` CLI を使う。
 
-## Conventions
+## 運用ルール
 
 - issue を作る: `gh issue create --title "..." --body "..."`。複数行本文は heredoc を使う。
 - issue を読む: `gh issue view <number> --comments`。必要に応じて `jq` でコメントとラベルを絞り込む。
@@ -13,10 +13,10 @@
 
 repo は `git remote -v` から推定する。通常、clone 内で `gh` を実行すれば自動で対象 repo が選ばれる。
 
-## When a skill says "publish to the issue tracker"
+## skill が "publish to the issue tracker" と指示した場合
 
 GitHub issue を作成する。
 
-## When a skill says "fetch the relevant ticket"
+## skill が "fetch the relevant ticket" と指示した場合
 
 `gh issue view <number> --comments` を実行する。

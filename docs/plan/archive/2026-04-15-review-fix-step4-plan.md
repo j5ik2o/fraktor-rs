@@ -4,7 +4,7 @@
 
 - 最新の `05-pekko-compat-review.md`、`06-qa-review.md`、`07-test-review.md` を一次情報として確認し、`new` / `reopened` 指摘が残っていないことを確定する
 - 前回差し戻し理由だった Report Directory 内の整合性不備が現行ファイルで解消済みかを確認する
-- 変更範囲の lint / check / targeted test を再実行し、今回イテレーションの成功証跡を `coder-decisions.md` に記録する
+- 変更範囲の lint / check / targeted test を再実行し、今回のイテレーションの成功証跡を `coder-decisions.md` に記録する
 
 ## 実施手順
 
@@ -26,6 +26,6 @@
 ## 完了条件
 
 - 最新レビュー3本が `APPROVE` のままであること
-- `00-plan.md` と `coder-scope.md` に stale な記述が残っていないこと
+- `00-plan.md` と `coder-scope.md` に古い記述が残っていないこと
 - 上記 lint / check / targeted test がすべて成功すること
 - `coder-decisions.md` に今回イテレーションの結果が残ること

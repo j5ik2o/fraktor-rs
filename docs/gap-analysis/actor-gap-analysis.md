@@ -4,7 +4,7 @@
 
 ## 比較スコープ定義
 
-actor は現行の分割済みクレートを parity 単位にする。前回（2026-05-18）は粗い概念粒度（分母 114）で 100% と判定したが、今回は Pekko 側公開契約を細粒度（分母 272）で再集計した。分母の変更はスコープ変更ではなく粒度変更である。
+actor は現行の分割済みクレートを parity 単位にする。前回（2026-05-18）は粗い概念粒度（分母 114）で 100% と判定したが、今回は Pekko 側の公開契約を細粒度（分母 272）で再集計した。分母の変更はスコープ変更ではなく粒度変更である。
 
 | 層 | fraktor-rs 側 | Pekko 側 | 扱い |
 |----|---------------|----------|------|
@@ -219,4 +219,4 @@ actor モジュールの固定スコープ概念カバレッジは 246/272 (90%)
 
 低コストで parity を前進できるのは Phase 1 の 9 件（FSM 遷移購読、dead letter 抑制配線、CircuitBreaker リスナー、CoordinatedShutdown タスク変種、ReceptionistSetup、`after`、selection ask、マーカー trait 2 種）。主要ギャップは Phase 2 の 5 件で、汎用 EventBus 分類 trait 族と mailbox 設定契約（requirement 解決 / selection precedence / blocking bounded / balancing 互換）に集中している。hard 級ギャップは存在しない。
 
-API ギャップが 1 桁 medium まで縮んだ現在、次のボトルネックは公開 API ではなく内部構造にある。特に `actor_cell.rs`（1,809 行）の dungeon facet 分離と `system_state.rs`（1,147 + 1,094 行）の分割が、今後の変更速度と保守性を左右する。typed 層の facade / behavior 実装分離は ReceptionistSetup 導入と同時に行うのが効率的である。
+API ギャップが 1 桁の medium まで縮んだ現在、次のボトルネックは公開 API ではなく内部構造にある。特に `actor_cell.rs`（1,809 行）の dungeon facet 分離と `system_state.rs`（1,147 + 1,094 行）の分割が、今後の変更速度と保守性を左右する。typed 層の facade / behavior 実装分離は ReceptionistSetup 導入と同時に行うのが効率的である。
