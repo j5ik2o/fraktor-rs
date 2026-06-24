@@ -1,0 +1,41 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "'/Users/j5ik2o/.agents/skills/agmsg/scripts/session-start.sh' 'codex' '/Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs'",
+            "commandWindows": "$b=$env:GIT_BASH; if (-not $b) { $b=$env:AGMSG_BASH }; if (-not $b) { $b='C:\\Program Files\\Git\\bin\\bash.exe' }; & $b -lc '''/Users/j5ik2o/.agents/skills/agmsg/scripts/session-start.sh'' ''codex'' ''/Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs'''"
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "'/Users/j5ik2o/.agents/skills/agmsg/scripts/session-end.sh'   'codex' '/Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs'",
+            "commandWindows": "$b=$env:GIT_BASH; if (-not $b) { $b=$env:AGMSG_BASH }; if (-not $b) { $b='C:\\Program Files\\Git\\bin\\bash.exe' }; & $b -lc '''/Users/j5ik2o/.agents/skills/agmsg/scripts/session-end.sh''   ''codex'' ''/Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs'''"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "^(apply_patch|Edit|Write)$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/usr/bin/python3 \"$(git rev-parse --show-toplevel)/.agents/hooks/run_rust_checks_after_edit.py\" --agent codex",
+            "timeout": 1800,
+            "statusMessage": "Rust 変更後の fmt / dylint / clippy を確認中"
+          }
+        ]
+      }
+    ]
+  }
+}
