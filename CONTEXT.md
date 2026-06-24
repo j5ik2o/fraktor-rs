@@ -15,11 +15,11 @@ Actor Cell (アクターセル) の同一型実装を dispatch、lifecycle、fau
 _Avoid_: Runtime, Public Facet API, Trait Facet, ActorCell Subclass
 
 **Actor System State (アクターシステム状態)**:
-actor system scoped state を既存 accessor 経由で扱う façade。実行補助、dispatcher / mailbox、event / logging、guardian / cells、remote / provider、scheduler / lifecycle などの System State Registry (システム状態レジストリ) を束ねるが、それぞれの subsystem behavior を直接所有する概念ではない。
+actor system scoped state を既存 accessor 経由で扱う facade。実行補助、dispatcher / mailbox、event / logging、guardian / cells、remote / provider、scheduler / lifecycle などの System State Registry (システム状態レジストリ) を束ねるが、それぞれの subsystem behavior を直接所有する概念ではない。
 _Avoid_: Runtime, Global State, God Object, Shared State Bag
 
 **System State Registry (システム状態レジストリ)**:
-Actor System State (アクターシステム状態) の内側で、dispatcher / mailbox、event / logging、guardian / cells など単一 subsystem の state ownership を担う private registry。外部 crate に公開する registry handle ではなく、既存 façade から委譲される内部境界である。
+Actor System State (アクターシステム状態) の内側で、dispatcher / mailbox、event / logging、guardian / cells など単一 subsystem の state ownership を担う private registry。外部 crate に公開する registry handle ではなく、既存 facade から委譲される内部境界である。
 _Avoid_: Runtime, Public Registry Handle, Shared Global Registry, Service Locator
 
 **DeathWatch (死亡監視)**:
@@ -53,6 +53,42 @@ _Avoid_: Mailbox Runtime, Queue Implementation, Blocking Wait
 **Coordinated Shutdown (協調シャットダウン)**:
 actor system の shutdown phase に沿って task を登録・解除・実行し、actor termination を順序付きに待てる lifecycle contract。OS signal handling や process exit、full cluster shutdown command ではない。
 _Avoid_: Process Exit, OS Signal Handling, Full Cluster Shutdown Command
+
+**Typed Actor API Boundary (型付きアクターAPI境界)**:
+untyped actor kernel の上に、message type、typed behavior、typed system setup、typed extension surface を載せる利用者向け actor API 境界。kernel の Actor Cell (アクターセル) や Actor System State (アクターシステム状態) そのものではない。
+_Avoid_: Kernel API, Actor Cell, Behavior Implementation
+
+**Typed Receptionist (型付きレセプショニスト)**:
+typed actor が service key に対する登録、解除、購読、検索を行うための discovery surface。Cluster Discovery や Cluster PubSub ではなく、Typed Actor API Boundary (型付きアクターAPI境界) 上の actor-local service discovery 契約である。
+_Avoid_: Cluster Discovery, Cluster PubSub, Global Service Registry
+
+**Receptionist Setup (レセプショニスト設定)**:
+Typed Receptionist (型付きレセプショニスト) の facade / extension factory を typed ActorSystem setup に差し込むための構築時契約。clustered receptionist の実装や wire protocol ではなく、既存 behavior と代替 facade の install boundary を表す。
+_Avoid_: Clustered Receptionist Execution, Receptionist Wire Protocol, Behavior Implementation
+
+**Dead Letter (デッドレター)**:
+配送できなかった actor message を EventStream (イベントストリーム) で観測可能にする message observability event。delivery retry、mailbox overflow strategy、logging backend そのものではない。
+_Avoid_: Retry Queue, Mailbox Overflow Strategy, Logging Backend
+
+**Dead Letter Suppression (デッドレター抑制)**:
+message が Dead Letter (デッドレター) として公開されるときに、通常の dead letter とは別の suppressed observation として扱うための marker contract。message delivery を成功扱いにしたり、delivery failure を隠したりするものではない。
+_Avoid_: Delivery Success, Silent Drop, Logging Filter
+
+**Actor Selection (アクター選択)**:
+actor path を解決して ActorRef (アクター参照) に到達するための selection contract。ActorRef (アクター参照) そのものや remote transport lookup ではなく、path resolution と ask composition の境界である。
+_Avoid_: ActorRef, Remote Transport Lookup, Cluster Discovery
+
+**Circuit Breaker (サーキットブレーカー)**:
+失敗の蓄積に応じて Closed / Open / HalfOpen の状態を遷移させ、外部呼び出しの遮断と再試行タイミングを制御する actor pattern contract。supervision policy や scheduler そのものではない。
+_Avoid_: Supervision Policy, Scheduler Timer, Retry Loop
+
+**Bounded Mailbox Compatibility (有界メールボックス互換性)**:
+bounded mailbox の容量超過時に reject / dead letter / timeout wait の互換挙動をどう扱うかの mailbox contract。Mailbox Resolution (メールボックス解決) や queue implementation そのものではなく、async-first default と compatibility option の境界である。
+_Avoid_: Mailbox Resolution, Queue Implementation, Blocking Executor
+
+**Kernel Public Surface (カーネル公開面)**:
+actor kernel が外部 crate へ公開する利用者向け contract の集合。internal cell / system implementation や public re-export された低レベル型の一覧ではなく、公開すべき境界を判断するための語彙である。
+_Avoid_: Internal Surface, Public Re-export List, Implementation Detail
 
 ### Cluster Execution
 
@@ -203,3 +239,39 @@ _Avoid_: Replicator Runtime, Wire Serialization, Arbitrary Data Model
 **Replicator (レプリケータ)**:
 Distributed Data (分散データ) の CRDT (収束データ型) 更新、read / write consistency、subscription notification を cluster 内で伝播する runtime component。CRDT 型そのものや Gossip Protocol (ゴシッププロトコル) ではない。
 _Avoid_: CRDT Type, Gossip Protocol, PubSub Mediator Protocol
+
+**Cluster Compatibility Baseline (クラスタ互換性ベースライン)**:
+Join Compatibility (参加互換性) と downstream cluster specs が共有する、比較対象 key、比較対象外 key、互換性理由の基礎契約。Split Brain Resolution (スプリットブレイン解決) や Discovery Normalization (ディスカバリ正規化) の実行体ではない。
+_Avoid_: Full Cluster Parity, Downing Execution, Discovery Execution
+
+**Downing Strategy (ダウン戦略)**:
+Split Brain Resolution (スプリットブレイン解決) で membership snapshot と Availability Evidence (可用性観測証拠) から keep / down / defer の判断規則を選ぶ policy identity。Downing Decision (ダウン判断) の結果そのものや Failure Detector (故障検出器) ではない。
+_Avoid_: Downing Decision, Failure Detector, Membership State
+
+**Lease Majority (リース多数派)**:
+Split Brain Resolution (スプリットブレイン解決) で多数派 partition が外部 lease を取得できた場合だけ keep decision を成立させる strategy contract。lease backend の実装や network I/O ではなく、lease acquisition outcome を Downing Strategy (ダウン戦略) に反映する語彙である。
+_Avoid_: Lease Backend, Network Lock, Downing Execution
+
+**Cluster Message Serialization (クラスタメッセージ直列化)**:
+cluster protocol payload を actor-core serialization metadata と cluster payload kind によって wire bridge へ渡す contract。Gossip Protocol (ゴシッププロトコル) や PubSub Mediator Protocol (PubSubメディエータプロトコル) の意味論を実行するものではない。
+_Avoid_: Gossip Merge, PubSub Delivery, Protobuf Compatibility
+
+**Cluster Wire Frame (クラスタワイヤフレーム)**:
+Cluster Message Serialization (クラスタメッセージ直列化) の payload kind、serializer id、manifest、bytes を versioned wire 形状として運ぶ std/wire 境界の契約。transport lifecycle や actor-core serializer registry そのものではない。
+_Avoid_: Transport Lifecycle, Serializer Registry, Protocol Semantics
+
+**Distributed Data Key (分散データキー)**:
+Distributed Data (分散データ) の CRDT (収束データ型) 値を型安全に識別する key contract。actor path や Topic Registry (トピックレジストリ) の key ではなく、Replicator (レプリケータ) が扱う replicated value identity である。
+_Avoid_: Actor Path, Topic Registry Key, Raw String Id
+
+**Distributed Data Consistency (分散データ整合性)**:
+Distributed Data (分散データ) の read / write 操作が Local、quorum、all などのどの範囲の replica 応答を要求するかを表す consistency contract。CRDT (収束データ型) の merge law や durable persistence ではない。
+_Avoid_: CRDT Merge Law, Durable Persistence, Membership Quorum
+
+**Version Vector (バージョンベクター)**:
+replicated data の dot / causal history を比較し、observed-remove や pruning の因果関係を表す causal clock。membership 用の VectorClock や wall-clock timestamp ではない。
+_Avoid_: Membership VectorClock, Wall Clock, Timestamp
+
+**Observed-Remove CRDT (観測除去CRDT)**:
+追加時に観測した causal dots を削除時に取り消すことで、並行 add / remove を収束的に扱う CRDT (収束データ型) の family。単純な grow-only collection や last-writer-wins value ではない。
+_Avoid_: Grow-only Collection, Last-writer-wins Value, Plain Set
