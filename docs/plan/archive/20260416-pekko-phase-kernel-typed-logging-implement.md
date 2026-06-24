@@ -6,10 +6,10 @@
 - `SystemState` / `SystemStateShared` の共通 filter 経路
 
 ## 方針
-- Pekko の `LoggingFilter` / `LoggingFilterWithMarker` は、`LogEvent` 全体を受ける単一 predicate trait に翻訳する
+- Pekko の `LoggingFilter` / `LoggingFilterWithMarker` は、`LogEvent` 全体を受ける単一の predicate trait に翻訳する
 - marker 判定は別 trait を増やさず、`LogEvent` の marker 情報を見る実装で表現する
 - `DefaultLoggingFilter` は最小 log level による既定判定だけを持つ
-- `LoggingAdapter` と `emit_log` は同じ filter 判定を使い、event stream publish 前に reject できるようにする
+- `LoggingAdapter` と `emit_log` は同じ filter 判定を使い、event stream への publish 前に reject できるようにする
 - 追加型は logging モジュール内部または `pub(crate)` に留め、公開境界は広げない
 
 ## 実装手順

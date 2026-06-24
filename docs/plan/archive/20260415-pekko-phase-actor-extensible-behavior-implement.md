@@ -18,8 +18,8 @@
 | 項目 | 判定 | 理由 |
 |------|------|------|
 | `ExtensibleBehavior` trait 新設 | 採用 | typed root の公開拡張点が未実装のため |
-| `Behaviors::from_extensible` factory | 採用 | `Behavior` の constructor visibility を広げずに runtime 接続できるため |
-| `AbstractBehavior` の rename / 置換 | 非採用 | DSL 契約のすり替えになり、今回バッチの範囲を超えるため |
+| `Behaviors::from_extensible` ファクトリ | 採用 | `Behavior` の constructor visibility を広げずに runtime へ接続できるため |
+| `AbstractBehavior` のリネーム / 置換 | 非採用 | DSL 契約のすり替えになり、今回バッチの範囲を超えるため |
 | `Behavior` の public constructor 化 | 非採用 | public/internal 境界を悪化させるため |
 
 ## 変更対象

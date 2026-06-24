@@ -45,7 +45,7 @@ Mailbox にスコープを絞って深さ優先で見ると、fraktor-rs の act
 
 ### 1. run loop / scheduling gate は高い互換性
 
-fraktor-rs の `Mailbox::run` は、コメントと実装の両方で Pekko `Mailbox.run()` を明示的に追っている。  
+fraktor-rs の `Mailbox::run` は、コメントと実装の両方で Pekko `Mailbox.run()` を明示的に追従している。  
 `process_all_system_messages` を先に回し、その後に `process_mailbox` を進める順序は Pekko と一致している。
 
 根拠:
@@ -58,9 +58,9 @@ fraktor-rs の `Mailbox::run` は、コメントと実装の両方で Pekko `Mai
 - system message を user message より常に先に drain する
 - suspend 中は user dequeue を止めるが、system message は通す
 - throughput deadline を mailbox 側で判定する
-- close 後 cleanup で system queue を dead letters に必ず流す
+- close 後の cleanup で system queue を必ず dead letters へ流す
 
-この領域は「Mailbox のコア挙動」としては strong で、深掘りしても大きな欠落は見えなかった。
+この領域は「Mailbox のコア挙動」としては強く、深掘りしても大きな欠落は見えなかった。
 
 ### 2. queue family surface もかなり揃っている
 
@@ -79,14 +79,14 @@ fraktor-rs の `Mailbox::run` は、コメントと実装の両方で Pekko `Mai
 ### 3. overflow と dead letter 観測は強い
 
 fraktor-rs は bounded queue overflow を「黙って捨てる」のではなく、mailbox 層で dead letter に記録する設計になっている。  
-`Mailbox::enqueue_envelope` は `EnqueueOutcome::Evicted` と `Rejected` を成功扱いしつつ、`DeadLetterReason::MailboxFull` で観測可能化している。
+`Mailbox::enqueue_envelope` は `EnqueueOutcome::Evicted` と `Rejected` を成功扱いしつつ、`DeadLetterReason::MailboxFull` で観測可能にしている。
 
 これは Pekko の「enqueue 呼び出し側には成功に見えるが、損失は dead letters へ流す」という運用感にかなり近い。
 
 強い点:
 
-- `DropNewest` を `Rejected` として扱い、dead letter 記録する
-- `DropOldest` を `Evicted` として扱い、押し出された envelope を dead letter 記録する
+- `DropNewest` を `Rejected` として扱い、dead letter に記録する
+- `DropOldest` を `Evicted` として扱い、押し出された envelope を dead letter に記録する
 - priority queue / stable-priority queue でも overflow 観測を維持する
 
 ### 4. requirement / capability gate は部分対応
@@ -102,7 +102,7 @@ fraktor-rs 側には:
 
 つまり、「この actor は deque-capable mailbox を必要とする」といった条件は検証できる。
 
-ただし、Pekko と比べると次がない:
+ただし、Pekko と比べると次の要素がない:
 
 - `RequiresMessageQueue[T]` のような actor class ベースの queue type 宣言
 - `mailbox.requirements` 設定から queue type を mailbox id へ引く mapping
@@ -124,8 +124,8 @@ Pekko の `Mailboxes.getMailboxType(...)` はかなり多段である。
 
 これに対して fraktor-rs は次のように単純化されている。
 
-- `Props::with_mailbox_id(...)` で registry lookup
-- それ以外は `MailboxConfig`
+- `Props::with_mailbox_id(...)` で registry を lookup する
+- それ以外は `MailboxConfig` による
 - `Mailboxes::select_mailbox_type_from_config(...)` は
   - priority + stable-priority
   - control-aware requirement
@@ -135,7 +135,7 @@ Pekko の `Mailboxes.getMailboxType(...)` はかなり多段である。
 
 つまり、**選択ルールは理解しやすいが、Pekko の config-driven mailbox resolution とは同等ではない**。
 
-ここで見えた具体差分:
+ここで見えた具体的な差分:
 
 - mailbox registry は単純な id → factory で、Pekko mailbox 側の alias chain 解決はない
 - `bounded-capacity:` 相当の helper がない
@@ -166,7 +166,7 @@ fraktor-rs にはこの系統の契約がない。bounded 系 queue はすべて
 この差は mailbox コアより大きい。  
 **Pekko の bounded mailbox semantics をそのまま使う前提では、ここが最大のギャップである。**
 
-ただし 2026-05-12 の async-first actor adapters 方針では、`pushTimeOut` 系 blocking bounded mailbox は意図的に実装優先度を下げる。std Tokio / Embassy の実行基盤では、mailbox enqueue 側を block して空きを待つより、dispatcher / executor adapter で短い drain を起動し、overflow は既存の reject / evict / dead letter 観測へ流すほうを優先する。`pushTimeOut` 互換は将来 std 限定の compatibility option として再検討できるが、現時点の先行対象ではない。
+ただし 2026-05-12 の async-first actor adapters 方針では、`pushTimeOut` 系 blocking bounded mailbox は意図的に実装優先度を下げる。std Tokio / Embassy の実行基盤では、mailbox enqueue 側を block して空きを待つよりも、dispatcher / executor adapter で短い drain を起動し、overflow は既存の reject / evict / dead letter 観測へ流すほうを優先する。`pushTimeOut` 互換は将来 std 限定の compatibility option として再検討できるが、現時点の先行対象ではない。
 
 ### 7. control-aware mailbox は存在するが bounded semantics は変形されている
 
@@ -187,7 +187,7 @@ Pekko の `BalancingDispatcherConfigurator` は mailbox requirement と mailbox 
 - `MultipleConsumerSemantics` を要求する
 - supplied mailbox が requirement を満たすか確認する
 
-fraktor-rs の `BalancingDispatcher` は別アプローチで、dispatcher 内部に `SharedMessageQueue` を持ち、`try_create_shared_mailbox(...)` で sharing mailbox を返す。
+fraktor-rs の `BalancingDispatcher` は別アプローチを取り、dispatcher 内部に `SharedMessageQueue` を持ち、`try_create_shared_mailbox(...)` で sharing mailbox を返す。
 
 これは runtime semantics としては妥当だが、次の差がある。
 

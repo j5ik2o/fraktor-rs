@@ -11,7 +11,7 @@ classic kernel routing の `ConsistentHashingRoutingLogic` と `SmallestMailboxR
 1. 既存の `random_routing_logic` / `round_robin_routing_logic` と同じ `{type}/tests.rs` パターンでテストを置く
 2. `ConsistentHashingRoutingLogic` は安定選択と routee 並び替え耐性を確認する
 3. `SmallestMailboxRoutingLogic` は mailbox 観測に基づく選択と未観測 routee の低優先扱いを確認する
-4. 実装前ステップでも未実装型への参照が検出できるよう、既存の compiled な routing logic テスト面に型契約テストを追加する
+4. 実装前ステップでも未実装型への参照が検出できるよう、既存のコンパイルが通る routing logic テスト面に型契約テストを追加する
 
 ## 変更予定
 | 種別 | ファイル |

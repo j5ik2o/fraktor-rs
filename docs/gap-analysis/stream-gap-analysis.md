@@ -170,6 +170,6 @@ API ギャップが少ないため、残りは内部構造と integration 境界
 
 stream モジュールは固定スコープの API parity では高い水準に到達している。主要 operator、GraphDSL / stage authoring、typed actor interop、framing、compression、FileIO / StreamConverters は実装済みと判定できる。
 
-低コストで進められる残差は TCP error 型だけである。主要ギャップは TCP stream、TLS stream の 2 点で、いずれも std IO adaptor の integration-level 実装である。
+低コストで進められる残差は TCP error 型だけである。主要ギャップは TCP stream、TLS stream の 2 点で、いずれも std IO adaptor の integration レベルの実装である。
 
 次のボトルネックは API surface の追加数ではなく、std IO adaptor の TCP / TLS 境界設計である。StreamRef で固定した local handoff、remote resolver、serialization、transport adaptor の分離を維持し、core/std/remote の依存方向を崩さないことが重要になる。
