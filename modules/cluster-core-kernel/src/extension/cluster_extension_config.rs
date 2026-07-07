@@ -7,10 +7,11 @@ mod tests;
 use alloc::{string::String, vec::Vec};
 use core::time::Duration;
 
+use super::{ClusterExtensionConfigValidationError, ClusterShardingSettings, ClusterShardingSettingsError};
 use crate::{
   ClusterShardingStateStoreMode, ClusterTopology, ConfigValidation, JoinConfigCompatChecker,
   downing_provider::DowningProviderCompatibility,
-  failure_detector::{FailureDetectorConfig, FailureDetectorConfigError},
+  failure_detector::{CrossDcFailureDetectorConfig, FailureDetectorConfig},
   pub_sub::PubSubConfig,
   singleton::{ClusterSingletonConfigError, ClusterSingletonManagerConfig, ClusterSingletonProxyConfig},
   topology::{ClusterCompatibilityKey, ClusterCompatibilityKeyCatalog},
@@ -77,16 +78,18 @@ const JOIN_COMPATIBILITY_CHECKS: &[JoinCompatibilityCheck] = &[
 /// Configuration applied when installing the cluster extension.
 #[derive(Clone, Debug, PartialEq)]
 pub struct ClusterExtensionConfig {
-  advertised_address:        String,
-  metrics_enabled:           bool,
-  static_topology:           Option<ClusterTopology>,
-  pubsub_config:             PubSubConfig,
-  failure_detector_config:   FailureDetectorConfig,
-  app_version:               String,
-  roles:                     Vec<String>,
-  downing_provider:          DowningProviderCompatibility,
-  singleton_manager_config:  ClusterSingletonManagerConfig,
-  singleton_proxy_config:    ClusterSingletonProxyConfig,
+  advertised_address: String,
+  metrics_enabled: bool,
+  static_topology: Option<ClusterTopology>,
+  pubsub_config: PubSubConfig,
+  failure_detector_config: FailureDetectorConfig,
+  cross_dc_failure_detector_config: CrossDcFailureDetectorConfig,
+  sharding_settings: ClusterShardingSettings,
+  app_version: String,
+  roles: Vec<String>,
+  downing_provider: DowningProviderCompatibility,
+  singleton_manager_config: ClusterSingletonManagerConfig,
+  singleton_proxy_config: ClusterSingletonProxyConfig,
   sharding_state_store_mode: ClusterShardingStateStoreMode,
 }
 
@@ -99,16 +102,18 @@ impl ClusterExtensionConfig {
   #[must_use]
   pub fn new() -> Self {
     Self {
-      advertised_address:        String::new(),
-      metrics_enabled:           false,
-      static_topology:           None,
-      pubsub_config:             PubSubConfig::new(Duration::from_secs(3), Duration::from_secs(60)),
-      failure_detector_config:   FailureDetectorConfig::new(),
-      app_version:               String::from(env!("CARGO_PKG_VERSION")),
-      roles:                     Vec::new(),
-      downing_provider:          DowningProviderCompatibility::noop(),
-      singleton_manager_config:  ClusterSingletonManagerConfig::new(),
-      singleton_proxy_config:    ClusterSingletonProxyConfig::new(),
+      advertised_address: String::new(),
+      metrics_enabled: false,
+      static_topology: None,
+      pubsub_config: PubSubConfig::new(Duration::from_secs(3), Duration::from_secs(60)),
+      failure_detector_config: FailureDetectorConfig::new(),
+      cross_dc_failure_detector_config: CrossDcFailureDetectorConfig::new(),
+      sharding_settings: ClusterShardingSettings::new(),
+      app_version: String::from(env!("CARGO_PKG_VERSION")),
+      roles: Vec::new(),
+      downing_provider: DowningProviderCompatibility::noop(),
+      singleton_manager_config: ClusterSingletonManagerConfig::new(),
+      singleton_proxy_config: ClusterSingletonProxyConfig::new(),
       sharding_state_store_mode: ClusterShardingStateStoreMode::default(),
     }
   }
@@ -162,6 +167,20 @@ impl ClusterExtensionConfig {
     self
   }
 
+  /// Sets the cross-DC failure detector configuration.
+  #[must_use]
+  pub const fn with_cross_dc_failure_detector_config(mut self, config: CrossDcFailureDetectorConfig) -> Self {
+    self.cross_dc_failure_detector_config = config;
+    self
+  }
+
+  /// Sets the cluster sharding settings.
+  #[must_use]
+  pub fn with_sharding_settings(mut self, settings: ClusterShardingSettings) -> Self {
+    self.sharding_settings = settings;
+    self
+  }
+
   /// Sets cluster roles advertised by this node.
   #[must_use]
   pub fn with_roles(mut self, roles: Vec<String>) -> Self {
@@ -199,6 +218,18 @@ impl ClusterExtensionConfig {
   #[must_use]
   pub const fn failure_detector_config(&self) -> &FailureDetectorConfig {
     &self.failure_detector_config
+  }
+
+  /// Returns the cross-DC failure detector configuration.
+  #[must_use]
+  pub const fn cross_dc_failure_detector_config(&self) -> &CrossDcFailureDetectorConfig {
+    &self.cross_dc_failure_detector_config
+  }
+
+  /// Returns the cluster sharding settings.
+  #[must_use]
+  pub const fn sharding_settings(&self) -> &ClusterShardingSettings {
+    &self.sharding_settings
   }
 
   /// Returns advertised application version.
@@ -309,10 +340,24 @@ impl ClusterExtensionConfig {
   ///
   /// # Errors
   ///
-  /// Returns [`FailureDetectorConfigError`] when the configured failure detector
-  /// observation parameters are outside the accepted range.
-  pub fn validate(&self) -> Result<(), FailureDetectorConfigError> {
-    self.failure_detector_config.validate()
+  /// Returns [`ClusterExtensionConfigValidationError`] when failure detector, cross-DC failure
+  /// detector, or sharding settings contain invalid values.
+  pub fn validate(&self) -> Result<(), ClusterExtensionConfigValidationError> {
+    self.failure_detector_config.validate().map_err(ClusterExtensionConfigValidationError::FailureDetector)?;
+    self
+      .cross_dc_failure_detector_config
+      .validate()
+      .map_err(ClusterExtensionConfigValidationError::CrossDcFailureDetector)?;
+    self.sharding_settings.validate().map_err(ClusterExtensionConfigValidationError::ShardingSettings)
+  }
+
+  /// Validates cluster sharding settings.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`ClusterShardingSettingsError`] when sharding settings contain invalid values.
+  pub fn validate_sharding_settings(&self) -> Result<(), ClusterShardingSettingsError> {
+    self.sharding_settings.validate()
   }
 }
 

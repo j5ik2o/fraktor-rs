@@ -81,6 +81,12 @@ pub mod singleton;
 /// Observed cluster topology and topology-change contracts.
 pub mod topology;
 
+pub use extension::{
+  ClusterExtensionConfigValidationError, ClusterScope, ClusterShardingSettings, ClusterShardingSettingsError,
+  PassivationStrategy,
+};
+pub use failure_detector::{CrossDcFailureDetectorConfig, CrossDcFailureDetectorConfigError};
+
 use crate::{
   extension::{
     ClusterApi, ClusterApiError, ClusterCore, ClusterError, ClusterExtension, ClusterExtensionConfig,

@@ -8,7 +8,14 @@ use alloc::{
 };
 
 use super::{ActivationError, ActivationRecord, PidCache, PidCacheEvent, RendezvousHasher, VirtualActorEvent};
-use crate::grain::GrainKey;
+use crate::{
+  extension::{ClusterShardingSettings, PassivationStrategy},
+  grain::GrainKey,
+};
+
+#[cfg(test)]
+#[path = "virtual_actor_registry_passivation_test.rs"]
+mod passivation_tests;
 
 #[cfg(test)]
 #[path = "virtual_actor_registry_test.rs"]
@@ -33,6 +40,12 @@ impl VirtualActorRegistry {
   #[must_use]
   pub const fn new(cache_capacity: usize, pid_ttl_secs: u64) -> Self {
     Self { activations: BTreeMap::new(), pid_cache: PidCache::new(cache_capacity), pid_ttl_secs, events: Vec::new() }
+  }
+
+  /// Returns whether remembered entities are enabled for the given sharding settings.
+  #[must_use]
+  pub const fn remember_entities_enabled(settings: &ClusterShardingSettings) -> bool {
+    settings.remember_entities()
   }
 
   /// Ensures an activation exists and returns its PID.
@@ -126,6 +139,42 @@ impl VirtualActorRegistry {
     }
   }
 
+  /// Applies the configured passivation strategy to active entities.
+  pub fn passivate_by_strategy(&mut self, strategy: &PassivationStrategy, now: u64) {
+    match strategy {
+      | PassivationStrategy::Disabled => {},
+      | PassivationStrategy::Idle { timeout, .. } => {
+        self.passivate_idle(now, timeout.as_secs());
+      },
+      | PassivationStrategy::ActiveLimit { limit, idle_timeout, .. } => {
+        if let Some(idle) = idle_timeout {
+          self.passivate_idle(now, idle.as_secs());
+        }
+        self.passivate_excess_by_last_seen(*limit as usize);
+      },
+      | PassivationStrategy::Lru { limit, idle_timeout, .. }
+      | PassivationStrategy::Mru { limit, idle_timeout, .. }
+      | PassivationStrategy::Lfu { limit, idle_timeout, .. } => {
+        if let Some(idle) = idle_timeout {
+          self.passivate_idle(now, idle.as_secs());
+        }
+        self.passivate_excess_by_last_seen(*limit as usize);
+      },
+    }
+  }
+
+  fn passivate_excess_by_last_seen(&mut self, limit: usize) {
+    if self.activations.len() <= limit {
+      return;
+    }
+    let mut entries: Vec<_> = self.activations.iter().map(|(key, entry)| (key.clone(), entry.last_seen)).collect();
+    entries.sort_by_key(|(_, last_seen)| *last_seen);
+    let excess = self.activations.len().saturating_sub(limit);
+    for (key, _) in entries.into_iter().take(excess) {
+      self.remove_activation(&key);
+    }
+  }
+
   /// Passivates idle activations.
   pub fn passivate_idle(&mut self, now: u64, idle_ttl: u64) {
     let to_passivate: Vec<_> = self
@@ -154,6 +203,12 @@ impl VirtualActorRegistry {
       // Passivated イベントを生成
       self.events.push(VirtualActorEvent::Passivated { key: key.clone() });
     }
+  }
+
+  /// Returns active grain keys currently tracked by the registry.
+  #[must_use]
+  pub fn active_keys(&self) -> Vec<GrainKey> {
+    self.activations.keys().cloned().collect()
   }
 
   /// Drains virtual actor events.

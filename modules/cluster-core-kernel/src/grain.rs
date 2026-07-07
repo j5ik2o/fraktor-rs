@@ -33,6 +33,8 @@ mod sharding_dispatch_error;
 mod sharding_envelope;
 mod sharding_extractor_config_error;
 mod sharding_message_extractor;
+mod sharding_query;
+mod sharding_query_handler;
 mod sharding_router;
 
 pub use grain_call_error::GrainCallError;
@@ -68,4 +70,6 @@ pub use sharding_dispatch_error::ShardingDispatchError;
 pub use sharding_envelope::ShardingEnvelope;
 pub use sharding_extractor_config_error::ShardingExtractorConfigError;
 pub use sharding_message_extractor::ShardingMessageExtractor;
+pub use sharding_query::{ShardRegionStatsSnapshot, ShardState, ShardingQuery, ShardingQueryResponse};
+pub use sharding_query_handler::ShardingQueryHandler;
 pub use sharding_router::ShardingRouter;

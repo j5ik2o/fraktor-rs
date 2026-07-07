@@ -24,6 +24,7 @@ fraktor-persistence-core-kernel-rs = { workspace = true, optional = true }
 fraktor-persistence-core-typed-rs = { workspace = true, optional = true }
 fraktor-persistence-adaptor-std-rs = { workspace = true, optional = true }
 fraktor-cluster-core-kernel-rs = { workspace = true, optional = true }
+fraktor-cluster-core-typed-rs = { workspace = true, optional = true }
 fraktor-cluster-adaptor-std-rs = { workspace = true, optional = true }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time", "net", "sync", "io-util"], optional = true }
 anyhow = { workspace = true, optional = true }
@@ -35,6 +36,7 @@ advanced = [
     "dep:fraktor-persistence-core-typed-rs",
     "dep:fraktor-persistence-adaptor-std-rs",
     "dep:fraktor-cluster-core-kernel-rs",
+    "dep:fraktor-cluster-core-typed-rs",
     "dep:fraktor-cluster-adaptor-std-rs",
     "dep:tokio",
     "dep:anyhow",
@@ -234,6 +236,11 @@ path = "typed/mailboxes/main.rs"
 [[example]]
 name = "typed_persistence_effector"
 path = "typed/persistence_effector/main.rs"
+required-features = ["advanced"]
+
+[[example]]
+name = "typed_cluster_grain"
+path = "typed/cluster-grain/main.rs"
 required-features = ["advanced"]
 
 # --- Strangler fig examples: streams ---

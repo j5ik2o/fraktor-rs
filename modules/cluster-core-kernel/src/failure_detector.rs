@@ -5,6 +5,8 @@
 //! `fraktor-remote-core-rs`. Callers plug implementations per-resource
 //! via [`FailureDetectorRegistry`].
 
+mod cross_dc_failure_detector_config;
+mod cross_dc_failure_detector_config_error;
 mod default_failure_detector_registry;
 #[allow(clippy::module_inception)]
 mod failure_detector;
@@ -12,6 +14,8 @@ mod failure_detector_config;
 mod failure_detector_config_error;
 mod failure_detector_registry;
 
+pub use cross_dc_failure_detector_config::CrossDcFailureDetectorConfig;
+pub use cross_dc_failure_detector_config_error::CrossDcFailureDetectorConfigError;
 pub use default_failure_detector_registry::DefaultFailureDetectorRegistry;
 pub use failure_detector::FailureDetector;
 pub use failure_detector_config::FailureDetectorConfig;

@@ -1,6 +1,6 @@
 # cluster モジュール ギャップ分析
 
-更新日: 2026-06-18 (sharding state-store-mode join compatibility と CoordinatedShutdownLeave hook を実装済みに更新。raw 型数を 368 へ更新)
+更新日: 2026-07-06 (Phase B/C 実装: ClusterShardingSettings, typed ClusterSharding, sharding query, passivation runtime, DurableStore, Replicator runtime, Singleton manager/proxy, rebalance/remembered entities)
 
 ## 位置づけ
 
@@ -58,10 +58,10 @@ fraktor-rs 側はスキル指定の `pub` 系抽出で、型 368 件 (core-kerne
 | 指標 | 値 |
 |------|-----|
 | Pekko 固定スコープ対象公開契約グループ | 151 |
-| fraktor-rs 固定スコープ対応公開契約グループ（実装済み） | 117 |
-| 固定スコープカバレッジ | 117/151 (77%) |
-| 部分実装 | 11 |
-| 未対応 | 23（カテゴリ9の未対応 protocol 行は複数の公開契約グループを1行に集約） |
+| fraktor-rs 固定スコープ対応公開契約グループ（実装済み） | 135 |
+| 固定スコープカバレッジ | 135/151 (89%) |
+| 部分実装 | 5 |
+| 未対応 | 11（カテゴリ9の未対応 protocol 行は複数の公開契約グループを1行に集約） |
 | raw public type declarations | 368 (core-kernel: 330, core-typed: 12, std: 26) |
 | raw public method declarations | 1098 (core-kernel: 950, core-typed: 57, std: 91) |
 | hard / medium / easy / trivial gap | 10 / 18 / 6 / 0 |
@@ -70,6 +70,21 @@ fraktor-rs 側はスキル指定の `pub` 系抽出で、型 368 件 (core-kerne
 
 注: `raw public` は `pub(crate)` など内部到達可能な `pub` を含む参考値であり、crate 外から到達可能な外部公開 API 数ではない。
 注: `実装済み` / `部分実装` / `未対応` / 難易度内訳は、この台帳で定義した公開契約グループ単位で数える。ギャップ表の行数と概念グループ数は一致しない。カテゴリ9の protocol / CRDT 行は複数の公開契約グループを1行に集約している。raw 型名やメソッド名の個数を個別加算するものではない。
+
+### 再検証ログ (2026-07-06, Phase B/C 実装)
+
+cluster モジュール実装計画（Pekko 互換 + Rust 設計）に基づき Phase B/C を実装:
+
+- `ClusterShardingSettings` / `PassivationStrategy` 包括契約 + `ClusterExtensionConfig` 配線
+- typed `ClusterSharding` / `Entity[M]` / `EntityContext` facade（kernel 委譲）
+- `ShardingQuery` / `ShardingQueryHandler` observability protocol
+- `VirtualActorRegistry::passivate_by_strategy` passivation runtime
+- `CrossDcFailureDetectorConfig` / `ClusterScope`
+- `ShardAllocationStrategy` / `LeastShardAllocationStrategy` / rebalance handoff
+- `RememberEntitiesStore` port + in-memory 実装
+- typed `DistributedData` / `ReplicatorMessageAdapter` / `DurableStore` SPI + std adapter
+- `ReplicatorCore` runtime + std `ReplicatorActor` / extension installer
+- `ClusterSingletonManager` / `ClusterSingletonProxy` runtime + std actors
 
 ### 再検証ログ (2026-06-18, sharding join compatibility)
 

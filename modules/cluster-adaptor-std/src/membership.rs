@@ -1,6 +1,7 @@
 //! Tokio-backed membership and gossip adaptors.
 
 mod cluster_lifecycle_log_subscriber;
+mod cluster_membership_event_hook;
 mod cluster_router_pool_routee_subscriber;
 mod configured_phi_accrual_detector_factory;
 mod gossip_wire_delta_v1;
@@ -13,6 +14,7 @@ mod tokio_gossiper;
 mod tokio_gossiper_config;
 
 pub use cluster_lifecycle_log_subscriber::ClusterLifecycleLogSubscriber;
+pub use cluster_membership_event_hook::ClusterMembershipEventHook;
 pub use cluster_router_pool_routee_subscriber::ClusterRouterPoolRouteeSubscriber;
 pub use configured_phi_accrual_detector_factory::ConfiguredPhiAccrualDetectorFactory;
 pub use tokio_gossip_transport::TokioGossipTransport;

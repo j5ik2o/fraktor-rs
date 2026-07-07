@@ -9,6 +9,8 @@ extern crate alloc;
 
 /// Cluster provider adaptors for std runtimes.
 pub mod cluster_provider;
+/// Distributed-data std adaptors.
+pub mod ddata;
 /// ActorSystem integration for AWS ECS cluster extensions.
 #[cfg(feature = "aws-ecs")]
 pub mod extension;
@@ -20,3 +22,5 @@ pub mod membership;
 pub mod message_wire;
 /// Cluster publish/subscribe delivery adaptors.
 pub mod pub_sub;
+/// Cluster Singleton std adaptors.
+pub mod singleton;

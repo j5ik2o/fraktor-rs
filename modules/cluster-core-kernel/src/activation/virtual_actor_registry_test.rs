@@ -2,6 +2,7 @@ use alloc::string::ToString;
 
 use crate::{
   activation::{ActivationError, PidCacheEvent, VirtualActorEvent, VirtualActorRegistry},
+  extension::ClusterShardingSettings,
   grain::GrainKey,
 };
 
@@ -186,6 +187,15 @@ fn drain_cache_events_clears_buffer() {
   // 2回目の drain
   let second_drain = registry.drain_cache_events();
   assert!(second_drain.is_empty(), "2回目の drain ではイベントバッファが空であるべき");
+}
+
+#[test]
+fn remember_entities_enabled_reflects_cluster_sharding_settings() {
+  let disabled = ClusterShardingSettings::new();
+  assert!(!VirtualActorRegistry::remember_entities_enabled(&disabled));
+
+  let enabled = ClusterShardingSettings::new().with_remember_entities(true);
+  assert!(VirtualActorRegistry::remember_entities_enabled(&enabled));
 }
 
 #[test]

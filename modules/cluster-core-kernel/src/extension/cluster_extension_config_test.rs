@@ -2,9 +2,10 @@ use core::time::Duration;
 
 use super::*;
 use crate::{
-  ClusterShardingStateStoreMode, ClusterTopology, ConfigValidation, JoinConfigCompatChecker,
+  ClusterExtensionConfigValidationError, ClusterShardingSettings, ClusterShardingSettingsError,
+  ClusterShardingStateStoreMode, ClusterTopology, ConfigValidation, JoinConfigCompatChecker, PassivationStrategy,
   downing_provider::{DowningProviderCompatibility, SplitBrainResolverConfig, SplitBrainResolverStrategy},
-  failure_detector::{FailureDetectorConfig, FailureDetectorConfigError},
+  failure_detector::{CrossDcFailureDetectorConfig, FailureDetectorConfig, FailureDetectorConfigError},
   pub_sub::PubSubConfig,
   singleton::{ClusterSingletonConfigError, ClusterSingletonManagerConfig, ClusterSingletonProxyConfig},
 };
@@ -88,7 +89,10 @@ fn validate_delegates_to_failure_detector_config() {
   let config =
     ClusterExtensionConfig::new().with_failure_detector_config(FailureDetectorConfig::new().with_phi_threshold(0.0));
 
-  assert_eq!(config.validate(), Err(FailureDetectorConfigError::InvalidPhiThreshold));
+  assert_eq!(
+    config.validate(),
+    Err(ClusterExtensionConfigValidationError::FailureDetector(FailureDetectorConfigError::InvalidPhiThreshold))
+  );
 }
 
 #[test]
@@ -436,10 +440,60 @@ fn validate_singleton_delegates_to_proxy_and_returns_error_on_buffer_size_out_of
 }
 
 #[test]
-fn validate_does_not_change_signature_with_singleton_fields_added() {
-  // 既存 validate() のシグネチャが変わっていないことを確認（要件 8.1 / 8.3）
+fn validate_delegates_to_sharding_settings() {
+  let config =
+    ClusterExtensionConfig::new().with_sharding_settings(ClusterShardingSettings::new().with_number_of_shards(0));
+
+  assert_eq!(
+    config.validate(),
+    Err(ClusterExtensionConfigValidationError::ShardingSettings(ClusterShardingSettingsError::ZeroNumberOfShards))
+  );
+}
+
+#[test]
+fn validate_delegates_to_cross_dc_failure_detector_config() {
+  let config = ClusterExtensionConfig::new().with_cross_dc_failure_detector_config(
+    CrossDcFailureDetectorConfig::new().with_heartbeat_interval(core::time::Duration::ZERO),
+  );
+
+  assert_eq!(
+    config.validate(),
+    Err(ClusterExtensionConfigValidationError::CrossDcFailureDetector(
+      crate::failure_detector::CrossDcFailureDetectorConfigError::ZeroHeartbeatInterval
+    ))
+  );
+}
+
+#[test]
+fn sharding_settings_are_preserved() {
+  let settings = ClusterShardingSettings::new().with_number_of_shards(64).with_role("sharding");
+  let config = ClusterExtensionConfig::new().with_sharding_settings(settings.clone());
+
+  assert_eq!(config.sharding_settings(), &settings);
+}
+
+#[test]
+fn cross_dc_failure_detector_config_is_preserved() {
+  let cross_dc = CrossDcFailureDetectorConfig::new().with_heartbeat_interval(core::time::Duration::from_secs(7));
+  let config = ClusterExtensionConfig::new().with_cross_dc_failure_detector_config(cross_dc);
+
+  assert_eq!(config.cross_dc_failure_detector_config(), &cross_dc);
+}
+
+#[test]
+fn validate_sharding_settings_delegates_to_sharding_settings() {
+  let config =
+    ClusterExtensionConfig::new().with_sharding_settings(ClusterShardingSettings::new().with_passivation_strategy(
+      PassivationStrategy::ActiveLimit { limit: 0, idle_timeout: None, check_interval: None },
+    ));
+
+  assert_eq!(config.validate_sharding_settings(), Err(ClusterShardingSettingsError::ZeroActiveEntityLimit));
+}
+
+#[test]
+fn validate_accepts_default_extension_config() {
   let config = ClusterExtensionConfig::new();
-  let result: Result<(), FailureDetectorConfigError> = config.validate();
+  let result: Result<(), ClusterExtensionConfigValidationError> = config.validate();
   assert_eq!(result, Ok(()));
 }
 
