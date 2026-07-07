@@ -17,11 +17,11 @@ pub struct InMemoryRememberEntitiesStore {
 impl InMemoryRememberEntitiesStore {
   /// Creates an empty store.
   #[must_use]
-  pub fn new() -> Self {
+  pub const fn new() -> Self {
     Self { entities: BTreeSet::new() }
   }
 
-  fn validate_entity_id(entity_id: &str) -> Result<(), RememberEntitiesStoreError> {
+  const fn validate_entity_id(entity_id: &str) -> Result<(), RememberEntitiesStoreError> {
     if entity_id.is_empty() {
       return Err(RememberEntitiesStoreError::InvalidEntityId { entity_id: String::new() });
     }

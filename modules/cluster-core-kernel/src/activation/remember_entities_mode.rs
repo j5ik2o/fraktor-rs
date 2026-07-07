@@ -5,9 +5,10 @@
 mod tests;
 
 /// Storage backend used for remembered entities.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum RememberEntitiesStoreMode {
   /// Distributed data backed store.
+  #[default]
   DData,
   /// Event-sourced store.
   EventSourced,
@@ -35,11 +36,5 @@ impl RememberEntitiesStoreMode {
       | "custom" => Some(Self::Custom),
       | _ => None,
     }
-  }
-}
-
-impl Default for RememberEntitiesStoreMode {
-  fn default() -> Self {
-    Self::DData
   }
 }

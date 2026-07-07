@@ -10,9 +10,7 @@ use fraktor_cluster_core_kernel_rs::singleton::{
 };
 use fraktor_utils_core_rs::time::TimerInstant;
 
-use crate::membership::ClusterMembershipEventHook;
-
-/// std driver that wraps [`ClusterSingletonManager`] and exposes membership hook points.
+/// std driver that wraps [`ClusterSingletonManager`].
 pub struct ClusterSingletonManagerActor {
   manager: ClusterSingletonManager,
 }
@@ -29,14 +27,6 @@ impl ClusterSingletonManagerActor {
   pub const fn manager(&self) -> &ClusterSingletonManager {
     &self.manager
   }
-
-  /// Returns mutable access to the wrapped manager.
-  pub fn manager_mut(&mut self) -> &mut ClusterSingletonManager {
-    &mut self.manager
-  }
-
-  /// Placeholder membership hook for future event-stream integration.
-  pub const fn on_membership_event(&mut self, _hook: ClusterMembershipEventHook) {}
 
   /// Delegates topology application to the wrapped manager.
   #[must_use]

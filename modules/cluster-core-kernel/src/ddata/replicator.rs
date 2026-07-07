@@ -59,7 +59,7 @@ pub struct ReplicatorCore<D: ReplicatedData, S> {
 impl<D: ReplicatedData, S: Clone> ReplicatorCore<D, S> {
   /// Creates a new Replicator core with the provided settings.
   #[must_use]
-  pub fn new(settings: ReplicatorSettings) -> Self {
+  pub const fn new(settings: ReplicatorSettings) -> Self {
     Self { settings, entries: BTreeMap::new(), subscribers: BTreeMap::new() }
   }
 

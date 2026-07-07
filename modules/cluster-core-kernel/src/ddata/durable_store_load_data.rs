@@ -2,7 +2,7 @@
 
 use alloc::{collections::BTreeMap, string::String};
 
-use super::{DurableDataEnvelope, ReplicatedData};
+use crate::ddata::{DurableDataEnvelope, ReplicatedData};
 
 /// Batch of durable entries returned during startup load.
 ///
@@ -15,13 +15,13 @@ pub struct DurableStoreLoadData<D: ReplicatedData> {
 impl<D: ReplicatedData> DurableStoreLoadData<D> {
   /// Creates a load-data batch from the provided entries.
   #[must_use]
-  pub fn new(data: BTreeMap<String, DurableDataEnvelope<D>>) -> Self {
+  pub const fn new(data: BTreeMap<String, DurableDataEnvelope<D>>) -> Self {
     Self { data }
   }
 
   /// Returns the loaded entries.
   #[must_use]
-  pub fn data(&self) -> &BTreeMap<String, DurableDataEnvelope<D>> {
+  pub const fn data(&self) -> &BTreeMap<String, DurableDataEnvelope<D>> {
     &self.data
   }
 

@@ -1,17 +1,17 @@
-use fraktor_cluster_core_kernel_rs::ddata::{Flag, FlagKey, ReadConsistency, ReplicatorSettings, WriteConsistency};
+use fraktor_cluster_core_kernel_rs::ddata::{
+  Flag, FlagKey, Get, ReadConsistency, ReplicatorSettings, Update, WriteConsistency,
+};
 
-use super::{ReplicatorActor, ReplicatorGet, ReplicatorMembershipHook, ReplicatorUpdate};
+use super::ReplicatorActor;
 
 #[test]
-fn membership_hook_preserves_local_get_behavior() {
+fn local_get_returns_response_after_update() {
   let mut actor = ReplicatorActor::<Flag, u64>::new(ReplicatorSettings::new());
-  actor.on_membership_event(ReplicatorMembershipHook);
 
-  let _ = actor.handle_update(&ReplicatorUpdate::<Flag, ()>::new(flag_key(), WriteConsistency::Local), |_| {
-    Ok(Flag::disabled().switch_on())
-  });
+  let _ = actor
+    .handle_update(&Update::<Flag, ()>::new(flag_key(), WriteConsistency::Local), |_| Ok(Flag::disabled().switch_on()));
 
-  let outcome = actor.handle_get(&ReplicatorGet::<Flag, ()>::new(flag_key(), ReadConsistency::Local));
+  let outcome = actor.handle_get(&Get::<Flag, ()>::new(flag_key(), ReadConsistency::Local));
   assert!(outcome.response.is_some());
 }
 

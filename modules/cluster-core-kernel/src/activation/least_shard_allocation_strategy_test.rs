@@ -4,7 +4,8 @@ use alloc::{
   vec::Vec,
 };
 
-use super::{LeastShardAllocationStrategy, RebalanceStrategySettings, ShardAllocationStrategy};
+use super::LeastShardAllocationStrategy;
+use crate::activation::{RebalanceStrategySettings, ShardAllocationStrategy};
 
 fn insert(region: &str, shards: &[&str], allocations: &mut BTreeMap<String, Vec<String>>) {
   allocations.insert(String::from(region), shards.iter().map(|shard| String::from(*shard)).collect());

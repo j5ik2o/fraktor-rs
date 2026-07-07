@@ -9,105 +9,27 @@ use core::time::Duration;
 
 use fraktor_utils_core_rs::time::TimerInstant;
 
-use super::{ClusterSingletonManagerConfig, SingletonStuckPhase};
+use super::{
+  cluster_singleton_manager_config::ClusterSingletonManagerConfig,
+  cluster_singleton_manager_effect::ClusterSingletonManagerEffect,
+  cluster_singleton_manager_message::ClusterSingletonManagerMessage,
+  cluster_singleton_manager_outcome::ClusterSingletonManagerOutcome,
+  cluster_singleton_manager_phase::ClusterSingletonManagerPhase, singleton_stuck_phase::SingletonStuckPhase,
+};
 use crate::membership::{NodeRecord, age_ordered, member_age_order, oldest_member};
-
-/// Phase of the Cluster Singleton manager state machine.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ClusterSingletonManagerPhase {
-  /// Initial phase before membership is observed.
-  Start,
-  /// Local member is not the oldest eligible member.
-  Younger,
-  /// Local member is becoming the oldest member and waiting for hand-over.
-  BecomingOldest,
-  /// Local member hosts the singleton actor.
-  Oldest,
-  /// Local member was oldest but is no longer the oldest eligible member.
-  WasOldest,
-  /// Local member is handing over the singleton actor to the next oldest member.
-  HandingOver,
-  /// Local member is taking over from a previous oldest member.
-  TakeOver,
-  /// Local member is stopping the singleton actor.
-  Stopping,
-  /// Terminal phase after shutdown completes.
-  End,
-}
-
-/// Internal hand-over protocol messages exchanged between managers.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ClusterSingletonManagerMessage {
-  /// Request from the new oldest member to initiate hand-over.
-  HandOverToMe,
-  /// Confirmation that hand-over has started.
-  HandOverInProgress,
-  /// Confirmation that hand-over has completed.
-  HandOverDone,
-  /// Request from the previous oldest member to initiate normal hand-over.
-  TakeOverFromMe,
-}
-
-/// Effect requested by the manager state machine for the runtime driver.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ClusterSingletonManagerEffect {
-  /// Start the singleton actor on the local node.
-  StartSingleton,
-  /// Stop the singleton actor on the local node.
-  StopSingleton,
-  /// Send `HandOverToMe` to the target authority.
-  SendHandOverToMe {
-    /// Target node authority.
-    target_authority: String,
-  },
-  /// Send `TakeOverFromMe` to the target authority.
-  SendTakeOverFromMe {
-    /// Target node authority.
-    target_authority: String,
-  },
-  /// Publish a stuck hand-over observation event.
-  PublishHandOverStuck {
-    /// Stuck phase to observe.
-    phase: SingletonStuckPhase,
-  },
-  /// Schedule the next hand-over retry tick.
-  ScheduleHandOverRetry,
-}
-
-/// Outcome produced by applying manager input to the state machine.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ClusterSingletonManagerOutcome {
-  /// New manager phase after the transition.
-  pub phase:   ClusterSingletonManagerPhase,
-  /// Effects for the runtime driver to execute.
-  pub effects: Vec<ClusterSingletonManagerEffect>,
-}
-
-impl ClusterSingletonManagerOutcome {
-  fn with_phase(phase: ClusterSingletonManagerPhase) -> Self {
-    Self { phase, effects: Vec::new() }
-  }
-
-  fn with_effect(phase: ClusterSingletonManagerPhase, effect: ClusterSingletonManagerEffect) -> Self {
-    Self { phase, effects: vec![effect] }
-  }
-
-  fn with_effects(phase: ClusterSingletonManagerPhase, effects: Vec<ClusterSingletonManagerEffect>) -> Self {
-    Self { phase, effects }
-  }
-}
 
 /// Pure state machine for Cluster Singleton manager runtime behavior.
 #[derive(Debug, Clone)]
 pub struct ClusterSingletonManager {
-  config:                ClusterSingletonManagerConfig,
-  phase:                 ClusterSingletonManagerPhase,
-  local_authority:       String,
-  oldest_members:        Vec<String>,
-  previous_oldest:       Option<String>,
-  hand_over_retry_count: u32,
-  singleton_running:     bool,
-  next_retry_at:         Option<TimerInstant>,
+  config:                    ClusterSingletonManagerConfig,
+  phase:                     ClusterSingletonManagerPhase,
+  local_authority:           String,
+  oldest_members:            Vec<String>,
+  previous_oldest:           Option<String>,
+  hand_over_retry_count:     u32,
+  hand_over_stuck_published: bool,
+  singleton_running:         bool,
+  next_retry_at:             Option<TimerInstant>,
 }
 
 impl ClusterSingletonManager {
@@ -121,6 +43,7 @@ impl ClusterSingletonManager {
       oldest_members: Vec::new(),
       previous_oldest: None,
       hand_over_retry_count: 0,
+      hand_over_stuck_published: false,
       singleton_running: false,
       next_retry_at: None,
     }
@@ -210,17 +133,23 @@ impl ClusterSingletonManager {
   #[must_use]
   pub fn handle_message(&mut self, message: ClusterSingletonManagerMessage) -> ClusterSingletonManagerOutcome {
     match (self.phase, message) {
-      | (ClusterSingletonManagerPhase::Oldest, ClusterSingletonManagerMessage::HandOverToMe) => {
-        self.phase = ClusterSingletonManagerPhase::HandingOver;
-        self.singleton_running = false;
-        ClusterSingletonManagerOutcome::with_effect(self.phase, ClusterSingletonManagerEffect::StopSingleton)
+      | (ClusterSingletonManagerPhase::Oldest, ClusterSingletonManagerMessage::HandOverToMe)
+      | (ClusterSingletonManagerPhase::WasOldest, ClusterSingletonManagerMessage::HandOverToMe) => {
+        if self.singleton_running {
+          self.phase = ClusterSingletonManagerPhase::HandingOver;
+          self.singleton_running = false;
+          ClusterSingletonManagerOutcome::with_effect(self.phase, ClusterSingletonManagerEffect::StopSingleton)
+        } else {
+          self.phase = ClusterSingletonManagerPhase::End;
+          ClusterSingletonManagerOutcome::with_effect(self.phase, ClusterSingletonManagerEffect::SendHandOverDone)
+        }
       },
       | (ClusterSingletonManagerPhase::HandingOver, ClusterSingletonManagerMessage::HandOverInProgress) => {
         ClusterSingletonManagerOutcome::with_phase(self.phase)
       },
       | (ClusterSingletonManagerPhase::HandingOver, ClusterSingletonManagerMessage::HandOverDone) => {
         self.phase = ClusterSingletonManagerPhase::End;
-        ClusterSingletonManagerOutcome::with_phase(self.phase)
+        ClusterSingletonManagerOutcome::with_effect(self.phase, ClusterSingletonManagerEffect::SendHandOverDone)
       },
       | (ClusterSingletonManagerPhase::BecomingOldest, ClusterSingletonManagerMessage::HandOverInProgress) => {
         ClusterSingletonManagerOutcome::with_phase(self.phase)
@@ -252,6 +181,11 @@ impl ClusterSingletonManager {
     self.hand_over_retry_count = self.hand_over_retry_count.saturating_add(1);
     let max_retries = self.config.max_hand_over_retries();
     if self.hand_over_retry_count > max_retries {
+      if self.hand_over_stuck_published {
+        return ClusterSingletonManagerOutcome::with_phase(self.phase);
+      }
+      self.hand_over_stuck_published = true;
+      self.next_retry_at = None;
       return ClusterSingletonManagerOutcome::with_effect(
         self.phase,
         ClusterSingletonManagerEffect::PublishHandOverStuck { phase: SingletonStuckPhase::BecomingOldest },

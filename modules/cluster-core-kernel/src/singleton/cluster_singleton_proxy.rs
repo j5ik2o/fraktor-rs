@@ -45,7 +45,7 @@ impl<M> ClusterSingletonProxyOutcome<M> {
     Self { effects: vec![effect] }
   }
 
-  fn empty() -> Self {
+  const fn empty() -> Self {
     Self { effects: Vec::new() }
   }
 }
@@ -61,7 +61,7 @@ pub struct ClusterSingletonProxy<M> {
 impl<M> ClusterSingletonProxy<M> {
   /// Creates a proxy with the provided configuration.
   #[must_use]
-  pub fn new(config: ClusterSingletonProxyConfig) -> Self {
+  pub const fn new(config: ClusterSingletonProxyConfig) -> Self {
     Self { config, identified_location: None, buffer: VecDeque::new() }
   }
 
@@ -95,12 +95,9 @@ impl<M> ClusterSingletonProxy<M> {
     self.identified_location = oldest_member(&eligible).map(|record| record.authority.clone());
 
     let mut effects = Vec::new();
-    if self.identified_location.is_some() {
+    if let Some(location) = self.identified_location.clone() {
       while let Some(message) = self.buffer.pop_front() {
-        effects.push(ClusterSingletonProxyEffect::Forward {
-          location: self.identified_location.clone().expect("location set after identify"),
-          message,
-        });
+        effects.push(ClusterSingletonProxyEffect::Forward { location: location.clone(), message });
       }
     } else {
       effects.push(ClusterSingletonProxyEffect::Identify);
@@ -120,8 +117,11 @@ impl<M> ClusterSingletonProxy<M> {
       return ClusterSingletonProxyOutcome::with_effect(ClusterSingletonProxyEffect::Drop { message });
     }
 
-    if self.buffer.len() >= usize::try_from(buffer_size).unwrap_or(usize::MAX) {
-      let _dropped = self.buffer.pop_front();
+    if self.buffer.len() >= usize::try_from(buffer_size).unwrap_or(usize::MAX)
+      && let Some(dropped) = self.buffer.pop_front()
+    {
+      self.buffer.push_back(message);
+      return ClusterSingletonProxyOutcome::with_effect(ClusterSingletonProxyEffect::Drop { message: dropped });
     }
     self.buffer.push_back(message);
     ClusterSingletonProxyOutcome::empty()

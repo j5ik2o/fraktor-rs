@@ -14,13 +14,13 @@ pub struct DurableDataEnvelope<D: ReplicatedData> {
 impl<D: ReplicatedData> DurableDataEnvelope<D> {
   /// Creates a durable envelope around the given CRDT value.
   #[must_use]
-  pub fn new(data: D) -> Self {
+  pub const fn new(data: D) -> Self {
     Self { data }
   }
 
   /// Returns the wrapped CRDT value.
   #[must_use]
-  pub fn data(&self) -> &D {
+  pub const fn data(&self) -> &D {
     &self.data
   }
 

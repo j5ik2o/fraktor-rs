@@ -7,57 +7,15 @@ mod tests;
 use alloc::vec;
 use core::any::Any;
 
-use fraktor_actor_core_kernel_rs::actor::extension::{Extension, ExtensionId};
+use fraktor_actor_core_kernel_rs::actor::extension::Extension;
 use fraktor_actor_core_typed_rs::TypedActorSystem;
 use fraktor_cluster_core_kernel_rs::{
-  activation::{ActivatedKind, IdentitySetupError},
+  activation::{ActivatedKind, ClusterIdentityError, IdentitySetupError},
   extension::{ClusterApi, ClusterApiError, ClusterExtension},
-  grain::GrainRef as KernelGrainRef,
 };
 use fraktor_utils_core_rs::sync::ArcShared;
 
-use crate::{ClusterIdentity, Entity, GrainRef, GrainTypeKey};
-
-/// Identifier for the typed [`ClusterSharding`] extension.
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Hash)]
-pub struct ClusterShardingId;
-
-/// Handle returned by [`ClusterSharding::init`] for typed entity reference resolution.
-pub struct EntityRegion<M> {
-  api:      ClusterApi,
-  type_key: GrainTypeKey<M>,
-}
-
-impl<M> EntityRegion<M> {
-  const fn new(api: ClusterApi, type_key: GrainTypeKey<M>) -> Self {
-    Self { api, type_key }
-  }
-
-  /// Returns the registered grain type key for this region.
-  #[must_use]
-  pub const fn type_key(&self) -> &GrainTypeKey<M> {
-    &self.type_key
-  }
-
-  /// Resolves a typed grain reference for the given entity id.
-  ///
-  /// Delegates identity construction to [`GrainTypeKey::identity_for`] and reference
-  /// construction to the kernel [`ClusterApi`] / [`KernelGrainRef`] path.
-  ///
-  /// # Errors
-  ///
-  /// Returns [`ClusterIdentityError`](fraktor_cluster_core_kernel_rs::activation::ClusterIdentityError)
-  /// when the entity id or stored kind is invalid.
-  pub fn entity_ref_for(
-    &self,
-    entity_id: &str,
-  ) -> Result<GrainRef<M>, fraktor_cluster_core_kernel_rs::activation::ClusterIdentityError>
-  where
-    M: Any + Send + Sync + 'static, {
-    let identity = self.type_key.identity_for(entity_id)?;
-    Ok(grain_ref_for(&self.api, &identity))
-  }
-}
+use crate::{Entity, entity_region::EntityRegion, grain_ref::GrainRef, grain_type_key::GrainTypeKey};
 
 /// Typed facade for cluster sharding initialization and entity reference lookup.
 ///
@@ -69,25 +27,7 @@ pub struct ClusterSharding {
   extension: ArcShared<ClusterExtension>,
 }
 
-impl ClusterShardingId {
-  /// Creates a new cluster sharding extension identifier.
-  #[must_use]
-  pub const fn new() -> Self {
-    Self
-  }
-}
-
 impl Extension for ClusterSharding {}
-
-impl ExtensionId for ClusterShardingId {
-  type Ext = ClusterSharding;
-
-  fn create_extension(&self, system: &fraktor_actor_core_kernel_rs::system::ActorSystem) -> Self::Ext {
-    Self::Ext::try_from_system(system).unwrap_or_else(|error| {
-      panic!("cluster extension must be installed before cluster sharding: {error:?}");
-    })
-  }
-}
 
 impl ClusterSharding {
   /// Retrieves the typed cluster sharding facade from a typed actor system.
@@ -150,27 +90,19 @@ impl ClusterSharding {
   ///
   /// # Errors
   ///
-  /// Returns [`ClusterIdentityError`](fraktor_cluster_core_kernel_rs::activation::ClusterIdentityError)
-  /// when the entity id or kind is invalid.
+  /// Returns [`ClusterIdentityError`] when the entity id or kind is invalid.
   pub fn entity_ref_for<M>(
     &self,
     type_key: &GrainTypeKey<M>,
     entity_id: &str,
-  ) -> Result<GrainRef<M>, fraktor_cluster_core_kernel_rs::activation::ClusterIdentityError>
+  ) -> Result<GrainRef<M>, ClusterIdentityError>
   where
     M: Any + Send + Sync + 'static, {
     let identity = type_key.identity_for(entity_id)?;
-    Ok(grain_ref_for(&self.api, &identity))
+    Ok(crate::entity_region::grain_ref_for(&self.api, &identity))
   }
 
   fn register_kind(&self, kind: &str) -> Result<(), IdentitySetupError> {
     self.extension.setup_member_kinds(vec![ActivatedKind::new(kind)])
   }
-}
-
-fn grain_ref_for<M>(api: &ClusterApi, identity: &ClusterIdentity<M>) -> GrainRef<M>
-where
-  M: Any + Send + Sync + 'static, {
-  let kernel_ref = KernelGrainRef::new(api.clone(), identity.as_kernel().clone());
-  GrainRef::from_kernel(kernel_ref)
 }

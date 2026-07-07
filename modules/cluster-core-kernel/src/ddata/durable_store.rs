@@ -33,6 +33,10 @@ pub trait DurableStore<D: ReplicatedData> {
   /// Marks startup load as completed.
   ///
   /// The default implementation is a no-op for stores that do not track load phase.
+  ///
+  /// # Errors
+  ///
+  /// The default implementation never fails.
   fn complete_load_all(&mut self) -> Result<DurableStoreLoadAllCompleted, DurableStoreError> {
     Ok(DurableStoreLoadAllCompleted)
   }

@@ -151,7 +151,7 @@ impl ClusterShardingSettings {
 
   /// Returns the passivation strategy.
   #[must_use]
-  pub fn passivation_strategy(&self) -> &PassivationStrategy {
+  pub const fn passivation_strategy(&self) -> &PassivationStrategy {
     &self.passivation_strategy
   }
 

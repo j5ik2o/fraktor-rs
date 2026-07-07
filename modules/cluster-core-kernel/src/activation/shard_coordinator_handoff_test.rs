@@ -1,8 +1,10 @@
 use alloc::{collections::BTreeSet, string::String};
 
-use super::{
-  ShardCoordinatorHandoff, ShardCoordinatorHandoffAction, ShardCoordinatorHandoffCommand,
-  ShardCoordinatorHandoffOutcome,
+use super::ShardCoordinatorHandoff;
+use crate::activation::{
+  shard_coordinator_handoff_action::ShardCoordinatorHandoffAction,
+  shard_coordinator_handoff_command::ShardCoordinatorHandoffCommand,
+  shard_coordinator_handoff_outcome::ShardCoordinatorHandoffOutcome,
 };
 
 fn regions(values: &[&str]) -> BTreeSet<String> {

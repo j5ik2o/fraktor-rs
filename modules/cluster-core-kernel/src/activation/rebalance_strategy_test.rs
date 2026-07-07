@@ -1,6 +1,7 @@
 use core::time::Duration;
 
 use super::RebalanceStrategy;
+use crate::activation::RebalanceStrategySettings;
 
 #[test]
 fn default_settings_use_pekko_compatible_limits() {
@@ -12,7 +13,7 @@ fn default_settings_use_pekko_compatible_limits() {
 
 #[test]
 fn rebalance_limit_uses_relative_and_absolute_caps() {
-  let settings = super::RebalanceStrategySettings::with_limits(5, 0.1);
+  let settings = RebalanceStrategySettings::with_limits(5, 0.1);
   assert_eq!(settings.rebalance_limit(100), 5);
   assert_eq!(settings.rebalance_limit(10), 1);
 }

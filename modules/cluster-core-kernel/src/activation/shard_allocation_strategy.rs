@@ -19,13 +19,13 @@ pub struct ExternalShardLocations {
 impl ExternalShardLocations {
   /// Creates an empty external shard location snapshot.
   #[must_use]
-  pub fn new() -> Self {
+  pub const fn new() -> Self {
     Self { locations: BTreeMap::new() }
   }
 
   /// Creates a snapshot from shard-to-region mappings.
   #[must_use]
-  pub fn from_locations(locations: BTreeMap<String, String>) -> Self {
+  pub const fn from_locations(locations: BTreeMap<String, String>) -> Self {
     Self { locations }
   }
 
@@ -36,7 +36,7 @@ impl ExternalShardLocations {
 
   /// Returns the configured shard locations.
   #[must_use]
-  pub fn locations(&self) -> &BTreeMap<String, String> {
+  pub const fn locations(&self) -> &BTreeMap<String, String> {
     &self.locations
   }
 

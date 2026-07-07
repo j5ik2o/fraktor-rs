@@ -34,8 +34,11 @@ impl<'a> ShardingQueryHandler<'a> {
   }
 
   /// Executes a sharding query and returns the local response.
+  ///
+  /// `GetClusterShardingStats` intentionally returns only the local region snapshot.
+  /// Cluster-wide aggregation belongs to a coordinator or adaptor layer above this handler.
   #[must_use]
-  pub fn handle(&self, query: ShardingQuery) -> ShardingQueryResponse {
+  pub fn handle(&self, query: &ShardingQuery) -> ShardingQueryResponse {
     match query {
       | ShardingQuery::GetShardRegionState => self.current_shard_region_state(),
       | ShardingQuery::GetShardRegionStats => self.shard_region_stats(),

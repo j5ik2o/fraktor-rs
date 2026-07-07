@@ -6,7 +6,9 @@ use alloc::{
   vec::Vec,
 };
 
-use super::{RebalanceStrategySettings, ShardAllocationStrategy};
+use super::{
+  rebalance_strategy_settings::RebalanceStrategySettings, shard_allocation_strategy::ShardAllocationStrategy,
+};
 
 #[cfg(test)]
 #[path = "least_shard_allocation_strategy_test.rs"]
@@ -65,10 +67,10 @@ impl LeastShardAllocationStrategy {
 
     let mut selected = Vec::new();
     for (_, shards) in sorted_entries {
-      if shards.len() >= optimal_per_region {
-        if let Some(shard) = shards.first() {
-          selected.push(shard.clone());
-        }
+      if shards.len() >= optimal_per_region
+        && let Some(shard) = shards.first()
+      {
+        selected.push(shard.clone());
       }
     }
 

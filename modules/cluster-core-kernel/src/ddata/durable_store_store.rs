@@ -2,34 +2,7 @@
 
 use alloc::string::String;
 
-use crate::ddata::{DurableDataEnvelope, ReplicatedData};
-
-/// Optional reply contract for a durable store write.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct DurableStoreStoreReply {
-  store_succeeded: bool,
-  store_failed:    bool,
-}
-
-impl DurableStoreStoreReply {
-  /// Creates a reply contract with explicit success and failure markers.
-  #[must_use]
-  pub const fn new(store_succeeded: bool, store_failed: bool) -> Self {
-    Self { store_succeeded, store_failed }
-  }
-
-  /// Returns the success marker carried to the requester on success.
-  #[must_use]
-  pub const fn store_succeeded(&self) -> bool {
-    self.store_succeeded
-  }
-
-  /// Returns the failure marker carried to the requester on failure.
-  #[must_use]
-  pub const fn store_failed(&self) -> bool {
-    self.store_failed
-  }
-}
+use crate::ddata::{DurableDataEnvelope, DurableStoreStoreReply, ReplicatedData};
 
 /// Request to persist one distributed-data entry.
 ///
@@ -50,7 +23,7 @@ impl<D: ReplicatedData> DurableStoreStore<D> {
 
   /// Returns a store request with an explicit reply contract.
   #[must_use]
-  pub fn with_reply(mut self, reply: DurableStoreStoreReply) -> Self {
+  pub const fn with_reply(mut self, reply: DurableStoreStoreReply) -> Self {
     self.reply = Some(reply);
     self
   }
@@ -63,7 +36,7 @@ impl<D: ReplicatedData> DurableStoreStore<D> {
 
   /// Returns the data envelope to persist.
   #[must_use]
-  pub fn data(&self) -> &DurableDataEnvelope<D> {
+  pub const fn data(&self) -> &DurableDataEnvelope<D> {
     &self.data
   }
 

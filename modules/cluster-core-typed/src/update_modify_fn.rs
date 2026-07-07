@@ -1,12 +1,15 @@
 //! Function that modifies a CRDT value during an update command.
 
-use alloc::{string::String, sync::Arc};
+use alloc::string::String;
 
 use fraktor_cluster_core_kernel_rs::ddata::ReplicatedData;
+use fraktor_utils_core_rs::sync::ArcShared;
+
+type ArcModifyFn<D> = ArcShared<dyn Fn(Option<&D>) -> Result<D, String> + Send + Sync>;
 
 /// Function that modifies a CRDT value during an update command.
 pub struct UpdateModifyFn<D: ReplicatedData + Send + Sync + 'static> {
-  modify: Arc<dyn Fn(Option<&D>) -> Result<D, String> + Send + Sync>,
+  modify: ArcModifyFn<D>,
 }
 
 impl<D: ReplicatedData + Send + Sync + 'static> Clone for UpdateModifyFn<D> {
@@ -20,7 +23,7 @@ impl<D: ReplicatedData + Send + Sync + 'static> UpdateModifyFn<D> {
   pub fn new<F>(modify: F) -> Self
   where
     F: Fn(Option<&D>) -> Result<D, String> + Send + Sync + 'static, {
-    Self { modify: Arc::new(modify) }
+    Self { modify: ArcShared::new(modify) }
   }
 
   /// Applies the modify function to the provided entry snapshot.

@@ -30,3 +30,33 @@ fn passivate_by_strategy_active_limit_evicts_oldest() {
   assert_eq!(registry.active_keys().len(), 1);
   assert_eq!(registry.active_keys()[0].value(), "user:2");
 }
+
+#[test]
+fn passivate_by_strategy_mru_evicts_most_recent() {
+  let mut registry = VirtualActorRegistry::new(8, 60);
+  let authorities = vec!["node:4000".to_string()];
+  registry.ensure_activation(&key("user:1"), &authorities, 1, false, None).expect("activation");
+  registry.ensure_activation(&key("user:2"), &authorities, 2, false, None).expect("activation");
+
+  registry.passivate_by_strategy(&PassivationStrategy::Mru { limit: 1, idle_timeout: None, check_interval: None }, 3);
+
+  assert_eq!(registry.active_keys().len(), 1);
+  assert_eq!(registry.active_keys()[0].value(), "user:1");
+}
+
+#[test]
+fn passivate_by_strategy_lfu_evicts_least_frequent() {
+  let mut registry = VirtualActorRegistry::new(8, 60);
+  let authorities = vec!["node:4000".to_string()];
+  registry.ensure_activation(&key("user:1"), &authorities, 1, false, None).expect("activation");
+  registry.ensure_activation(&key("user:2"), &authorities, 2, false, None).expect("activation");
+  registry.ensure_activation(&key("user:1"), &authorities, 3, false, None).expect("activation");
+
+  registry.passivate_by_strategy(
+    &PassivationStrategy::Lfu { limit: 1, dynamic_aging: false, idle_timeout: None, check_interval: None },
+    4,
+  );
+
+  assert_eq!(registry.active_keys().len(), 1);
+  assert_eq!(registry.active_keys()[0].value(), "user:1");
+}

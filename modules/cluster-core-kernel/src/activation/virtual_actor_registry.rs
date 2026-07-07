@@ -22,9 +22,10 @@ mod passivation_tests;
 mod tests;
 
 struct ActivationEntry {
-  record:    ActivationRecord,
-  authority: String,
-  last_seen: u64,
+  record:       ActivationRecord,
+  authority:    String,
+  last_seen:    u64,
+  access_count: u64,
 }
 
 /// Registry that keeps track of active grains.
@@ -75,6 +76,7 @@ impl VirtualActorRegistry {
       && entry.authority == *owner
     {
       entry.last_seen = now;
+      entry.access_count = entry.access_count.saturating_add(1);
       self.events.push(VirtualActorEvent::Hit { key: key.clone(), pid: entry.record.pid.clone() });
       self.pid_cache.put(key.clone(), entry.record.pid.clone(), owner.clone(), now, self.pid_ttl_secs);
       return Ok(entry.record.pid.clone());
@@ -82,7 +84,7 @@ impl VirtualActorRegistry {
 
     let pid = format!("{}::{}", owner, key.value());
     let record = ActivationRecord::new(pid.clone(), snapshot, 0);
-    let entry = ActivationEntry { record, authority: owner.clone(), last_seen: now };
+    let entry = ActivationEntry { record, authority: owner.clone(), last_seen: now, access_count: 1 };
     let replaced = self.activations.insert(key.clone(), entry);
     self.pid_cache.put(key.clone(), pid.clone(), owner.clone(), now, self.pid_ttl_secs);
 
@@ -144,31 +146,57 @@ impl VirtualActorRegistry {
     match strategy {
       | PassivationStrategy::Disabled => {},
       | PassivationStrategy::Idle { timeout, .. } => {
-        self.passivate_idle(now, timeout.as_secs());
+        self.passivate_idle(now, idle_threshold_units(*timeout));
       },
       | PassivationStrategy::ActiveLimit { limit, idle_timeout, .. } => {
         if let Some(idle) = idle_timeout {
-          self.passivate_idle(now, idle.as_secs());
+          self.passivate_idle(now, idle_threshold_units(*idle));
         }
-        self.passivate_excess_by_last_seen(*limit as usize);
+        self.passivate_excess_by_last_seen(*limit as usize, false);
       },
-      | PassivationStrategy::Lru { limit, idle_timeout, .. }
-      | PassivationStrategy::Mru { limit, idle_timeout, .. }
+      | PassivationStrategy::Lru { limit, idle_timeout, .. } => {
+        if let Some(idle) = idle_timeout {
+          self.passivate_idle(now, idle_threshold_units(*idle));
+        }
+        self.passivate_excess_by_last_seen(*limit as usize, false);
+      },
+      | PassivationStrategy::Mru { limit, idle_timeout, .. } => {
+        if let Some(idle) = idle_timeout {
+          self.passivate_idle(now, idle_threshold_units(*idle));
+        }
+        self.passivate_excess_by_last_seen(*limit as usize, true);
+      },
       | PassivationStrategy::Lfu { limit, idle_timeout, .. } => {
         if let Some(idle) = idle_timeout {
-          self.passivate_idle(now, idle.as_secs());
+          self.passivate_idle(now, idle_threshold_units(*idle));
         }
-        self.passivate_excess_by_last_seen(*limit as usize);
+        self.passivate_excess_by_access_count(*limit as usize);
       },
     }
   }
 
-  fn passivate_excess_by_last_seen(&mut self, limit: usize) {
+  fn passivate_excess_by_last_seen(&mut self, limit: usize, most_recent_first: bool) {
     if self.activations.len() <= limit {
       return;
     }
     let mut entries: Vec<_> = self.activations.iter().map(|(key, entry)| (key.clone(), entry.last_seen)).collect();
-    entries.sort_by_key(|(_, last_seen)| *last_seen);
+    if most_recent_first {
+      entries.sort_by_key(|(_, last_seen)| core::cmp::Reverse(*last_seen));
+    } else {
+      entries.sort_by_key(|(_, last_seen)| *last_seen);
+    }
+    let excess = self.activations.len().saturating_sub(limit);
+    for (key, _) in entries.into_iter().take(excess) {
+      self.remove_activation(&key);
+    }
+  }
+
+  fn passivate_excess_by_access_count(&mut self, limit: usize) {
+    if self.activations.len() <= limit {
+      return;
+    }
+    let mut entries: Vec<_> = self.activations.iter().map(|(key, entry)| (key.clone(), entry.access_count)).collect();
+    entries.sort_by_key(|(_, access_count)| *access_count);
     let excess = self.activations.len().saturating_sub(limit);
     for (key, _) in entries.into_iter().take(excess) {
       self.remove_activation(&key);
@@ -226,7 +254,12 @@ impl VirtualActorRegistry {
   /// Records an activation entry with explicit authority.
   pub fn record_activation(&mut self, key: &GrainKey, authority: &str, record: &ActivationRecord, now: u64) {
     let pid = record.pid.clone();
-    let entry = ActivationEntry { record: record.clone(), authority: authority.to_string(), last_seen: now };
+    let entry = ActivationEntry {
+      record:       record.clone(),
+      authority:    authority.to_string(),
+      last_seen:    now,
+      access_count: 1,
+    };
     let replaced = self.activations.insert(key.clone(), entry);
     self.pid_cache.put(key.clone(), pid.clone(), authority.to_string(), now, self.pid_ttl_secs);
 
@@ -237,4 +270,15 @@ impl VirtualActorRegistry {
     };
     self.events.push(event);
   }
+}
+
+const fn idle_threshold_units(duration: core::time::Duration) -> u64 {
+  if duration.is_zero() {
+    return 0;
+  }
+  let secs = duration.as_secs();
+  if secs == 0 {
+    return 1;
+  }
+  if duration.subsec_nanos() > 0 { secs.saturating_add(1) } else { secs }
 }

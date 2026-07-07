@@ -40,6 +40,7 @@ mod placement_request_id;
 mod placement_resolution;
 mod placement_snapshot;
 mod rebalance_strategy;
+mod rebalance_strategy_settings;
 mod remember_entities_mode;
 mod remember_entities_store;
 mod remember_entities_store_error;
@@ -48,6 +49,9 @@ mod resolve_error;
 mod resolve_result;
 mod shard_allocation_strategy;
 mod shard_coordinator_handoff;
+mod shard_coordinator_handoff_action;
+mod shard_coordinator_handoff_command;
+mod shard_coordinator_handoff_outcome;
 mod virtual_actor_event;
 mod virtual_actor_registry;
 
@@ -90,7 +94,8 @@ pub use placement_lock_error::PlacementLockError;
 pub use placement_request_id::PlacementRequestId;
 pub use placement_resolution::PlacementResolution;
 pub use placement_snapshot::PlacementSnapshot;
-pub use rebalance_strategy::{RebalanceStrategy, RebalanceStrategySettings};
+pub use rebalance_strategy::RebalanceStrategy;
+pub use rebalance_strategy_settings::RebalanceStrategySettings;
 pub use remember_entities_mode::RememberEntitiesStoreMode;
 pub use remember_entities_store::RememberEntitiesStore;
 pub use remember_entities_store_error::RememberEntitiesStoreError;
@@ -98,9 +103,9 @@ pub use rendezvous_hasher::RendezvousHasher;
 pub use resolve_error::ResolveError;
 pub use resolve_result::ResolveResult;
 pub use shard_allocation_strategy::{ExternalShardLocations, ShardAllocationStrategy};
-pub use shard_coordinator_handoff::{
-  ShardCoordinatorHandoff, ShardCoordinatorHandoffAction, ShardCoordinatorHandoffCommand,
-  ShardCoordinatorHandoffOutcome,
-};
+pub use shard_coordinator_handoff::ShardCoordinatorHandoff;
+pub use shard_coordinator_handoff_action::ShardCoordinatorHandoffAction;
+pub use shard_coordinator_handoff_command::ShardCoordinatorHandoffCommand;
+pub use shard_coordinator_handoff_outcome::ShardCoordinatorHandoffOutcome;
 pub use virtual_actor_event::VirtualActorEvent;
 pub use virtual_actor_registry::VirtualActorRegistry;

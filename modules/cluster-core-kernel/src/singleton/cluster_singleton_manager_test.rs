@@ -3,12 +3,15 @@ use core::time::Duration;
 
 use fraktor_utils_core_rs::time::TimerInstant;
 
-use super::{
-  ClusterSingletonManager, ClusterSingletonManagerEffect, ClusterSingletonManagerMessage, ClusterSingletonManagerPhase,
-};
+use super::ClusterSingletonManager;
 use crate::{
   membership::{MembershipVersion, NodeRecord, NodeStatus},
-  singleton::{ClusterSingletonManagerConfig, SingletonStuckPhase},
+  singleton::{
+    ClusterSingletonManagerConfig, SingletonStuckPhase,
+    cluster_singleton_manager_effect::ClusterSingletonManagerEffect,
+    cluster_singleton_manager_message::ClusterSingletonManagerMessage,
+    cluster_singleton_manager_phase::ClusterSingletonManagerPhase,
+  },
 };
 
 fn now(ticks: u64) -> TimerInstant {
@@ -84,4 +87,19 @@ fn poll_publishes_stuck_event_after_retry_budget() {
   assert_eq!(outcome.effects, vec![ClusterSingletonManagerEffect::PublishHandOverStuck {
     phase: SingletonStuckPhase::BecomingOldest,
   }]);
+  assert!(manager.next_retry_at.is_none());
+
+  let repeat = manager.poll(now(3));
+  assert!(repeat.effects.is_empty());
+}
+
+#[test]
+fn was_oldest_hand_over_to_me_emits_hand_over_done_when_already_stopped() {
+  let mut manager = ClusterSingletonManager::new(ClusterSingletonManagerConfig::new(), "n1:4000");
+  manager.phase = ClusterSingletonManagerPhase::WasOldest;
+  manager.singleton_running = false;
+
+  let outcome = manager.handle_message(ClusterSingletonManagerMessage::HandOverToMe);
+  assert_eq!(manager.phase(), ClusterSingletonManagerPhase::End);
+  assert_eq!(outcome.effects, vec![ClusterSingletonManagerEffect::SendHandOverDone]);
 }

@@ -1,4 +1,6 @@
-use fraktor_cluster_core_kernel_rs::ddata::{DurableDataEnvelope, DurableStore, DurableStoreLoadAll, Flag};
+use fraktor_cluster_core_kernel_rs::ddata::{
+  DurableDataEnvelope, DurableStore, DurableStoreLoadAll, DurableStoreLoadAllCompleted, DurableStoreStore, Flag,
+};
 
 use crate::ddata::InMemoryDurableStore;
 
@@ -6,10 +8,7 @@ use crate::ddata::InMemoryDurableStore;
 fn store_and_load_all_round_trip_entries() {
   let mut store = InMemoryDurableStore::<Flag>::new();
   store
-    .store(&fraktor_cluster_core_kernel_rs::ddata::DurableStoreStore::new(
-      "flag-key",
-      DurableDataEnvelope::new(Flag::disabled().switch_on()),
-    ))
+    .store(&DurableStoreStore::new("flag-key", DurableDataEnvelope::new(Flag::disabled().switch_on())))
     .expect("store succeeds");
 
   let loaded = store.load_all().expect("load succeeds");
@@ -22,18 +21,13 @@ fn startup_load_returns_completed_marker() {
   let mut store = InMemoryDurableStore::<Flag>::new();
   let (data, completed) = store.startup_load(DurableStoreLoadAll).expect("startup load succeeds");
   assert!(data.data().is_empty());
-  assert_eq!(completed, fraktor_cluster_core_kernel_rs::ddata::DurableStoreLoadAllCompleted);
+  assert_eq!(completed, DurableStoreLoadAllCompleted);
 }
 
 #[test]
 fn len_tracks_inserted_entries() {
   let mut store = InMemoryDurableStore::<Flag>::new();
   assert!(store.is_empty());
-  store
-    .store(&fraktor_cluster_core_kernel_rs::ddata::DurableStoreStore::new(
-      "flag-key",
-      DurableDataEnvelope::new(Flag::disabled()),
-    ))
-    .expect("store succeeds");
+  store.store(&DurableStoreStore::new("flag-key", DurableDataEnvelope::new(Flag::disabled()))).expect("store succeeds");
   assert_eq!(store.len(), 1);
 }

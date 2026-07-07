@@ -8,7 +8,6 @@ use fraktor_cluster_core_kernel_rs::{
 use fraktor_utils_core_rs::time::TimerInstant;
 
 use super::ClusterSingletonManagerActor;
-use crate::membership::ClusterMembershipEventHook;
 
 fn make_record(authority: &str, join_v: u64) -> NodeRecord {
   NodeRecord::new(
@@ -28,7 +27,6 @@ fn now(ticks: u64) -> TimerInstant {
 #[test]
 fn manager_actor_starts_singleton_for_oldest_member() {
   let mut actor = ClusterSingletonManagerActor::new(ClusterSingletonManagerConfig::new(), "n1:4000");
-  actor.on_membership_event(ClusterMembershipEventHook);
 
   let outcome = actor.apply_topology(&[make_record("n1:4000", 1)], now(0));
   assert_eq!(actor.manager().phase(), ClusterSingletonManagerPhase::Oldest);

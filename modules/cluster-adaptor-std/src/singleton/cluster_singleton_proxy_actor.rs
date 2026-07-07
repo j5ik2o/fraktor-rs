@@ -9,9 +9,7 @@ use fraktor_cluster_core_kernel_rs::{
   singleton::{ClusterSingletonProxy, ClusterSingletonProxyConfig, ClusterSingletonProxyOutcome},
 };
 
-use crate::membership::ClusterMembershipEventHook;
-
-/// std driver that wraps [`ClusterSingletonProxy`] and exposes membership hook points.
+/// std driver that wraps [`ClusterSingletonProxy`].
 pub struct ClusterSingletonProxyActor<M> {
   proxy:             ClusterSingletonProxy<M>,
   local_data_center: DataCenter,
@@ -29,14 +27,6 @@ impl<M> ClusterSingletonProxyActor<M> {
   pub const fn proxy(&self) -> &ClusterSingletonProxy<M> {
     &self.proxy
   }
-
-  /// Returns mutable access to the wrapped proxy.
-  pub fn proxy_mut(&mut self) -> &mut ClusterSingletonProxy<M> {
-    &mut self.proxy
-  }
-
-  /// Placeholder membership hook for future event-stream integration.
-  pub const fn on_membership_event(&mut self, _hook: ClusterMembershipEventHook) {}
 
   /// Delegates singleton identification to the wrapped proxy.
   #[must_use]

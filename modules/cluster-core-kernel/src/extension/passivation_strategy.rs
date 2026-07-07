@@ -9,9 +9,10 @@ use super::ClusterShardingSettingsError;
 mod tests;
 
 /// Passivation strategy for sharded entities.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 pub enum PassivationStrategy {
   /// Passivation is disabled.
+  #[default]
   Disabled,
   /// Passivate entities after an idle timeout.
   Idle {
@@ -106,7 +107,7 @@ impl PassivationStrategy {
     }
   }
 
-  fn validate_limit(limit: u32) -> Result<(), ClusterShardingSettingsError> {
+  const fn validate_limit(limit: u32) -> Result<(), ClusterShardingSettingsError> {
     if limit == 0 {
       return Err(ClusterShardingSettingsError::ZeroActiveEntityLimit);
     }
@@ -118,11 +119,5 @@ impl PassivationStrategy {
       return Err(ClusterShardingSettingsError::ZeroIdleTimeout);
     }
     Ok(())
-  }
-}
-
-impl Default for PassivationStrategy {
-  fn default() -> Self {
-    Self::Disabled
   }
 }

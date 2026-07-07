@@ -4,7 +4,11 @@ use alloc::{
 };
 use core::time::Duration;
 
-use super::{ShardRegionStatsSnapshot, ShardState, ShardingQuery, ShardingQueryResponse};
+use super::ShardingQuery;
+use crate::grain::{
+  shard_region_stats_snapshot::ShardRegionStatsSnapshot, shard_state::ShardState,
+  sharding_query_response::ShardingQueryResponse,
+};
 
 #[test]
 fn query_variants_are_constructible() {

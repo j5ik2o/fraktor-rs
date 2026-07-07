@@ -7,16 +7,14 @@ use fraktor_actor_core_typed_rs::{TypedActorRef, TypedActorSystem, TypedProps, d
 use fraktor_cluster_core_kernel_rs::{
   cluster_provider::NoopClusterProvider,
   ddata::{
-    DeleteWriteOutcome, Flag, FlagKey, ReadConsistency, ReplicatorEntry, Subscribe, SubscribeResponse, Update,
-    UpdateResponse, UpdateWriteOutcome, WriteConsistency,
+    DeleteWriteOutcome, Flag, FlagKey, ReplicatorEntry, Subscribe, SubscribeResponse, Update, UpdateResponse,
+    UpdateWriteOutcome, WriteConsistency,
   },
   extension::{ClusterExtensionConfig, ClusterExtensionInstaller},
 };
 use fraktor_utils_core_rs::sync::{ArcShared, SpinSyncMutex};
 
 use crate::{ReplicatorCommand, UpdateModifyFn};
-
-const ASK_TIMEOUT: Duration = Duration::from_secs(1);
 
 struct LocalReplicator {
   entries: BTreeMap<alloc::string::String, ReplicatorEntry<Flag>>,
