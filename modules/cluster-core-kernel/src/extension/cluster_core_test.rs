@@ -535,6 +535,31 @@ fn resolve_pid_applies_configured_grain_idle_passivation_threshold() {
 }
 
 #[test]
+fn resolve_pid_refreshes_requested_grain_before_idle_passivation() {
+  let config = ClusterExtensionConfig::new()
+    .with_advertised_address("node-a:4050")
+    .with_grain_idle_passivation_threshold(Duration::from_secs(100));
+  let mut core = build_core_with_partition_lookup(&config);
+  core.start_member().expect("start member");
+  core.setup_member_kinds(vec![ActivatedKind::new("user")]).expect("setup kinds");
+  let update = build_update(1, vec![String::from("node-a:4050")], Vec::new(), Vec::new(), Vec::new());
+  core.apply_topology(&update).expect("apply topology");
+  let key = GrainKey::new(String::from("user/requested"));
+  let first = core.resolve_pid(&key, 1000).expect("first resolution");
+  let _ = core.drain_placement_events();
+
+  let second = core.resolve_pid(&key, 1100).expect("resolution at idle boundary");
+
+  assert_eq!(second.pid, first.pid);
+  assert!(
+    !core
+      .drain_placement_events()
+      .iter()
+      .any(|event| matches!(event, PlacementEvent::Passivated { key: passivated, .. } if *passivated == key))
+  );
+}
+
+#[test]
 fn start_member_rejects_invalid_grain_idle_passivation_threshold() {
   let config = ClusterExtensionConfig::new().with_grain_idle_passivation_threshold(Duration::from_millis(999));
   let mut core = build_core_with_config(&config);

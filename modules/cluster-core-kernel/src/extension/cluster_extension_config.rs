@@ -337,6 +337,8 @@ impl ClusterExtensionConfig {
   ) -> Result<(), ClusterExtensionConfigError> {
     if threshold < Duration::from_secs(1) {
       Err(ClusterExtensionConfigError::GrainIdlePassivationThresholdBelowOneSecond)
+    } else if threshold.subsec_nanos() != 0 {
+      Err(ClusterExtensionConfigError::GrainIdlePassivationThresholdNotWholeSeconds)
     } else {
       Ok(())
     }

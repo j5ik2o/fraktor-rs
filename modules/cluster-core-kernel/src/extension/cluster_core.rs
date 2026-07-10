@@ -179,8 +179,9 @@ impl ClusterCore {
   pub fn resolve_pid(&mut self, key: &GrainKey, now: u64) -> Result<PlacementResolution, LookupError> {
     let idle_ttl = self.grain_idle_passivation_threshold.as_secs();
     self.identity_lookup.with_write(|lookup| {
+      let resolution = lookup.resolve(key, now);
       lookup.passivate_idle(now, idle_ttl);
-      lookup.resolve(key, now)
+      resolution
     })
   }
 

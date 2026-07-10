@@ -33,6 +33,13 @@ fn validate_rejects_grain_idle_passivation_threshold_below_one_second() {
 }
 
 #[test]
+fn validate_rejects_fractional_grain_idle_passivation_threshold() {
+  let config = ClusterExtensionConfig::new().with_grain_idle_passivation_threshold(Duration::from_millis(1500));
+
+  assert_eq!(config.validate(), Err(ClusterExtensionConfigError::GrainIdlePassivationThresholdNotWholeSeconds));
+}
+
+#[test]
 fn metrics_flag_and_address_are_preserved() {
   // metrics を有効に設定した構成がそのまま保持されることを確認
   let config = ClusterExtensionConfig::new().with_advertised_address("proto://node-a").with_metrics_enabled(true);

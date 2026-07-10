@@ -14,6 +14,8 @@ pub enum ClusterExtensionConfigError {
   FailureDetector(FailureDetectorConfigError),
   /// Grain idle passivation cannot be represented by the runtime's second-based clock.
   GrainIdlePassivationThresholdBelowOneSecond,
+  /// Grain idle passivation contains a fractional second unsupported by the runtime clock.
+  GrainIdlePassivationThresholdNotWholeSeconds,
 }
 
 impl fmt::Display for ClusterExtensionConfigError {
@@ -22,6 +24,9 @@ impl fmt::Display for ClusterExtensionConfigError {
       | Self::FailureDetector(error) => error.fmt(f),
       | Self::GrainIdlePassivationThresholdBelowOneSecond => {
         f.write_str("grain idle passivation threshold must be at least one second")
+      },
+      | Self::GrainIdlePassivationThresholdNotWholeSeconds => {
+        f.write_str("grain idle passivation threshold must use whole seconds")
       },
     }
   }
