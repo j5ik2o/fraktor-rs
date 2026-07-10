@@ -807,18 +807,18 @@ style: |
   <div>
     <p class="lead"><strong>かとじゅん（@j5ik2o）</strong></p>
     <ul>
-      <li>所属・役割：正式版で追記</li>
-      <li>主な活動：正式版で追記</li>
-      <li>登壇・著書など：正式版で追記</li>
+      <li>所属：IDEO PLUS合同会社 代表社員</li>
+      <li>主な活動：SaaS企業の技術顧問<br><span class="muted small">ZOZO / Leverages / Precena / カンリー</span></li>
+      <li>OSS：Amadeus（AI-DLC）/ TAKT / <strong>fraktor</strong><br><span class="muted small">fraktor が本トークの題材</span></li>
     </ul>
-    <p class="muted small" style="margin-top: 34px">※プロフィール情報は正式版で差し替え予定です。</p>
   </div>
   <img class="profile-photo" src="./self-profile.jpg" alt="プロフィール画像">
 </div>
 
 <!--
 [目安 30秒]
-所属、現在の活動、このトークとの関係だけを短く伝える。数値実績や経歴は、正式なプロフィールへ差し替えるまでは追加しない。
+IDEO PLUS合同会社の代表社員として、ZOZO、Leverages、Precena、カンリーなどSaaS企業の技術顧問をしている。
+OSSではAmadeus、TAKT、そして本トークの題材であるfraktorを開発している。
 -->
 
 ---
