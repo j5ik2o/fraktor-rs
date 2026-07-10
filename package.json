@@ -1,6 +1,8 @@
 {
   "private": true,
   "scripts": {
+    "slide:preview": "marp --preview --watch talks/fp-matsuri-2026/fp-matsuri-2026-marp.md --output /tmp/fp-matsuri-2026-marp.html",
+    "slide:pdf": "marp --pdf --allow-local-files talks/fp-matsuri-2026/fp-matsuri-2026-marp.md --output talks/fp-matsuri-2026/fp-matsuri-2026-marp.pdf",
     "takt": "./scripts/run-takt.sh",
     "takt:personal": "./scripts/run-takt.sh personal",
     "takt:corporate": "./scripts/run-takt.sh corporate",
@@ -23,6 +25,7 @@
     "kiro:validate:impl": "node scripts/kiro-staged.mjs kiro-validate-impl --default-task \".kiro/specs から完了タスクのある spec を検出し、実装の統合検証を実行する\" --pipeline --skip-git -t"
   },
   "devDependencies": {
+    "@marp-team/marp-cli": "^4.4.0",
     "takt": "^0.50.0"
   }
 }
