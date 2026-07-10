@@ -925,15 +925,15 @@ StreamはSource、Flow、Sinkとして処理グラフを宣言し、需要量と
 <p class="tiny center muted" style="margin-top: 12px">core = 共通契約、adaptor-std = std 環境の実装</p>
 
 <div class="metric-row">
-  <div class="metric"><strong>236</strong><span>public 型宣言（現行コード）</span></div>
-  <div class="metric"><strong>94%</strong><span>Pekko 固定スコープ比較</span></div>
-  <div class="metric"><strong>約4.2万</strong><span>stream のテスト行数</span></div>
+  <div class="metric"><strong>236</strong><span>3 stream crate の public 型宣言</span></div>
+  <div class="metric"><strong>94%</strong><span>固定50概念中 47概念</span></div>
+  <div class="metric"><strong>約4.2万</strong><span>core-kernel のテスト行数</span></div>
 </div>
 
 <!--
 [目安 1分20秒]
 fraktor-rs全体は六つのドメインを持ち、それぞれをno_stdのcoreとstd環境向けadaptorに分けている。本トークで掘り下げるのは右端のstreamである。
-数値は現在のコードを走査した値であり、public型宣言は236、Pekkoとの固定スコープ比較は94パーセント、streamのテストは約4.2万行である。
+数値は2026年7月10日に現在のコードを走査した値である。236は三つのstream crateにあるpublicなstruct、enum、trait、type aliasの合計。94パーセントはdocs/gap-analysis/stream-gap-analysis.mdで定義した固定50概念中47概念。約4.2万行はstream-core-kernelのアンダースコアtest.rsを合計した4万2500行である。計測コマンドは講演素材に残している。
 規模を誇るためではなく、ここから示す設計が試作だけではなく、相応の実装面積で使われていることを示している。
 -->
 
@@ -995,11 +995,9 @@ let graph = Source::single(41_u32)
   .map(|value| value + 1)
   .into_mat(Sink::head(), KeepRight);
 
-let running = graph.run(&mut materializer)
-  .map_err(|error| format!("materialization failed: {error}"))?;
+let running = graph.run(&mut materializer)?;
 let result = running.materialized()
-  .wait_blocking(&StdBlocker::new())
-  .map_err(|error| format!("stream failed: {error}"))?;
+  .wait_blocking(&StdBlocker::new())?;
 ```
 
 <div class="flow" style="margin-top: 14px">
