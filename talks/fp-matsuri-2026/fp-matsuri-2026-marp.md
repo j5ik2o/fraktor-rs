@@ -908,7 +908,8 @@ cart_ref.tell(CartCommand::AddItem { item_id: 1, qty: 1 });
 [目安 1分20秒]
 このトークで必要なactorの知識は三つだけです。actorは状態と処理を持ち、ActorRefへ送られたメッセージはmailboxへ並び、原則として一つずつ処理されます。
 送信者はactor本体を直接触らず、送信窓口であるActorRefへメッセージを渡します。コード例のとおり、送信はActorRefへのtell一行で完結するfire-and-forgetです。実装ではMailbox::runが一件ずつ取り出してactorのハンドラへ渡します。
-図中の表記は、実在する型やAPIを等幅のコード表記、actorやmailboxのような概念を小文字の英語で書き分けています。逐次処理なので、actor内部の状態はロックを前提にせず更新できます。
+なお、図の中で等幅フォントになっているのは実在する型やAPIで、小文字の英語はactorやmailboxのような概念です。この使い分けは以降のスライドでも同じです。
+逐次処理なので、actor内部の状態はロックを前提にせず更新できます。
 後半に出てくるDriveやCancelも、このmailboxへ届くコマンドです。
 -->
 
@@ -1012,7 +1013,7 @@ StreamはSource、Flow、Sinkとして処理グラフを宣言し、需要量と
 <!--
 [目安 1分20秒]
 fraktor-rs全体は六つのドメインを持ち、それぞれをno_stdのcoreとstd環境向けadaptorに分けています。本トークで掘り下げるのは右端のstreamです。
-数値は2026年7月10日に現在のコードを走査した値です。236は三つのstream crateにあるpublicなstruct、enum、trait、type aliasの合計です。94パーセントはdocs/gap-analysis/stream-gap-analysis.mdで定義した固定50概念中47概念です。約4.2万行はstream-core-kernelのアンダースコアtest.rsを合計した4万2500行です。計測コマンドは講演素材に残しています。
+数値は今月10日にコードを走査した値です。236は三つのstream crateにあるpublicなstruct、enum、trait、type aliasの合計です。94パーセントは、リポジトリのギャップ分析文書で定義した、Pekkoとの固定50概念中47概念です。約4.2万行はstream-core-kernelのテストファイルを合計した4万2500行です。計測コマンドもリポジトリで公開しているので、手元で再計測できます。
 規模を誇るためではなく、ここから示す設計が試作に留まらず、相応の実装面積で使われていることを示すための数値です。
 -->
 
@@ -1746,8 +1747,8 @@ SharedAccessのwith_writeはFnOnceを受け、任意の戻り値Rを返せます
 Materializerの節で見た型消去を、ここでは所有権の視点から見直します。
 Sendは、値の所有権を別スレッドへ安全に移せることを表すRustのマーカートレイトです。
 型消去後のDynValueはBox dyn Any plus Sendであり、island間の接続が要素型へSendを要求する地点、つまりSend境界になります。Send境界という専用オブジェクトが存在するわけではありません。
-Syncについて聞かれたら、island間では値を共有参照で見せず所有権ごと移すため、要素型への要求はSendだけでSyncは不要だと答えます。
 この制約は内部だけに閉じず、Source、Flow、Sinkで扱うInやOutの型制約へ伝播します。実行単位を分ける判断が、利用者から見える型にも影響します。
+※Q&A想定メモ: Syncを問われたら「island間では値を共有参照で見せず所有権ごと移すため、要素型への要求はSendだけでSyncは不要」と回答。
 -->
 
 ---
