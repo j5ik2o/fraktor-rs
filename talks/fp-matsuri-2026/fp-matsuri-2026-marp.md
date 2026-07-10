@@ -147,6 +147,24 @@ style: |
   .two-col.wide-left { grid-template-columns: 1.25fr 0.75fr; }
   .two-col.wide-right { grid-template-columns: 0.75fr 1.25fr; }
 
+  .profile-grid {
+    align-items: center;
+    display: grid;
+    gap: 64px;
+    grid-template-columns: 1.5fr 0.7fr;
+    margin-top: 42px;
+  }
+
+  .profile-photo {
+    aspect-ratio: 1 / 1;
+    background: rgba(255, 255, 255, 0.88);
+    border: 1px solid var(--line);
+    border-radius: 18px;
+    display: block;
+    object-fit: cover;
+    width: 100%;
+  }
+
   .panel {
     background: rgba(255, 255, 255, 0.92);
     border: 1px solid var(--line);
@@ -774,6 +792,33 @@ style: |
 [目安 30秒]
 本トークでは、Rustで宣言的なストリームDSLを設計するとき、APIの背後にどのような実行系が必要になるかを扱う。題材は開発中のfraktor-rsである。
 特に、async boundaryとislandという言葉が、Rustのasync/awaitとは別の実行モデルを指すことを解きほぐす。
+-->
+
+---
+
+<!-- slide_id: S002 -->
+<!-- _class: profile -->
+
+<div class="eyebrow">01 · Intro</div>
+
+# 自己紹介
+
+<div class="profile-grid">
+  <div>
+    <p class="lead"><strong>かとじゅん（@j5ik2o）</strong></p>
+    <ul>
+      <li>所属・役割：正式版で追記</li>
+      <li>主な活動：正式版で追記</li>
+      <li>登壇・著書など：正式版で追記</li>
+    </ul>
+    <p class="muted small" style="margin-top: 34px">※プロフィール情報は正式版で差し替え予定です。</p>
+  </div>
+  <img class="profile-photo" src="./self-profile.jpg" alt="プロフィール画像">
+</div>
+
+<!--
+[目安 30秒]
+所属、現在の活動、このトークとの関係だけを短く伝える。数値実績や経歴は、正式なプロフィールへ差し替えるまでは追加しない。
 -->
 
 ---
@@ -1658,26 +1703,6 @@ ActorMaterializerはActor Systemを受け取るだけなので、std環境との
 
 ---
 
-<div class="eyebrow">06 · Takeaways</div>
-
-# 宣言的 DSL の難所は、API ではなく実行系にある
-
-<ol class="numbered">
-  <li><span><strong>記述と解釈を分ける</strong><br><span class="muted">設計図は不変データ。実行は interpreter の責務</span></span></li>
-  <li><span><strong>async boundary ≠ async/await</strong><br><span class="muted">並行性の単位は island。island = 1 actor</span></span></li>
-  <li><span><strong><code>no_std</code> を境界に、実行系を分ける</strong><br><span class="muted">core は tick で前進し、std adaptor が実行環境へ接続する</span></span></li>
-</ol>
-
-<!--
-[目安 1分20秒]
-一つ目は、宣言的DSLの本体を記述と解釈の分離として捉えることである。不変な設計図があるから、実行前に分割や属性解釈を行える。
-二つ目は、async boundaryとasync/awaitを混同しないことである。ここでの並行性の単位はislandであり、一つのislandが一つのactorになる。
-三つ目は、no_std自体を実行モデルと呼ぶのではなく、no_stdを境界としてcoreとstd adaptorの責務を分けることである。coreは外部reactorに依存せずtickで前進し、std adaptorがTokioなどの実行環境へ接続する。その選択にはポータビリティと引き換えのレイテンシがある。
-簡単なAPIを成立させる難所は、この三つを整合させる実行系にある。
--->
-
----
-
 <!-- _class: no-page -->
 
 <div class="eyebrow">06 · What comes next</div>
@@ -1705,4 +1730,41 @@ ActorMaterializerはActor Systemを受け取るだけなので、std環境との
 残る課題は二つある。std側ではTCPとTLSのアダプタ統合を詰める必要がある。
 core側ではGraphInterpreterが大きくなっているため、demandやschedulingの不変条件を壊さない単位で段階的に分けたい。
 fraktor-rsはpre-releaseであり、コードとshowcaseは公開している。質問や設計上の異論も含め、リポジトリでフィードバックを歓迎する。
+-->
+
+---
+
+<div class="eyebrow">06 · Takeaways</div>
+
+# 宣言的 DSL の難所は、API ではなく実行系にある
+
+<ol class="numbered">
+  <li><span><strong>記述と解釈を分ける</strong><br><span class="muted">設計図は不変データ。実行は interpreter の責務</span></span></li>
+  <li><span><strong>async boundary ≠ async/await</strong><br><span class="muted">並行性の単位は island。island = 1 actor</span></span></li>
+  <li><span><strong><code>no_std</code> を境界に、実行系を分ける</strong><br><span class="muted">core は tick で前進し、std adaptor が実行環境へ接続する</span></span></li>
+</ol>
+
+<!--
+[目安 1分20秒]
+一つ目は、宣言的DSLの本体を記述と解釈の分離として捉えることである。不変な設計図があるから、実行前に分割や属性解釈を行える。
+二つ目は、async boundaryとasync/awaitを混同しないことである。ここでの並行性の単位はislandであり、一つのislandが一つのactorになる。
+三つ目は、no_std自体を実行モデルと呼ぶのではなく、no_stdを境界としてcoreとstd adaptorの責務を分けることである。coreは外部reactorに依存せずtickで前進し、std adaptorがTokioなどの実行環境へ接続する。その選択にはポータビリティと引き換えのレイテンシがある。
+簡単なAPIを成立させる難所は、この三つを整合させる実行系にある。
+-->
+
+---
+
+<!-- _class: title-slide no-page -->
+
+<div class="eyebrow">Thank you</div>
+
+# ありがとうございました
+
+<div class="subtitle">Rustで宣言的ストリームDSLを設計する</div>
+
+<div class="meta">github.com/j5ik2o/fraktor-rs<br>@j5ik2o</div>
+
+<!--
+[目安 10秒]
+ご清聴ありがとうございました。
 -->

@@ -162,14 +162,14 @@ find modules/stream-core-kernel/src -type f -name '*.rs' ! -name '*_test.rs' -pr
 - ステージ間を流れる値は `Box<dyn Any + Send>`: Send 境界が全ステージの要素型に要求される
 - **層分離**: Tokio との結線点は Stream 層ではなく Actor 層（dispatcher / tick driver）。`stream-core-kernel` は `#![no_std]` のまま、std/embedded の差し替えは actor 層で吸収。`ActorSystemConfig::new(StdTickDriver::default())` → `ActorSystem` → `ActorMaterializer::new(system, config)` という接続経路（コード抜粋 #1 の main 関数がそのまま例になる）
 
-### セクション6: まとめ（約2分10秒 / 2枚）
+### セクション6: 残課題・まとめ・ありがとう（約2分20秒 / 3枚）
 
+- 残課題を率直に: TCP/TLS の std 統合、GraphInterpreter drive loop の分割（demand/scheduling を壊さない単位で段階的に）
 - 持ち帰り3点:
   1. 宣言的 DSL の本体は「記述と解釈の分離」— blueprint は不変データ、実行は interpreter
   2. async boundary ≠ async/await。並行性の単位は island（= actor）
   3. no_std を貫くなら実行モデルごと自作する覚悟が要る — その対価と見返り
-- 残課題を率直に: TCP/TLS の std 統合、GraphInterpreter drive loop の分割（demand/scheduling を壊さない単位で段階的に）
-- リポジトリ紹介: github.com/j5ik2o/fraktor-rs
+- ありがとうスライド: github.com/j5ik2o/fraktor-rs と @j5ik2o を再掲して締める
 
 ### スコープ外（言及のみ、深入りしない）
 
