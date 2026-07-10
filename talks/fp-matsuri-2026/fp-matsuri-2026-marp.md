@@ -995,10 +995,11 @@ let graph = Source::single(41_u32)
   .map(|value| value + 1)
   .into_mat(Sink::head(), KeepRight);
 
-let running = graph.run(&mut materializer).expect("run");
+let running = graph.run(&mut materializer)
+  .map_err(|error| format!("materialization failed: {error}"))?;
 let result = running.materialized()
   .wait_blocking(&StdBlocker::new())
-  .expect("stream");
+  .map_err(|error| format!("stream failed: {error}"))?;
 ```
 
 <div class="flow" style="margin-top: 14px">
