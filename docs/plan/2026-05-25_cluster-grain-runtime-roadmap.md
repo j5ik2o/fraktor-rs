@@ -84,6 +84,18 @@ Cons:
 - failure detector と downing の最小の contract がある。
 - `cluster-adaptor-std` の local / static / AWS ECS provider の動作境界が明確である。
 
+## 実装済み判定
+
+比較対象に対応する型や設定が存在するだけでは、Grain runtime の機能を実装済みとは扱わない。次の条件をすべて満たしたときだけ、roadmap 上の実装済みとして扱う。
+
+1. 利用者から到達可能な公開エントリポイントがある。
+2. エントリポイントから core policy と必要な adaptor まで実行経路が接続されている。
+3. 設定値は validation 後に所有する runtime で消費され、保存されるだけになっていない。
+4. contract test が公開エントリポイントから観測可能な state / effect / event までを検証する。
+5. docs と gap analysis は上記のコードおよびテストを証跡として示せる。
+
+純粋なデータ契約や decision model は、その公開 API 自体が完結した実行境界であり、law / state transition の contract test がある場合に限って単独で実装済みと扱える。反対に、runtime を名乗る actor / installer / facade が core を保持または検証するだけで、spawn、message dispatch、lifecycle、I/O の実行経路を持たない場合は未実装である。
+
 ## Task slices
 
 進捗の読み方:
