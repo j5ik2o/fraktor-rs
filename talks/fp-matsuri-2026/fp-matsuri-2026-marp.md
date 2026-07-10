@@ -1006,7 +1006,7 @@ StreamはSource、Flow、Sinkとして処理グラフを宣言し、需要量と
 
 <div class="metric-row">
   <div class="metric"><strong>236</strong><span>3 stream crate の public 型宣言</span></div>
-  <div class="metric"><strong>94%</strong><span>固定50概念中 47概念</span></div>
+  <div class="metric"><strong>94%</strong><span>Pekko 固定50概念中 47概念</span></div>
   <div class="metric"><strong>約4.2万</strong><span>core-kernel のテスト行数</span></div>
 </div>
 
@@ -1448,7 +1448,7 @@ for edge in &plan.edges {
 }
 ```
 
-<p class="muted">残った無向グラフを BFS。連結成分ごとに、トポロジカル順で island ID を振る。</p>
+<p class="muted">async 印から出る辺は、隣接関係に加えない（= 切断点）。<br>残った無向グラフを BFS。連結成分ごとに、トポロジカル順で island ID を振る。</p>
 
 <!--
 [目安 1分10秒]
