@@ -8,9 +8,10 @@ use alloc::{string::String, vec::Vec};
 use core::time::Duration;
 
 use crate::{
-  ClusterShardingStateStoreMode, ClusterTopology, ConfigValidation, JoinConfigCompatChecker,
+  ClusterExtensionConfigError, ClusterShardingStateStoreMode, ClusterTopology, ConfigValidation,
+  JoinConfigCompatChecker,
   downing_provider::DowningProviderCompatibility,
-  failure_detector::{FailureDetectorConfig, FailureDetectorConfigError},
+  failure_detector::FailureDetectorConfig,
   pub_sub::PubSubConfig,
   singleton::{ClusterSingletonConfigError, ClusterSingletonManagerConfig, ClusterSingletonProxyConfig},
   topology::{ClusterCompatibilityKey, ClusterCompatibilityKeyCatalog},
@@ -77,17 +78,18 @@ const JOIN_COMPATIBILITY_CHECKS: &[JoinCompatibilityCheck] = &[
 /// Configuration applied when installing the cluster extension.
 #[derive(Clone, Debug, PartialEq)]
 pub struct ClusterExtensionConfig {
-  advertised_address:        String,
-  metrics_enabled:           bool,
-  static_topology:           Option<ClusterTopology>,
-  pubsub_config:             PubSubConfig,
-  failure_detector_config:   FailureDetectorConfig,
-  app_version:               String,
-  roles:                     Vec<String>,
-  downing_provider:          DowningProviderCompatibility,
-  singleton_manager_config:  ClusterSingletonManagerConfig,
-  singleton_proxy_config:    ClusterSingletonProxyConfig,
+  advertised_address: String,
+  metrics_enabled: bool,
+  static_topology: Option<ClusterTopology>,
+  pubsub_config: PubSubConfig,
+  failure_detector_config: FailureDetectorConfig,
+  app_version: String,
+  roles: Vec<String>,
+  downing_provider: DowningProviderCompatibility,
+  singleton_manager_config: ClusterSingletonManagerConfig,
+  singleton_proxy_config: ClusterSingletonProxyConfig,
   sharding_state_store_mode: ClusterShardingStateStoreMode,
+  grain_idle_passivation_threshold: Duration,
 }
 
 impl ClusterExtensionConfig {
@@ -99,17 +101,18 @@ impl ClusterExtensionConfig {
   #[must_use]
   pub fn new() -> Self {
     Self {
-      advertised_address:        String::new(),
-      metrics_enabled:           false,
-      static_topology:           None,
-      pubsub_config:             PubSubConfig::new(Duration::from_secs(3), Duration::from_secs(60)),
-      failure_detector_config:   FailureDetectorConfig::new(),
-      app_version:               String::from(env!("CARGO_PKG_VERSION")),
-      roles:                     Vec::new(),
-      downing_provider:          DowningProviderCompatibility::noop(),
-      singleton_manager_config:  ClusterSingletonManagerConfig::new(),
-      singleton_proxy_config:    ClusterSingletonProxyConfig::new(),
+      advertised_address: String::new(),
+      metrics_enabled: false,
+      static_topology: None,
+      pubsub_config: PubSubConfig::new(Duration::from_secs(3), Duration::from_secs(60)),
+      failure_detector_config: FailureDetectorConfig::new(),
+      app_version: String::from(env!("CARGO_PKG_VERSION")),
+      roles: Vec::new(),
+      downing_provider: DowningProviderCompatibility::noop(),
+      singleton_manager_config: ClusterSingletonManagerConfig::new(),
+      singleton_proxy_config: ClusterSingletonProxyConfig::new(),
       sharding_state_store_mode: ClusterShardingStateStoreMode::default(),
+      grain_idle_passivation_threshold: Duration::from_secs(3600),
     }
   }
 
@@ -127,6 +130,13 @@ impl ClusterExtensionConfig {
     self
   }
 
+  /// Sets the maximum Grain idle duration before passivation.
+  #[must_use]
+  pub const fn with_grain_idle_passivation_threshold(mut self, threshold: Duration) -> Self {
+    self.grain_idle_passivation_threshold = threshold;
+    self
+  }
+
   /// Returns the configured advertised address.
   #[must_use]
   pub fn advertised_address(&self) -> &str {
@@ -137,6 +147,12 @@ impl ClusterExtensionConfig {
   #[must_use]
   pub const fn metrics_enabled(&self) -> bool {
     self.metrics_enabled
+  }
+
+  /// Returns the maximum Grain idle duration before passivation.
+  #[must_use]
+  pub const fn grain_idle_passivation_threshold(&self) -> Duration {
+    self.grain_idle_passivation_threshold
   }
 
   /// Sets the static topology to be published on startup.
@@ -309,10 +325,21 @@ impl ClusterExtensionConfig {
   ///
   /// # Errors
   ///
-  /// Returns [`FailureDetectorConfigError`] when the configured failure detector
-  /// observation parameters are outside the accepted range.
-  pub fn validate(&self) -> Result<(), FailureDetectorConfigError> {
-    self.failure_detector_config.validate()
+  /// Returns [`ClusterExtensionConfigError`] when a configured value is outside
+  /// the accepted range.
+  pub fn validate(&self) -> Result<(), ClusterExtensionConfigError> {
+    self.failure_detector_config.validate()?;
+    Self::validate_grain_idle_passivation_threshold(self.grain_idle_passivation_threshold)
+  }
+
+  pub(crate) fn validate_grain_idle_passivation_threshold(
+    threshold: Duration,
+  ) -> Result<(), ClusterExtensionConfigError> {
+    if threshold < Duration::from_secs(1) {
+      Err(ClusterExtensionConfigError::GrainIdlePassivationThresholdBelowOneSecond)
+    } else {
+      Ok(())
+    }
   }
 }
 

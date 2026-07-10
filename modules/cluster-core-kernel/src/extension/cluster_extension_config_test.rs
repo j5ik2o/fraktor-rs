@@ -2,12 +2,35 @@ use core::time::Duration;
 
 use super::*;
 use crate::{
-  ClusterShardingStateStoreMode, ClusterTopology, ConfigValidation, JoinConfigCompatChecker,
+  ClusterExtensionConfigError, ClusterShardingStateStoreMode, ClusterTopology, ConfigValidation,
+  JoinConfigCompatChecker,
   downing_provider::{DowningProviderCompatibility, SplitBrainResolverConfig, SplitBrainResolverStrategy},
   failure_detector::{FailureDetectorConfig, FailureDetectorConfigError},
   pub_sub::PubSubConfig,
   singleton::{ClusterSingletonConfigError, ClusterSingletonManagerConfig, ClusterSingletonProxyConfig},
 };
+
+#[test]
+fn grain_idle_passivation_threshold_defaults_to_one_hour() {
+  let config = ClusterExtensionConfig::new();
+
+  assert_eq!(config.grain_idle_passivation_threshold(), Duration::from_secs(3600));
+}
+
+#[test]
+fn grain_idle_passivation_threshold_is_preserved() {
+  let threshold = Duration::from_secs(90);
+  let config = ClusterExtensionConfig::new().with_grain_idle_passivation_threshold(threshold);
+
+  assert_eq!(config.grain_idle_passivation_threshold(), threshold);
+}
+
+#[test]
+fn validate_rejects_grain_idle_passivation_threshold_below_one_second() {
+  let config = ClusterExtensionConfig::new().with_grain_idle_passivation_threshold(Duration::from_millis(999));
+
+  assert_eq!(config.validate(), Err(ClusterExtensionConfigError::GrainIdlePassivationThresholdBelowOneSecond));
+}
 
 #[test]
 fn metrics_flag_and_address_are_preserved() {
@@ -88,7 +111,10 @@ fn validate_delegates_to_failure_detector_config() {
   let config =
     ClusterExtensionConfig::new().with_failure_detector_config(FailureDetectorConfig::new().with_phi_threshold(0.0));
 
-  assert_eq!(config.validate(), Err(FailureDetectorConfigError::InvalidPhiThreshold));
+  assert_eq!(
+    config.validate(),
+    Err(ClusterExtensionConfigError::FailureDetector(FailureDetectorConfigError::InvalidPhiThreshold))
+  );
 }
 
 #[test]
@@ -436,10 +462,9 @@ fn validate_singleton_delegates_to_proxy_and_returns_error_on_buffer_size_out_of
 }
 
 #[test]
-fn validate_does_not_change_signature_with_singleton_fields_added() {
-  // 既存 validate() のシグネチャが変わっていないことを確認（要件 8.1 / 8.3）
+fn validate_accepts_default_configuration() {
   let config = ClusterExtensionConfig::new();
-  let result: Result<(), FailureDetectorConfigError> = config.validate();
+  let result: Result<(), ClusterExtensionConfigError> = config.validate();
   assert_eq!(result, Ok(()));
 }
 

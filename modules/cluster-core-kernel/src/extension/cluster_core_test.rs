@@ -15,11 +15,11 @@ use fraktor_utils_core_rs::{
 
 use super::*;
 use crate::{
-  BlockListProvider, ClusterError, ClusterEvent, ClusterProviderError, ClusterProviderShared, ClusterTopology,
-  MetricsError, StartupMode, TopologyUpdate,
+  BlockListProvider, ClusterError, ClusterEvent, ClusterExtensionConfigError, ClusterProviderError,
+  ClusterProviderShared, ClusterTopology, MetricsError, StartupMode, TopologyUpdate,
   activation::{
     ActivatedKind, IdentityLookup, IdentityLookupShared, IdentitySetupError, LookupError, PartitionIdentityLookup,
-    PidCache, PidCacheEvent, PlacementResolution,
+    PidCache, PidCacheEvent, PlacementEvent, PlacementResolution,
   },
   cluster_provider::ClusterProvider,
   downing_provider::{DowningDecision, DowningInput, DowningProvider, NoopDowningProvider},
@@ -505,6 +505,46 @@ fn build_core_with_partition_lookup(config: &ClusterExtensionConfig) -> ClusterC
     KindRegistry::new(),
     wrap_identity_lookup(PartitionIdentityLookup::with_defaults()),
   )
+}
+
+#[test]
+fn resolve_pid_applies_configured_grain_idle_passivation_threshold() {
+  let config = ClusterExtensionConfig::new()
+    .with_advertised_address("node-a:4050")
+    .with_grain_idle_passivation_threshold(Duration::from_secs(200));
+  let mut core = build_core_with_partition_lookup(&config);
+  core.start_member().expect("start member");
+  core.setup_member_kinds(vec![ActivatedKind::new("user")]).expect("setup kinds");
+  let update = build_update(1, vec![String::from("node-a:4050")], Vec::new(), Vec::new(), Vec::new());
+  core.apply_topology(&update).expect("apply topology");
+  let idle_key = GrainKey::new(String::from("user/idle"));
+  let recent_key = GrainKey::new(String::from("user/recent"));
+  let trigger_key = GrainKey::new(String::from("user/trigger"));
+
+  let _ = core.resolve_pid(&idle_key, 1000).expect("resolve idle Grain");
+  let _ = core.drain_placement_events();
+  let recent = core.resolve_pid(&recent_key, 1150).expect("resolve recent Grain");
+  let _ = core.drain_placement_events();
+  let _ = core.resolve_pid(&trigger_key, 1200).expect("trigger passivation");
+
+  let events = core.drain_placement_events();
+  assert!(events.iter().any(|event| matches!(event, PlacementEvent::Passivated { key, .. } if *key == idle_key)));
+  assert!(!events.iter().any(|event| matches!(event, PlacementEvent::Passivated { key, .. } if *key == recent_key)));
+  let recent_again = core.resolve_pid(&recent_key, 1201).expect("recent Grain remains active");
+  assert_eq!(recent_again.pid, recent.pid);
+}
+
+#[test]
+fn start_member_rejects_invalid_grain_idle_passivation_threshold() {
+  let config = ClusterExtensionConfig::new().with_grain_idle_passivation_threshold(Duration::from_millis(999));
+  let mut core = build_core_with_config(&config);
+
+  let result = core.start_member();
+
+  assert_eq!(
+    result,
+    Err(ClusterError::Configuration(ClusterExtensionConfigError::GrainIdlePassivationThresholdBelowOneSecond))
+  );
 }
 
 #[test]
@@ -1038,7 +1078,12 @@ fn start_member_rejects_invalid_failure_detector_config_before_starting_dependen
 
   let result = core.start_member();
 
-  assert_eq!(Err(ClusterError::Configuration(FailureDetectorConfigError::InvalidPhiThreshold)), result);
+  assert_eq!(
+    Err(ClusterError::Configuration(ClusterExtensionConfigError::FailureDetector(
+      FailureDetectorConfigError::InvalidPhiThreshold
+    ))),
+    result
+  );
   assert!(!*member_started.lock());
   assert!(!*pubsub_started.lock());
   assert!(!*gossiper_started.lock());
@@ -1082,7 +1127,12 @@ fn start_client_rejects_invalid_failure_detector_config_before_starting_dependen
 
   let result = core.start_client();
 
-  assert_eq!(Err(ClusterError::Configuration(FailureDetectorConfigError::InvalidPhiThreshold)), result);
+  assert_eq!(
+    Err(ClusterError::Configuration(ClusterExtensionConfigError::FailureDetector(
+      FailureDetectorConfigError::InvalidPhiThreshold
+    ))),
+    result
+  );
   assert!(!*client_started.lock());
   assert!(!*pubsub_started.lock());
   assert!(!*gossiper_started.lock());

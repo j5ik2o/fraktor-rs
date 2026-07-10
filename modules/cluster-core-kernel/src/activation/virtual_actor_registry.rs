@@ -92,7 +92,11 @@ impl VirtualActorRegistry {
 
   /// Returns PID from cache if present and not expired.
   pub fn cached_pid(&mut self, key: &GrainKey, now: u64) -> Option<String> {
-    self.pid_cache.get(key, now)
+    let pid = self.pid_cache.get(key, now);
+    if pid.is_some() {
+      self.touch_activation(key, now);
+    }
+    pid
   }
 
   /// Returns PID and owner authority from cache if present and not expired.
@@ -181,5 +185,11 @@ impl VirtualActorRegistry {
       VirtualActorEvent::Activated { key: key.clone(), pid, authority: authority.to_string() }
     };
     self.events.push(event);
+  }
+
+  pub(crate) fn touch_activation(&mut self, key: &GrainKey, now: u64) {
+    if let Some(entry) = self.activations.get_mut(key) {
+      entry.last_seen = now;
+    }
   }
 }

@@ -56,6 +56,20 @@ fn passivates_when_idle_timeout_exceeded() {
 }
 
 #[test]
+fn cached_pid_access_refreshes_last_seen_for_idle_passivation() {
+  let mut registry = VirtualActorRegistry::new(4, 60);
+  let k = key("user:recent");
+  registry.ensure_activation(&k, &["a1:4000".to_string()], 0, false, None).expect("activation");
+
+  assert!(registry.cached_pid(&k, 9).is_some());
+  registry.passivate_idle(10, 10);
+
+  let events = registry.drain_events();
+  assert!(!events.iter().any(|event| matches!(event, VirtualActorEvent::Passivated { key } if *key == k)));
+  assert!(registry.cached_pid(&k, 10).is_some());
+}
+
+#[test]
 fn snapshot_missing_is_reported() {
   let mut registry = VirtualActorRegistry::new(2, 60);
   let k = key("user:3");

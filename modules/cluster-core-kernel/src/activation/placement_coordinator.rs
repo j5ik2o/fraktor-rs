@@ -173,6 +173,7 @@ impl PlacementCoordinatorCore {
       && self.authorities.contains(&cached_authority)
       && !self.is_remote(&cached_authority)
     {
+      self.registry.touch_activation(key, now);
       let decision =
         PlacementDecision { key: key.clone(), authority: cached_authority.clone(), observed_at: now };
       let resolution = PlacementResolution { decision, locality: PlacementLocality::Local, pid };

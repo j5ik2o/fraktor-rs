@@ -32,7 +32,7 @@ use crate::{
   MetricsError, TopologyUpdate,
   activation::{
     ActivatedKind, ClusterIdentity, IdentityLookup, IdentitySetupError, LookupError, NoopIdentityLookup,
-    PlacementDecision, PlacementEvent, PlacementLocality, PlacementResolution,
+    PartitionIdentityLookup, PlacementDecision, PlacementEvent, PlacementLocality, PlacementResolution,
   },
   cluster_provider::{ClusterProvider, NoopClusterProvider},
   downing_provider::{DowningDecision, DowningInput, DowningProvider, DowningProviderCompatibility},
@@ -193,6 +193,37 @@ fn get_publishes_activation_events_and_updates_metrics() {
   let metrics = ext.grain_metrics().expect("metrics");
   assert_eq!(metrics.activations_created(), 1);
   assert_eq!(metrics.activations_passivated(), 1);
+}
+
+#[test]
+fn configured_idle_passivation_runs_from_install_and_start_to_events_and_metrics() {
+  let cluster_config = ClusterExtensionConfig::new()
+    .with_advertised_address("node1:8080")
+    .with_metrics_enabled(true)
+    .with_grain_idle_passivation_threshold(Duration::from_secs(2));
+  let (system, ext) =
+    build_system_with_cluster_config(|| Box::new(PartitionIdentityLookup::with_defaults()), cluster_config);
+  ext.start_member().expect("start member");
+  ext.setup_member_kinds(vec![ActivatedKind::new("user")]).expect("setup kinds");
+  ext.on_topology(&build_topology_update(1, Vec::new(), Vec::new()));
+  let (recorder, _subscription) = subscribe_grain_events(&system.event_stream());
+  let api = ClusterApi::try_from_system(&system).expect("cluster api");
+  let idle = ClusterIdentity::new("user", "idle").expect("idle identity");
+  let recent = ClusterIdentity::new("user", "recent").expect("recent identity");
+  let trigger = ClusterIdentity::new("user", "trigger").expect("trigger identity");
+
+  let _ = api.get(&idle).expect("activate idle Grain");
+  advance_to_next_monotonic_second(&system);
+  let _ = api.get(&recent).expect("activate recent Grain");
+  advance_to_next_monotonic_second(&system);
+  let _ = api.get(&trigger).expect("trigger idle passivation");
+
+  let events = recorder.events();
+  assert!(events.iter().any(|event| matches!(event, GrainEvent::ActivationPassivated { key } if *key == idle.key())));
+  assert!(
+    !events.iter().any(|event| matches!(event, GrainEvent::ActivationPassivated { key } if *key == recent.key()))
+  );
+  assert_eq!(ext.grain_metrics().expect("metrics").activations_passivated(), 1);
 }
 
 #[test]
@@ -783,6 +814,11 @@ fn run_scheduler(system: &ActorSystem, duration: Duration) {
   });
 }
 
+fn advance_to_next_monotonic_second(system: &ActorSystem) {
+  let current = system.state().monotonic_now().as_secs();
+  while system.state().monotonic_now().as_secs() == current {}
+}
+
 fn build_system_with_extension<F>(identity_lookup_factory: F) -> (ActorSystem, ArcShared<ClusterExtension>)
 where
   F: Fn() -> Box<dyn IdentityLookup> + Send + Sync + 'static, {
@@ -795,9 +831,18 @@ fn build_system_with_extension_config<F>(
 ) -> (ActorSystem, ArcShared<ClusterExtension>)
 where
   F: Fn() -> Box<dyn IdentityLookup> + Send + Sync + 'static, {
-  let scheduler_config = SchedulerConfig::default().with_runner_api_enabled(true);
   let cluster_config =
     ClusterExtensionConfig::new().with_advertised_address("node1:8080").with_metrics_enabled(metrics_enabled);
+  build_system_with_cluster_config(identity_lookup_factory, cluster_config)
+}
+
+fn build_system_with_cluster_config<F>(
+  identity_lookup_factory: F,
+  cluster_config: ClusterExtensionConfig,
+) -> (ActorSystem, ArcShared<ClusterExtension>)
+where
+  F: Fn() -> Box<dyn IdentityLookup> + Send + Sync + 'static, {
+  let scheduler_config = SchedulerConfig::default().with_runner_api_enabled(true);
   let cluster_installer = ClusterExtensionInstaller::new(cluster_config, |_event_stream, _block_list, _address| {
     Box::new(NoopClusterProvider::new())
   })

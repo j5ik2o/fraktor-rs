@@ -3,10 +3,31 @@ use alloc::vec;
 use crate::{
   activation::{
     ActivationRecord, PlacementCommand, PlacementCommandResult, PlacementCoordinatorCore, PlacementCoordinatorError,
-    PlacementLease, PlacementLocality, PlacementRequestId, RendezvousHasher, placement_lock_error::PlacementLockError,
+    PlacementEvent, PlacementLease, PlacementLocality, PlacementRequestId, RendezvousHasher,
+    placement_lock_error::PlacementLockError,
   },
   grain::GrainKey,
 };
+
+#[test]
+fn accepted_cache_hit_refreshes_idle_passivation_activity() {
+  let mut coordinator = PlacementCoordinatorCore::new(128, 60);
+  coordinator.start_member().expect("start");
+  coordinator.update_topology(vec!["node1:8080".to_string()]);
+  let key = GrainKey::new("user/recent".to_string());
+  let _ = coordinator.resolve(&key, 0).expect("activate");
+  let _ = coordinator.drain_events();
+
+  let _ = coordinator.resolve(&key, 9).expect("cache hit");
+  coordinator.passivate_idle(10, 10);
+
+  assert!(
+    !coordinator
+      .drain_events()
+      .iter()
+      .any(|event| matches!(event, PlacementEvent::Passivated { key: passivated, .. } if *passivated == key))
+  );
+}
 
 #[test]
 fn resolve_returns_remote_for_remote_owner() {

@@ -9,7 +9,7 @@ use fraktor_utils_core_rs::time::TimerInstant;
 
 use super::MembershipCoordinator;
 use crate::{
-  ClusterEvent, ClusterExtensionConfig, ClusterShardingStateStoreMode,
+  ClusterEvent, ClusterExtensionConfig, ClusterExtensionConfigError, ClusterShardingStateStoreMode,
   failure_detector::{
     DefaultFailureDetectorRegistry, FailureDetector, FailureDetectorConfig, FailureDetectorConfigError,
   },
@@ -120,7 +120,9 @@ fn start_member_rejects_invalid_failure_detector_config_before_running() {
 
   assert_eq!(
     coordinator.start_member().unwrap_err(),
-    MembershipCoordinatorError::Configuration(FailureDetectorConfigError::InvalidPhiThreshold)
+    MembershipCoordinatorError::Configuration(ClusterExtensionConfigError::FailureDetector(
+      FailureDetectorConfigError::InvalidPhiThreshold
+    ))
   );
   assert_eq!(coordinator.state(), MembershipCoordinatorState::Stopped);
 }
@@ -575,7 +577,12 @@ fn join_rejects_invalid_joining_failure_detector_config_before_compatibility_che
   let err = coordinator
     .handle_join("node-1".to_string(), "node-a".to_string(), &joining, now(1))
     .expect_err("invalid joining failure detector config must be rejected");
-  assert_eq!(err, MembershipCoordinatorError::Configuration(FailureDetectorConfigError::ZeroMaxSampleSize));
+  assert_eq!(
+    err,
+    MembershipCoordinatorError::Configuration(ClusterExtensionConfigError::FailureDetector(
+      FailureDetectorConfigError::ZeroMaxSampleSize
+    ))
+  );
 }
 
 #[test]

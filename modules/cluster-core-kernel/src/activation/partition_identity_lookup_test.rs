@@ -39,13 +39,12 @@ fn setup_member_mode(lookup: &mut PartitionIdentityLookup) {
 #[test]
 fn test_new_creates_instance_with_custom_config() {
   // カスタム設定でインスタンスを作成
-  let config = PartitionIdentityLookupConfig::new(2048, 600, 7200);
+  let config = PartitionIdentityLookupConfig::new(2048, 600);
   let lookup = PartitionIdentityLookup::new(config);
 
   // 設定が正しく保持されていることを検証
   assert_eq!(lookup.config().cache_capacity(), 2048);
   assert_eq!(lookup.config().pid_ttl_secs(), 600);
-  assert_eq!(lookup.config().idle_ttl_secs(), 7200);
 }
 
 #[test]
@@ -56,7 +55,6 @@ fn test_with_defaults_creates_instance_with_default_config() {
   // デフォルト値が正しく設定されていることを検証
   assert_eq!(lookup.config().cache_capacity(), 1024);
   assert_eq!(lookup.config().pid_ttl_secs(), 300);
-  assert_eq!(lookup.config().idle_ttl_secs(), 3600);
 }
 
 #[test]
@@ -83,13 +81,12 @@ fn test_client_kinds_initially_empty() {
 #[test]
 fn test_config_getter_returns_reference() {
   // config() ゲッターが参照を返すことを検証
-  let config = PartitionIdentityLookupConfig::new(512, 120, 1800);
+  let config = PartitionIdentityLookupConfig::new(512, 120);
   let lookup = PartitionIdentityLookup::new(config);
 
   let config_ref = lookup.config();
   assert_eq!(config_ref.cache_capacity(), 512);
   assert_eq!(config_ref.pid_ttl_secs(), 120);
-  assert_eq!(config_ref.idle_ttl_secs(), 1800);
 }
 
 #[test]
@@ -102,8 +99,8 @@ fn test_send_sync_auto_derived() {
 #[test]
 fn test_multiple_instances_independent() {
   // 複数インスタンスが独立していることを検証
-  let config1 = PartitionIdentityLookupConfig::new(100, 60, 300);
-  let config2 = PartitionIdentityLookupConfig::new(200, 120, 600);
+  let config1 = PartitionIdentityLookupConfig::new(100, 60);
+  let config2 = PartitionIdentityLookupConfig::new(200, 120);
 
   let lookup1 = PartitionIdentityLookup::new(config1);
   let lookup2 = PartitionIdentityLookup::new(config2);
