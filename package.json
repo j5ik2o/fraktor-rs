@@ -26,6 +26,6 @@
   },
   "devDependencies": {
     "@marp-team/marp-cli": "^4.4.0",
-    "takt": "^0.50.0"
+    "takt": "^0.51.0"
   }
 }
