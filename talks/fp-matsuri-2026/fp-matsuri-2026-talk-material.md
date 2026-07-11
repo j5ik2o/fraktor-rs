@@ -134,7 +134,7 @@ find modules/stream-core-kernel/src -type f -name '*.rs' ! -name '*_test.rs' -pr
 - `GraphInterpreter` = 単一スレッド・協調的ステートマシン。`drive()` 1回で「flow を tick → sink 起動 → pull と駆動 → sink を1回駆動 → source 完了確認」の1ステップが進む
 - **バックプレッシャー（demand ベース）**: `DemandTracker` が `Demand::{Finite(u64), Unbounded}` を管理（コード抜粋 #8）。Sink の demand がない限り upstream から pull しない。同一 island 内はステージの `can_accept_input()` + 固定容量エッジバッファで流量制御
 
-### セクション4: 核心 — async boundary と island 実行モデル（約13分20秒 / 10枚）※最重量セクション
+### セクション4: 核心 — async boundary と island 実行モデル（約13分35秒 / 10枚）※最重量セクション
 
 - **冒頭に「アクター90秒おさらい」（1〜2枚）**: アクターモデルの経験がない聴衆向けに、このトークで使う3点だけを説明する。フルの入門（監督戦略・階層・位置透過性・typed/untyped）には踏み込まない
   1. actor = 状態 + mailbox。メッセージを**1つずつ逐次処理**する（だから actor 内はロック不要で `&mut` のまま状態を書き換えられる）
