@@ -1,6 +1,7 @@
 extern crate alloc;
 
-use alloc::format;
+use alloc::{format, string::String};
+use core::error::Error;
 
 use super::SpawnError;
 
@@ -40,4 +41,21 @@ fn spawn_error_debug() {
   assert!(!format!("{:?}", error1).is_empty());
   assert!(!format!("{:?}", error2).is_empty());
   assert!(!format!("{:?}", error3).is_empty());
+}
+
+#[test]
+fn spawn_error_display_describes_failure() {
+  assert_eq!(format!("{}", SpawnError::name_conflict("test")), "actor name conflict: test");
+  assert_eq!(format!("{}", SpawnError::system_unavailable()), "actor system unavailable");
+  assert_eq!(format!("{}", SpawnError::invalid_props("reason")), "invalid actor props: reason");
+  assert_eq!(format!("{}", SpawnError::system_not_bootstrapped()), "actor system not bootstrapped");
+  assert_eq!(format!("{}", SpawnError::DispatcherAlreadyOwned), "pinned dispatcher already owned");
+  assert_eq!(format!("{}", SpawnError::SystemBuildError(String::from("boom"))), "actor system build failed: boom");
+}
+
+#[test]
+fn spawn_error_implements_core_error() {
+  fn assert_error<E: Error>() {}
+
+  assert_error::<SpawnError>();
 }

@@ -5,6 +5,7 @@ mod tests;
 use alloc::{borrow::Cow, boxed::Box, format, string::String};
 use core::{
   any::TypeId,
+  error::Error,
   fmt::{self, Formatter, Result as FmtResult},
   num::NonZeroU64,
 };
@@ -365,3 +366,5 @@ impl fmt::Display for StreamError {
     }
   }
 }
+
+impl Error for StreamError {}
