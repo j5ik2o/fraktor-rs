@@ -114,7 +114,7 @@ find modules/stream-core-kernel/src -type f -name '*.rs' ! -name '*_test.rs' -pr
   - Stream = 処理グラフ・需要量・終端伝播を宣言するデータフローモデル。物理実行では island = 1 actor として Actor 基盤を使う
 - 本トークの地図: 「DSL（記述）→ Materializer（解釈）→ island（物理実行）」の3層を順に降りていく（図解A）（1枚）
 
-### セクション2: 表面 — 宣言的 DSL の設計（約4分30秒 / 4枚）
+### セクション2: 表面 — 宣言的 DSL の設計（約5分30秒 / 5枚）
 
 - `Source<Out, Mat>` / `Flow<In, Out, Mat>` / `Sink<In, Mat>`: 要素型 + materialized value の**二段ジェネリクス**（コード抜粋 #3）
 - 最小の実行例（コード抜粋 #1）: `Source::single(41).map(|v| v + 1).into_mat(Sink::head(), KeepRight)`
@@ -197,12 +197,22 @@ fn main() -> Result<(), Box<dyn Error>> {
   let mut materializer =
     ActorMaterializer::new(system, ActorMaterializerConfig::default().with_drive_interval(Duration::from_millis(1)));
   materializer.start()?;
-  let graph = Source::single(41_u32).map(|value| value + 1).into_mat(Sink::head(), KeepRight);
-  let running = graph.run(&mut materializer)?;
-  let result = running.materialized().wait_blocking(&StdBlocker::new())?;
-  assert_eq!(result, 42);
-  println!("stream_first_example result: {result}");
-  materializer.shutdown()?;
+  // 失敗時にも materializer.shutdown() を必ず通すため、実行本体をクロージャに閉じる
+  let outcome = {
+    let mut run = || -> Result<(), Box<dyn Error>> {
+      let graph = Source::single(41_u32).map(|value| value + 1).into_mat(Sink::head(), KeepRight);
+      let running = graph.run(&mut materializer)?;
+      let result = running.materialized().wait_blocking(&StdBlocker::new())?;
+      assert_eq!(result, 42);
+      println!("stream_first_example result: {result}");
+      Ok(())
+    };
+    run()
+  };
+  let shutdown_result = materializer.shutdown();
+  // 実行エラーを優先して報告する。両方失敗した場合、shutdown 側のエラーは実行失敗の帰結のため省く
+  outcome?;
+  shutdown_result?;
   Ok(())
 }
 ```
