@@ -135,6 +135,7 @@ example の一覧と必要な feature は [`showcases/std/README.md`](showcases/
 - リポジトリルール: [AGENTS.md](AGENTS.md), [`.agents/rules/project.md`](.agents/rules/project.md)
 - OpenSpec 設定: [`openspec/config.yaml`](openspec/config.yaml)
 - Lock-free design note: [`docs/guides/lock_free_design.md`](docs/guides/lock_free_design.md)
+- As-built RFC 仕様（actor サブシステム）: [`docs/rfc/`](docs/rfc)
 - 現在の gap report:
   - [Actor](docs/gap-analysis/actor-gap-analysis.md)
   - [Actor mailbox](docs/gap-analysis/actor-mailbox-gap-analysis.md)

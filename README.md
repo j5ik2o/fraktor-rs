@@ -127,6 +127,7 @@ See [`showcases/std/README.md`](showcases/std/README.md) for the full example li
 - Repository rules: [AGENTS.md](AGENTS.md), [`.agents/rules/project.md`](.agents/rules/project.md)
 - OpenSpec configuration: [`openspec/config.yaml`](openspec/config.yaml)
 - Lock-free design notes: [`docs/guides/lock_free_design.md`](docs/guides/lock_free_design.md)
+- As-built RFC specs (actor subsystems): [`docs/rfc/`](docs/rfc)
 - Current gap reports and roadmaps:
   - [Actor](docs/gap-analysis/actor-gap-analysis.md)
   - [Actor mailbox](docs/gap-analysis/actor-mailbox-gap-analysis.md)
