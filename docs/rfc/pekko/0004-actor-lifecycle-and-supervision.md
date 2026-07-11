@@ -5,8 +5,7 @@
 | Status | As-built (reference) |
 | 対象コード | `references/pekko/actor/src/main/scala/org/apache/pekko/actor/ActorCell.scala`, `actor/dungeon/{FaultHandling,Children,ChildrenContainer}.scala`, `actor/FaultHandling.scala`, `actor/Actor.scala`, `dispatch/sysmsg/SystemMessage.scala` |
 | 照合コミット | `references/pekko` @ `2dc8960074` |
-| 対応 fraktor RFC | [0004](../0004-actor-lifecycle-and-supervision.md) |
-| 最終照合日 | 2026-07-11 |
+| 最終照合日 | 2026-07-12 |
 
 ## 1. 規範仕様
 
@@ -36,31 +35,29 @@
 - **PSUP-13.** `Kill` は `ActorKilledException` を**メッセージ処理中に throw** することで通常の失敗経路（supervision）に載る。既定 decider は Stop に分類する。
 - **PSUP-14.** `terminate()` の順序: receive timeout 解除 → `unwatchWatchedActors`（先に解除して DeadLetter(Terminated) を防ぐ）→ 全子へ stop → `Termination` reason 設定（子が生きていれば suspend + 待機、いなければ即 `finishTerminate`）。`finishTerminate` は `postStop` → dispatcher detach → 親へ `DeathWatchNotification(existenceConfirmed=true)` → その他 watcher へ通知 → フィールドクリア、の**厳密な順序**（コメントで明記）。
 
+### 1.5 Stash（user メッセージの退避）
+
+- **PSUP-15.** Stash trait は 3 段: `Stash`（`RequiresMessageQueue[DequeBasedMessageQueueSemantics]` を要求）/ `UnboundedStash` / `UnrestrictedStash`（mailbox 要求マーカーなし）。mailbox が deque semantics を持たない場合は初期化時に `ActorInitializationException` になる（MUST）。
+- **PSUP-16.** `stash()` は現在処理中のメッセージ（`currentMessage`）を積む。同一メッセージの二重 stash は `IllegalStateException`、bounded 容量超過は `StashOverflowException`。`unstashAll()` は退避分を mailbox の**先頭へ逆順に prepend** し、try/finally により呼び出し後の stash は必ず空になる。
+- **PSUP-17.** `UnrestrictedStash` は `preRestart` / `postStop` の既定実装で先に `unstashAll()` を呼ぶ。この契約により、停止時の stash 内容は mailbox 経由で DeadLetters へ流れる（オーバーライド時も呼ぶことが MUST と doc に明記）。
+
+### 1.6 backoff supervisor（classic）
+
+- **PSUP-18.** `BackoffOpts.onFailure`（失敗＝restart 契機）と `BackoffOpts.onStop`（停止契機）の 2 方式がある。共通基盤 `HandleBackoff` が `preStart` で子を起動し、`StartChild` / `Reset` / `ResetRestartCount` / `GetRestartCount` / `GetCurrentChild` を処理する。子以外からのメッセージは子へ、子からのメッセージは親へ転送する。
+- **PSUP-19.** onFailure（`BackoffOnRestartSupervisor`）は supervision の Restart 指令を「子を stop → backoff 後に `StartChild` で再生成」へ翻訳し、`maxNrOfRetries` 超過時は supervisor 自身を stop する。自動リセットは `withinTimeRange` が有限のとき、`restartCount == 0` の初回に限り `ResetRestartCount` を自己スケジュールする方式である。
+- **PSUP-20.** onStop（`BackoffOnStopSupervisor`）は子の `Terminated` を契機に backoff 再起動する。`finalStopMessage` を受領済みなら再起動せず自身も停止する。retry 上限は `OneForOneStrategy` 指定時のみ有効（それ以外は無制限）。
+- **PSUP-21.** バックオフ遅延は `min(maxBackoff, minBackoff × 2^restartCount) × (1 + random × randomFactor)` で、演算オーバーフロー時は `maxBackoff` に倒れる。
+
 ## 2. 不変条件
 
 - **INV-PSUP-1**: 古い incarnation の子からの `Failed` が現世代の統計・戦略に作用することはない（UID 照合、PSUP-7）。
 - **INV-PSUP-2**: 失敗処理中の再帰 suspend で、失敗元の子が二重に suspend されることはない（exceptFor、PSUP-5）。
 - **INV-PSUP-3**: cause 付き resume を受けるのは失敗の perpetrator ちょうど 1 体である（PSUP-6）。
 - **INV-PSUP-4**: 子が全滅するまで `finishRecreate` / `finishCreate` / `finishTerminate` は実行されない（Terminating reason + 待機、PSUP-3 / PSUP-10 / PSUP-14）。
+- **INV-PSUP-5**: `unstashAll()` の完了後に stash へメッセージが残ることはない（try/finally、PSUP-16）。
 
-## 3. fraktor-rs との差分
+## 3. 参照
 
-| 観点 | Pekko | fraktor-rs |
-|------|-------|-----------|
-| SuspendReason | 4 variant（`Creation()` あり） | 3 variant（`Creation` は YAGNI で未実装と宣言） |
-| system message の stash | あり（SuspendedWaitForChildren 等の状態で保留・再処理） | なし（相当機構は明示されていない） |
-| Resume の伝播 | 全子 resume + cause は perpetrator のみ（clearFailed は cause 受領側のみ） | 全子へ無条件 Resume（cause 区別なし。fraktor RFC 0004 OQ-SUP-2） |
-| suspendChildren | 失敗元の子を except（二重 suspend 防止） | 全子へ送信（except 機構は明示されていない） |
-| 既定戦略 | retries 無制限・時間窓なし | `WithinWindow(10)` / 1 秒 |
-| 既定 decider | 例外型ベース（ActorKilled/DeathPact/Init → Stop、他 → Restart） | エラー分類ベース（Recoverable → Restart / Fatal → Stop / Escalate → Escalate） |
-| PoisonPill | user キュー順（auto-receive） | system queue 経由で `Stop` と同一ハンドラ（fraktor OQ-SUP-3 の裏付け） |
-| Kill | 例外 throw → supervision（既定 Stop） | `ActorError::fatal("Kill")` を report_failure（経路は類似、既定の帰結も Stop 側） |
-| Failed の UID 照合 | あり | 相当機構は明示されていない（要確認: fraktor 側 Open Question 候補） |
-| preRestart 既定 | unwatch + stop 子 + postStop | stop_all_children + post_stop（unwatch は明示されていない） |
-
-fraktor 側への還元: 上表の「stash 機構なし」「UID 照合なし」「suspend except なし」は fraktor RFC 0004 の Open Questions に追補する価値がある差分である。
-
-## 4. 参照
-
-- fraktor 側 RFC 0004
 - `dungeon/FaultHandling.scala`（handleInvokeFailure: 215-245 / finishRecreate: 278-303 / terminate: 180-212 / finishTerminate: 247-276）、`dungeon/Children.scala:210-216`（resumeChildren）、`actor/FaultHandling.scala:216-230`（defaultDecider / defaultStrategy）
+- `actor/Stash.scala:71-252`（trait 3 段 / stash / unstashAll / preRestart・postStop 契約）
+- `pattern/BackoffOptions.scala:75-448`、`pattern/HandleBackoff.scala:25-79`、`pattern/internal/BackoffOnRestartSupervisor.scala:56-104`、`pattern/internal/BackoffOnStopSupervisor.scala:72-97`、`pattern/RetrySupport.scala:404-415`（バックオフ式）

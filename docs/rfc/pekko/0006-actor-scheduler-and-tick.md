@@ -5,17 +5,16 @@
 | Status | As-built (reference) |
 | 対象コード | `references/pekko/actor/src/main/scala/org/apache/pekko/actor/LightArrayRevolverScheduler.scala`, `actor/Scheduler.scala`, `actor/dungeon/ReceiveTimeout.scala`, `actor/Timers.scala`, `actor/FSM.scala`, `actor/src/main/resources/reference.conf` |
 | 照合コミット | `references/pekko` @ `2dc8960074` |
-| 対応 fraktor RFC | [0006](../0006-actor-scheduler-and-tick.md) |
-| 最終照合日 | 2026-07-11 |
+| 最終照合日 | 2026-07-12 |
 
 ## 1. 規範仕様
 
 ### 1.1 LightArrayRevolverScheduler
 
-- **PSCH-1.** 既定値: `tick-duration = 10ms`（最小: Windows 10ms / その他 1ms。未達は既定で `IllegalArgumentException`）、`ticks-per-wheel = 512`（2 の冪必須）、`shutdown-timeout = 5s`。scheduler は**専用スレッド**をライブラリ内部で起動して回る（外部 tick 供給の概念はない）。
+- **PSCH-1.** 既定値: `tick-duration = 10ms`（最小: Windows 10ms / その他 1ms。未達は既定で `IllegalArgumentException`）、`ticks-per-wheel = 512`（2 の冪必須）、`shutdown-timeout = 5s`。scheduler は**専用スレッド**をライブラリ内部で起動して回る。
 - **PSCH-2.** 遅延は tick の倍数へ**切り上げ**られる（最大 1 tick 遅れて実行されうる）。最大遅延は `tick-duration × Int.MaxValue`。
 - **PSCH-3.** `scheduleOnce` の遅延が 0 以下の場合、ホイールを経由せず**即時に `ec.execute`** され、キャンセル不能（`NotCancellable`）となる。周期スケジュールの period ≤ 0 は `IllegalArgumentException`。
-- **PSCH-4.** `scheduleWithFixedDelay` は「完了から delay」（遅延は蓄積）、`scheduleAtFixedRate` は「レート補償」（停止後にバースト実行されうる。fixedDelay がしばしば推奨、と rustdoc 相当の scaladoc に明記）。
+- **PSCH-4.** `scheduleWithFixedDelay` は「完了から delay」（遅延は蓄積）、`scheduleAtFixedRate` は「レート補償」（停止後にバースト実行されうる。fixedDelay がしばしば推奨、と scaladoc に明記）。
 - **PSCH-5.** cancel は task スロットの CAS（`CancelledTask` への置換）であり、実行（`ExecutedTask` への置換）と同一 CAS を奪い合うため、二重実行・実行とキャンセルのレースは発生しない。
 - **PSCH-6.** タイマースレッドはユーザーコードを実行せず、期限が来た task を紐づく `ExecutionContext`（通常は dispatcher）へ投入するのみ。actor 宛スケジュールの Runnable は `receiver ! message` を行う（mailbox 経由の配送）。
 - **PSCH-7.** scheduler 停止時、残タスクのうち `TaskRunOnClose` 実装のみ実行し、他は破棄する。
@@ -41,19 +40,6 @@
 - **INV-PSCH-2**: 実行時刻は要求遅延以上である（切り上げ、PSCH-2。ただし遅延 0 以下の即時実行を除く）。
 - **INV-PSCH-3**: stale なタイマー/タイムアウトメッセージが現在状態に作用することはない（generation / owner 照合、PSCH-10 / PSCH-12）。
 
-## 3. fraktor-rs との差分
+## 3. 参照
 
-| 観点 | Pekko | fraktor-rs |
-|------|-------|-----------|
-| 時間の供給 | 内蔵専用スレッド（実時間） | 外部 `TickDriver` port が tick を供給（kernel は実時間を持たない） |
-| 遅延 0 | 即時実行（キャンセル不能） | `SchedulerError::InvalidDelay` として**拒否** |
-| Receive Timeout の通知 | 専用 `ReceiveTimeout` メッセージ | **呼び出し側が指定した任意の `AnyMessage`** を self-send（専用型なし） |
-| 実行経路 | すべて EC 投入（actor 宛は tell） | `SendMessage`（tell）と `RunRunnable`（スケジューラ駆動側で直接実行）の 2 経路 |
-| tick 粒度既定 | 10ms / wheel 512 | resolution 10ms（wheel 実装、容量は SchedulerConfig） |
-| driver 停止 | スレッドが止まる状況は障害（scheduler 自身が所有） | driver 沈黙で静かに停止（fraktor RFC 0006 OQ-SCH-1） |
-| generation による stale 排除 / 同一 key 上書き / restart・stop での cancelAll / fixedRate vs fixedDelay | 同等 | 同等（parity） |
-
-## 4. 参照
-
-- fraktor 側 RFC 0006
 - `LightArrayRevolverScheduler.scala`（roundUp: 44-49 / cancel CAS: 359-420 / close: 171-193）、`dungeon/ReceiveTimeout.scala:40-76`、`Timers.scala:85-159`、`FSM.scala:860-919`

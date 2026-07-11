@@ -5,14 +5,13 @@
 | Status | As-built (reference) |
 | 対象コード | `references/pekko/actor/src/main/scala/org/apache/pekko/event/{EventStream,EventBus,Logging,DeadLetterListener}.scala`, `actor/ActorRef.scala`（DeadLetter 型階層）, `actor/Actor.scala`（unhandled） |
 | 照合コミット | `references/pekko` @ `2dc8960074` |
-| 対応 fraktor RFC | [0007](../0007-actor-eventstream-and-observability.md) |
-| 最終照合日 | 2026-07-11 |
+| 最終照合日 | 2026-07-12 |
 
 ## 1. 規範仕様
 
 ### 1.1 購読モデル
 
-- **PEV-1.** 分類は **`Class[_]` の型階層**による: `subscribe(subscriber, channel: Class[_])` は `channel.isAssignableFrom(eventClass)` を満たすすべてのイベントを受け取る（SubchannelClassification。サブクラス購読が自動的に含まれる）。fraktor の固定 `ClassifierKey` 列挙とは異なるオープンな分類である。
+- **PEV-1.** 分類は **`Class[_]` の型階層**による: `subscribe(subscriber, channel: Class[_])` は `channel.isAssignableFrom(eventClass)` を満たすすべてのイベントを受け取る（SubchannelClassification。サブクラス購読が自動的に含まれるオープンな分類である）。
 - **PEV-2.** 購読者は `ActorRef` であり、配送は mailbox 経由の非同期 tell である（コールバック関数の同期呼び出しではない）。`EventStreamUnsubscriber` が購読者の終了を監視し、終了時に自動購読解除する。
 - **PEV-3.** **リプレイバッファは存在しない**。購読時点より前のイベントは観測できない（pure pub-sub）。
 
@@ -28,24 +27,25 @@
 - **PEV-8.** `EventStream` は `LoggingBus` を継承し、`loglevel` に応じて logger（`pekko.loggers` の FQCN で指定される actor、既定 `Logging$DefaultLogger`）の購読を動的に付け替える。起動初期は `StandardOutLogger`（`stdout-loglevel`、既定 WARNING）が仮 logger を務め、システム準備後に交代する。
 - **PEV-9.** `LoggingAdapter` の実運用実装は `BusLogging`（EventStream への publish のみ）。`NoLogging` は no-op。
 
+### 1.4 EventBus 分類ファミリ
+
+- **PEV-10.** `EventBus` の分類戦略は 4 ファミリ: `LookupClassification`（classifier の等価一致で `Index` を引く）/ `SubchannelClassification`（階層包含。EventStream が使う方式で、キャッシュミス時のみ `synchronized` で補充する `@volatile` キャッシュを持つ）/ `ScanningClassification`（`ConcurrentSkipListSet` を全走査して `matches` 判定）/ `ManagedActorClassification`（ActorRef → ActorRef の対応を `AtomicReference` CAS で管理）。
+- **PEV-11.** `ManagedActorClassification` の購読者は `ActorClassificationUnsubscriber` が監視し、`Terminated` で自動購読解除される。`Register` / `Unregister` はシーケンス番号（`seq == nextSeq`）で厳密に順序制御され、順序が合わないものは stash → `unstashAll` で再処理される。
+- **PEV-12.** `AddressTerminatedTopic` は `private[pekko]` の内部 extension であり、リモート参照の watcher が購読者として登録され、remote / cluster の death watch が publish する `AddressTerminated` を全購読者へ配送する。
+
+### 1.5 debug 観測
+
+- **PEV-13.** `LoggingReceive` は `pekko.actor.debug.receive` が on のときのみ `Receive` をラップし、`isDefinedAt` 評価時に「received handled/unhandled message」を Debug レベルで publish する（off なら元の `Receive` をそのまま返す no-op。MUST）。
+- **PEV-14.** `LoggerMailbox` は logger actor 専用の mailbox であり、`cleanUp`（mailbox 差し替え / シャットダウン時）に残存する `LogEvent` を `StandardOutLogger` へ同期 flush してから破棄する（loglevel OFF ならスキップ）。シャットダウン中のログ喪失を防ぐ仕組みである。
+- **PEV-15.** debug フラグは 7 種: `receive` / `autoreceive`（auto-received メッセージのログ）/ `lifecycle`（起動・監視開始）/ `fsm` / `event-stream` / `unhandled`（`UnhandledMessage` を購読する `UnhandledMessageForwarder` を起動してログへ転送）/ `router-misconfiguration`。
+
 ## 2. 不変条件
 
 - **INV-PEV-1**: `DeadLetterSuppression` 実装メッセージが既定 listener の dead letter ログに現れることはない（PEV-5）。
 - **INV-PEV-2**: 購読者の終了後にイベントが配送され続けることはない（EventStreamUnsubscriber による自動解除）。
 - **INV-PEV-3**: publish はイベントのクラスに対して `isAssignableFrom` が成立する購読者すべてに（mailbox 経由で）届く（PEV-1）。
 
-## 3. fraktor-rs との差分
+## 3. 参照
 
-| 観点 | Pekko | fraktor-rs |
-|------|-------|-----------|
-| 分類 | `Class[_]` 型階層（オープン、サブタイプ包含） | 固定 `ClassifierKey`（15 値、`All` 以外は完全一致） |
-| 購読者 | ActorRef（mailbox 経由・非同期） | コールバック trait（同期呼び出し、panic は伝播）。ActorRef 配送は `ActorRefEventStreamSubscriber` としてオプション |
-| リプレイ | なし | あり（既定 256 件、subscribe 時に同期リプレイ） |
-| Dead Letter 抑制 | `DeadLetterSuppression` marker + `SuppressedDeadLetter` + listener のログ抑制（実装済み） | reason タグのみで自動抑制なし（fraktor RFC 0007 OQ-EV-2 の裏付け——parity を取るなら marker と listener 側の抑制が必要） |
-| UnhandledMessage の発行元 | untyped の `Actor.unhandled` | typed 層のみ（untyped kernel は型定義のみ） |
-| logger の構成 | FQCN 設定 + 起動時交代プロトコル | `LoggerWriter` port + `LoggerSubscriber` の二段フィルタ |
-
-## 4. 参照
-
-- fraktor 側 RFC 0007
-- `EventStream.scala:38-80`、`EventBus.scala:136-190`（SubchannelClassification）、`ActorRef.scala:551-696`（DeadLetter 階層と SuppressedDeadLetter 変換）、`DeadLetterListener.scala:154-159`、`reference.conf:17-68`
+- `EventStream.scala:38-80`、`EventBus.scala:93-436`（4 分類ファミリ）、`ActorRef.scala:551-696`（DeadLetter 階層と SuppressedDeadLetter 変換）、`DeadLetterListener.scala:154-159`、`reference.conf:17-68`
+- `ActorClassificationUnsubscriber.scala:29-100`、`AddressTerminatedTopic.scala:30-71`、`LoggingReceive.scala:41-105`、`LoggerMailbox.scala:45-75`、`ActorSystem.scala:452-458`（debug フラグ定義）

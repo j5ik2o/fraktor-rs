@@ -5,12 +5,11 @@
 | Status | As-built (reference) |
 | 対象コード | `references/pekko/actor/src/main/scala/org/apache/pekko/dispatch/Mailbox.scala`, `dispatch/sysmsg/`, `dispatch/Mailboxes.scala`, `util/StablePriorityQueue.scala`, `actor/src/main/resources/reference.conf` |
 | 照合コミット | `references/pekko` @ `2dc8960074` |
-| 対応 fraktor RFC | [0002](../0002-actor-messaging-and-mailbox.md) |
-| 最終照合日 | 2026-07-11 |
+| 最終照合日 | 2026-07-12 |
 
 ## 1. 概要
 
-Pekko の mailbox は `_status`（`Int` 1 語、VarHandle CAS）で「Closed / Scheduled / suspend カウント」を管理し、user メッセージは pluggable な `MessageQueue`、システムメッセージは侵入型連結リストで運ぶ。fraktor の `MailboxScheduleState`（RFC 0002 §4）はこの status 語の Rust 翻訳 + close プロトコルの明示化である。
+Pekko の mailbox は `_status`（`Int` 1 語、VarHandle CAS）で「Closed / Scheduled / suspend カウント」を管理し、user メッセージは pluggable な `MessageQueue`、システムメッセージは侵入型連結リストで運ぶ。
 
 ## 2. 規範仕様
 
@@ -45,7 +44,7 @@ Pekko の mailbox は `_status`（`Int` 1 語、VarHandle CAS）で「Closed / S
 | `UnboundedDequeBasedMailbox` / `BoundedDequeBasedMailbox` | 同上（`enqueueFirst` も pushTimeOut 対応） | FIFO + 先頭挿入（Stash 用） |
 | `UnboundedControlAwareMailbox` / `BoundedControlAwareMailbox` | 同上（容量は 2 キュー合計） | `ControlMessage` 優先、各キュー内 FIFO |
 
-- **PMB-8.** 満杯時の挙動は一貫して「**送信側の新規メッセージを deadLetters へ送る**」であり、DropOldest（既存先頭の追い出し）や Grow に相当する戦略は存在しない（MUST NOT に相当する設計選択）。Bounded 系は `mailbox-push-timeout-time`（既定 10s）のブロッキングを伴う。
+- **PMB-8.** 満杯時の挙動は一貫して「**送信側の新規メッセージを deadLetters へ送る**」であり、キュー内の既存メッセージを追い出す戦略や容量を伸長する戦略は存在しない（MUST NOT に相当する設計選択）。Bounded 系は `mailbox-push-timeout-time`（既定 10s）のブロッキングを伴う。
 - **PMB-9.** 既定 mailbox は `pekko.actor.default-mailbox` = `UnboundedMailbox`（`mailbox-capacity = 1000` / `mailbox-push-timeout-time = 10s` は bounded 選択時に効く）。解決順序は「Props(deploy) 明示 → dispatcher 設定の mailbox-type → actor の `RequiresMessageQueue` → dispatcher の mailbox-requirement → 既定」の 5 段（`Mailboxes.getMailboxType`）。
 
 ### 2.4 システムメッセージキュー
@@ -56,14 +55,15 @@ Pekko の mailbox は `_status`（`Int` 1 語、VarHandle CAS）で「Closed / S
 
 ## 3. 状態機械（status 語）
 
-状態要素: `Closed`（bit0、吸収）/ `Scheduled`（bit1）/ suspend カウント（bit2+）。fraktor との構造対応:
+状態要素は `Closed`（bit0、吸収状態）/ `Scheduled`（bit1）/ suspend カウント（bit2 以降、4 刻み）の 3 つで、1 つの `Int` に合成される。遷移表:
 
-| Pekko | fraktor (`MailboxScheduleState`) |
-|-------|----------------------------------|
-| `Scheduled` ビット | `SCHEDULED` / `RUNNING`（fraktor は実行中を別ビットで区別） |
-| `becomeClosed`（無条件遷移） | `CLOSE_REQUESTED` → finalizer 所有権 → `CLEANUP_DONE`（fraktor は close を多段プロトコル化） |
-| finally での無条件再登録 | `need_reschedule` フラグ + `RunFinishOutcome`（fraktor は再登録要否を状態で運ぶ） |
-| suspend カウント（4 刻み） | suspend カウント（シフト 5 以降） |
+| 遷移 | 事前条件 | 事後状態 |
+|------|---------|---------|
+| `setAsScheduled` | 下位 2 bit が `Open`（suspend カウントは不問） | `Scheduled` ビット設定 |
+| `setAsIdle` | — | `Scheduled` ビットのみクリア |
+| `suspend()` | Closed でない | suspend カウント +1（戻り値: 初回か） |
+| `resume()` | Closed でない | suspend カウント −1（0 で飽和。戻り値: 0 に戻ったか） |
+| `becomeClosed` | — | 無条件に `Closed`（以後の全遷移を吸収） |
 
 ## 4. 不変条件
 
@@ -73,21 +73,6 @@ Pekko の mailbox は `_status`（`Int` 1 語、VarHandle CAS）で「Closed / S
 - **INV-PMB-4**: bounded mailbox のあふれで失われるのは常に**新規（送信側）メッセージ**であり、キュー内の既存メッセージは失われない（PMB-8）。
 - **INV-PMB-5**: システムメッセージの観測順序は到着順である（LIFO 蓄積 + drain 時反転、PMB-10）。
 
-## 5. fraktor-rs との差分
+## 5. 参照
 
-| 観点 | Pekko | fraktor-rs |
-|------|-------|-----------|
-| キュー実装数 | 12（SingleConsumerOnly / NonBlockingBounded を別型で提供） | 10（unbounded 既定が lock-free MPSC でこれらを包含） |
-| あふれ戦略 | 送信側破棄のみ + `pushTimeOut` ブロッキング | `DropNewest` / `DropOldest` / `Grow` の 3 戦略、ブロッキングなし（`EnqueueOutcome` で明示） |
-| DropOldest | 存在しない | あり（既存最古を evict。Dead Letter は mailbox 層が記録） |
-| close の扱い | `becomeClosed` + mailbox スワップ（deadLetterMailbox） | `CLOSE_REQUESTED` / `FINALIZER_OWNED` / `CLEANUP_DONE` の明示プロトコル（finalizer 一意性を状態で保証） |
-| run 後の再スケジュール | finally で無条件に再登録を試みる | `need_reschedule` フラグを run の戻り値として返し、dispatcher が再登録 |
-| 既定 mailbox ID | `pekko.actor.default-mailbox` | `fraktor.actor.default-mailbox`（意図的に別名） |
-| 同一優先度 FIFO / control 優先 / suspension 意味論 / user 毎 system drain | 同等（fraktor が parity 対象として明示） | 同等 |
-
-fraktor RFC 0002 の OQ-MB-2（unbounded に到達しない DropOldest 設定）に対し、Pekko には戦略概念自体がないため対応する問題は存在しない。
-
-## 6. 参照
-
-- fraktor 側 RFC 0002、`docs/gap-analysis/actor-mailbox-gap-analysis.md`
 - `Mailbox.scala`（status 定数: 46-55 行 / run: 228-238 行 / per-message drain: 274 行 / cleanUp: 338-352 行）

@@ -5,8 +5,7 @@
 | Status | As-built (reference) |
 | 対象コード | `references/pekko/actor/src/main/scala/org/apache/pekko/actor/dungeon/DeathWatch.scala`, `actor/ActorRefProvider.scala`, `actor/ActorSystem.scala`, `actor/CoordinatedShutdown.scala`, `actor/src/main/resources/reference.conf` |
 | 照合コミット | `references/pekko` @ `2dc8960074` |
-| 対応 fraktor RFC | [0005](../0005-actor-deathwatch-and-termination.md) |
-| 最終照合日 | 2026-07-11 |
+| 最終照合日 | 2026-07-12 |
 
 ## 1. 規範仕様
 
@@ -39,20 +38,6 @@
 - **INV-PDW-3**: guardian 連鎖の停止順序は user → system → root で固定である（watch 連鎖により成立、PDW-6/7）。
 - **INV-PDW-4**: 既定構成において、`terminate()` の呼び出しで CoordinatedShutdown の全フェーズが（recover 設定に従い）実行される（PDW-9）。
 
-## 3. fraktor-rs との差分
+## 3. 参照
 
-| 観点 | Pekko | fraktor-rs |
-|------|-------|-----------|
-| terminate と Coordinated Shutdown | **連携あり**（terminate → run → 最終フェーズが finalTerminate） | 連携なし（Extension として独立。fraktor RFC 0005 OQ-DW-1 の裏付け——Pekko parity を取るなら要実装） |
-| フェーズ数 | 12（cluster-sharding / exiting / exiting-done を含む） | 9 |
-| JVM/プロセスフック | `run-by-jvm-shutdown-hook = on` 既定 | なし（no_std kernel の責務外） |
-| Terminated の配送 | user メッセージとして self-tell（receive で処理） | `DeathWatchNotification`（system message）+ `on_terminated` フック / `watch_with` |
-| death pact | untyped でも既定（unhandled Terminated → DeathPactException） | untyped には無く、typed 層のみ（fraktor RFC 0008 TY-6） |
-| Terminated のメタデータ | existenceConfirmed / addressTerminated | なし（Pid のみ） |
-| watch/watchWith 混在 | `IllegalStateException` | 事前チェック + debug ビルド panic（同趣旨） |
-| 同期待ち API | なし（Future のみ） | `TerminationSignal::wait_blocking(Blocker)` あり |
-
-## 4. 参照
-
-- fraktor 側 RFC 0005
 - `ActorSystem.scala:1066-1088`（terminate / finalTerminate）、`CoordinatedShutdown.scala:238-296`（terminate-system タスク / JVM フック）、`ActorRefProvider.scala:295-374, 613-619`（guardian 連鎖）、`reference.conf:1230-1388`
