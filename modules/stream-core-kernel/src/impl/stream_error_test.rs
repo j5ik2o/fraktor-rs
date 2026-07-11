@@ -1,5 +1,5 @@
 use alloc::{borrow::Cow, string::String};
-use core::num::NonZeroU64;
+use core::{error::Error, num::NonZeroU64};
 
 use fraktor_actor_core_kernel_rs::actor::{error::SendError, messaging::AnyMessage};
 
@@ -7,6 +7,13 @@ use crate::{
   r#impl::{FramingErrorKind, StreamError},
   stage::{CancellationCause, CancellationKind},
 };
+
+#[test]
+fn stream_error_implements_core_error() {
+  fn assert_error<E: Error>() {}
+
+  assert_error::<StreamError>();
+}
 
 // --- StreamDetached variant ---
 

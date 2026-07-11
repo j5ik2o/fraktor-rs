@@ -7,6 +7,10 @@ mod tests;
 extern crate alloc;
 
 use alloc::string::String;
+use core::{
+  error::Error,
+  fmt::{Display, Formatter, Result as FmtResult},
+};
 
 use crate::system::ActorSystemBuildError;
 
@@ -58,3 +62,18 @@ impl SpawnError {
     Self::SystemBuildError(alloc::format!("{:?}", error))
   }
 }
+
+impl Display for SpawnError {
+  fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+    match self {
+      | Self::NameConflict(name) => write!(f, "actor name conflict: {name}"),
+      | Self::SystemUnavailable => f.write_str("actor system unavailable"),
+      | Self::SystemNotBootstrapped => f.write_str("actor system not bootstrapped"),
+      | Self::InvalidProps(reason) => write!(f, "invalid actor props: {reason}"),
+      | Self::DispatcherAlreadyOwned => f.write_str("pinned dispatcher already owned"),
+      | Self::SystemBuildError(reason) => write!(f, "actor system build failed: {reason}"),
+    }
+  }
+}
+
+impl Error for SpawnError {}
