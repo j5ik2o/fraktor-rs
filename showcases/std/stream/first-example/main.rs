@@ -13,11 +13,21 @@ fn main() -> Result<(), Box<dyn Error>> {
   let mut materializer =
     ActorMaterializer::new(system, ActorMaterializerConfig::default().with_drive_interval(Duration::from_millis(1)));
   materializer.start()?;
-  let graph = Source::single(41_u32).map(|value| value + 1).into_mat(Sink::head(), KeepRight);
-  let running = graph.run(&mut materializer)?;
-  let result = running.materialized().wait_blocking(&StdBlocker::new())?;
-  assert_eq!(result, 42);
-  println!("stream_first_example result: {result}");
-  materializer.shutdown()?;
+  // 失敗時にも materializer.shutdown() を必ず通すため、実行本体をクロージャに閉じる
+  let outcome = {
+    let mut run = || -> Result<(), Box<dyn Error>> {
+      let graph = Source::single(41_u32).map(|value| value + 1).into_mat(Sink::head(), KeepRight);
+      let running = graph.run(&mut materializer)?;
+      let result = running.materialized().wait_blocking(&StdBlocker::new())?;
+      assert_eq!(result, 42);
+      println!("stream_first_example result: {result}");
+      Ok(())
+    };
+    run()
+  };
+  let shutdown_result = materializer.shutdown();
+  // 実行エラーを優先して報告する。両方失敗した場合、shutdown 側のエラーは実行失敗の帰結のため省く
+  outcome?;
+  shutdown_result?;
   Ok(())
 }
