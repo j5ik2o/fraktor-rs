@@ -13,7 +13,8 @@ fn main() -> Result<(), Box<dyn Error>> {
   let mut materializer =
     ActorMaterializer::new(system, ActorMaterializerConfig::default().with_drive_interval(Duration::from_millis(1)));
   materializer.start()?;
-  // 失敗時にも materializer.shutdown() を必ず通すため、実行本体をクロージャに閉じる
+  // 実行本体をクロージャに閉じ、run 以降の失敗経路でも shutdown() を通す（start 失敗や panic
+  // は対象外）
   let outcome = {
     let mut run = || -> Result<(), Box<dyn Error>> {
       let graph = Source::single(41_u32).map(|value| value + 1).into_mat(Sink::head(), KeepRight);
