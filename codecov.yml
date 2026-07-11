@@ -14,3 +14,7 @@ coverage:
         threshold: 0%
         if_not_found: failure
         informational: false
+
+# 実行可能サンプル（showcases）はカバレッジ計測の対象外
+ignore:
+  - "showcases/**"
