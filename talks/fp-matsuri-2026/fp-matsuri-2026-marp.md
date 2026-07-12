@@ -863,11 +863,13 @@ OSSでは、AI駆動開発ライフサイクルの新版であるAI-DLC v2と、
   </div>
   <div class="panel">
     <h2><code>std</code> adaptor</h2>
-    <p>Tokio・ネットワークなど<br>ホスト固有の実装を分離</p>
+    <p>Tokio・ネットワークなど<br>ホスト固有の実装を分離<br><span class="muted small">Tokio = Rust の代表的な非同期ランタイム</span></p>
   </div>
 </div>
 
-<p class="muted" style="margin-top: 30px">pre-release。API は Pekko に学び、実行系は Rust 向けに再設計している。</p>
+<p class="center muted small" style="margin-top: 22px"><code>std</code> = OS を前提とする Rust の標準ライブラリ ／ <code>no_std</code> = それに依存しない構成（組込みなど OS なしでも動く）</p>
+
+<p class="muted" style="margin-top: 16px">pre-release。API は Pekko に学び、実行系は Rust 向けに再設計している。</p>
 
 <!--
 [目安 1分10秒]
