@@ -1009,8 +1009,8 @@ StreamはSource、Flow、Sinkとして処理グラフを宣言し、需要量と
 
 <div class="workspace-grid">
   <div class="head"></div><div class="head">utils</div><div class="head">actor</div><div class="head">persistence</div><div class="head">remote</div><div class="head">cluster</div><div class="head focus">stream</div>
-  <div class="rowhead">core<br><span class="muted">#![no_std]</span></div><div>core</div><div>kernel<br>typed</div><div>kernel<br>typed</div><div>core</div><div>kernel<br>typed</div><div class="focus">kernel<br>actor-typed</div>
-  <div class="rowhead">adaptor-std<br><span class="muted">Tokio 等</span></div><div>std</div><div>std</div><div>std</div><div>std</div><div>std</div><div class="focus">adaptor-std</div>
+  <div class="rowhead">core<br><span class="muted">#![no_std]</span></div><div>core</div><div>core-kernel<br>core-typed</div><div>core-kernel<br>core-typed</div><div>core</div><div>core-kernel<br>core-typed</div><div class="focus">core-kernel<br>core-actor-typed</div>
+  <div class="rowhead">adaptor<br><span class="muted">Tokio 等</span></div><div>adaptor-std</div><div>adaptor-std</div><div>adaptor-std</div><div>adaptor-std</div><div>adaptor-std</div><div class="focus">adaptor-std</div>
 </div>
 
 <p class="tiny center muted" style="margin-top: 12px">core = 共通契約（kernel = 中心ロジック、typed = 型安全な公開 API）、adaptor-std = std 環境の実装</p>
