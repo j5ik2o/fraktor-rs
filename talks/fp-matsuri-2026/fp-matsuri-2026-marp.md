@@ -1032,11 +1032,11 @@ fraktor-rs全体は六つのドメインを持ち、それぞれをno_stdのcore
 
 <p class="center muted small" style="margin-top: 18px">設計図（blueprint）= ステージ・接続・属性を保持する、実行前のデータ<br>tick = 一定間隔で実行を前へ進める合図（詳細は後半）</p>
 
-<p class="lead center" style="margin-top: 26px">表面の API は簡単。<strong>難しいのは、下2層の実行系である。</strong></p>
+<p class="lead center" style="margin-top: 26px">使うのは簡単。<strong>難しいのは、それを成立させる下2層の実行系である。</strong></p>
 
 <!--
 [目安 45秒]
-本トークの主張は一つです。宣言的ストリームDSLの表面APIを書くのは簡単で、難しいのはその下の実行系です。
+本トークの主張は一つです。宣言的ストリームDSLは使う側にとっては簡単ですが、その簡単さを成立させる下の実行系が難しいのです。
 以降は三層を上から順に降りていきます。まずSource、Flow、Sinkで実行前の設計図を作ります。
 次にMaterializerが設計図を実行計画へ変換し、最後にActor Systemが複数のactorとして駆動します。図にあるtickは、一定間隔で実行を前へ進める合図で、後半で詳しく扱います。
 この順序を覚えておくと、後半の型名や内部処理を位置づけやすくなります。
