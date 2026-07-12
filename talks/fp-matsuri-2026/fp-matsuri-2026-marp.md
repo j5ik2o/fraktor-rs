@@ -1707,7 +1707,7 @@ wake通知で再スケジュールする方式とtick方式は、どちらもno_
     <h2>共有が必要な箇所</h2>
     <p style="font-family: 'IBM Plex Mono'; font-size: 31px">SharedLock</p>
     <p class="muted"><code>with_read</code> / <code>with_write</code><br>ガードを外へ返さない</p>
-    <p class="muted small" style="margin-top: 12px">例: island 境界の共有 FIFO（次スライド）</p>
+    <p class="muted small" style="margin-top: 12px">例: island 境界の共有 FIFO<br>（次スライド・同じ with_write 契約）</p>
   </div>
 </div>
 
@@ -1727,6 +1727,10 @@ wake通知で再スケジュールする方式とtick方式は、どちらもno_
 <div class="eyebrow">05 · Rust constraints</div>
 
 # 所有権を返す共有 API は、`FnOnce + R` で表現する
+
+<p class="center muted small" style="margin-top: -6px">境界 FIFO が満杯のとき、値を捨てず所有権ごと返して pending 再試行する（04 の循環）を支える API</p>
+
+<p class="tiny muted" style="margin-bottom: -8px">前ページの SharedLock も実装する、SharedAccess 契約の with_write</p>
 
 ```rust
 fn with_write<R>(&self, f: impl FnOnce(&mut B) -> R) -> R;
