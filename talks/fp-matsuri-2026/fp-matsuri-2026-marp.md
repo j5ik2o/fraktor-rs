@@ -1032,11 +1032,11 @@ fraktor-rs全体は六つのドメインを持ち、それぞれをno_stdのcore
 
 <p class="center muted small" style="margin-top: 18px">設計図（blueprint）= ステージ・接続・属性を保持する、実行前のデータ<br>tick = 一定間隔で実行を前へ進める合図（詳細は後半）</p>
 
-<p class="lead center" style="margin-top: 26px">表面の API は簡単。<strong>難しいのは、下2層の実行系である。</strong></p>
+<p class="lead center" style="margin-top: 26px">使うのは簡単。<strong>難しいのは、それを成立させる下2層の実行系である。</strong></p>
 
 <!--
 [目安 45秒]
-本トークの主張は一つです。宣言的ストリームDSLの表面APIを書くのは簡単で、難しいのはその下の実行系です。
+本トークの主張は一つです。宣言的ストリームDSLは使う側にとっては簡単ですが、その簡単さを成立させる下の実行系が難しいのです。
 以降は三層を上から順に降りていきます。まずSource、Flow、Sinkで実行前の設計図を作ります。
 次にMaterializerが設計図を実行計画へ変換し、最後にActor Systemが複数のactorとして駆動します。図にあるtickは、一定間隔で実行を前へ進める合図で、後半で詳しく扱います。
 この順序を覚えておくと、後半の型名や内部処理を位置づけやすくなります。
@@ -1707,7 +1707,7 @@ wake通知で再スケジュールする方式とtick方式は、どちらもno_
     <h2>共有が必要な箇所</h2>
     <p style="font-family: 'IBM Plex Mono'; font-size: 31px">SharedLock</p>
     <p class="muted"><code>with_read</code> / <code>with_write</code><br>ガードを外へ返さない</p>
-    <p class="muted small" style="margin-top: 12px">例: island 境界の共有 FIFO（次スライド）</p>
+    <p class="muted small" style="margin-top: 12px">例: island 境界の共有 FIFO<br>（次スライド・同じ with_write 契約）</p>
   </div>
 </div>
 
@@ -1727,6 +1727,10 @@ wake通知で再スケジュールする方式とtick方式は、どちらもno_
 <div class="eyebrow">05 · Rust constraints</div>
 
 # 所有権を返す共有 API は、`FnOnce + R` で表現する
+
+<p class="center muted small" style="margin-top: -6px">境界 FIFO が満杯のとき、値を捨てず所有権ごと返して pending 再試行する（04 の循環）を支える API</p>
+
+<p class="tiny muted" style="margin-bottom: -8px">前ページの SharedLock も実装する、SharedAccess 契約の with_write</p>
 
 ```rust
 fn with_write<R>(&self, f: impl FnOnce(&mut B) -> R) -> R;
