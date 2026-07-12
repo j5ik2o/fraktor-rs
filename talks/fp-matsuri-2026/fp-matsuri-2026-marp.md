@@ -1725,27 +1725,30 @@ wake通知で再スケジュールする方式とtick方式は、どちらもno_
 
 # まず `&mut self`。共有は必要な場所だけ
 
-<div class="two-col" style="margin-top: 66px">
-  <div class="panel" style="border-color: var(--green)">
-    <h2 class="good">ロジック</h2>
-    <p style="font-family: 'IBM Plex Mono'; font-size: 38px">&mut self</p>
-    <p class="muted">所有権の中で、状態を素直に更新</p>
-  </div>
-  <div class="panel">
-    <h2>共有が必要な箇所</h2>
-    <p style="font-family: 'IBM Plex Mono'; font-size: 31px">SharedLock</p>
-    <p class="muted"><code>with_read</code> / <code>with_write</code><br>ガードを外へ返さない</p>
-    <p class="muted small" style="margin-top: 12px">例: island 境界の共有 FIFO<br>（次スライド・同じ with_write 契約）</p>
-  </div>
-</div>
+```rust
+// ロジックは所有権の中で &mut self として素直に更新（例: P19 の DemandTracker）
+pub struct DemandTracker { demand: Demand }
+impl DemandTracker {
+  pub fn request(&mut self, amount: u64) -> Result<(), StreamError> { /* 加算 */ }
+  pub fn has_demand(&self) -> bool { /* 読み取りは &self */ }
+}
+```
 
-<p class="quote">内部可変性を、設計の出発点にしない。</p>
+```rust
+// 共有が必要な箇所だけ SharedLock で包み、with_read / with_write に閉じる（ガードは外へ返さない）
+pub struct SharedLock<T> {
+  inner: ArcShared<dyn SharedLockBackend<T>>, // ArcShared = Arc 相当の共有参照。backend がロック実装を隠す
+}
+```
+
+<p class="quote tight">内部可変性を、設計の出発点にしない。</p>
 
 <!--
 [目安 1分20秒]
 基本方針は、状態を持つロジックをまず所有権の中へ置き、&mut selfで素直に更新することです。
 なぜか。共有可変状態を増やすほど、どこから書き換わるかを追いにくくなり、借用チェッカによる保護も効かなくなるからです。
-複数actorや境界から共有する必要が生じた箇所だけSharedLockで包み、with_readとwith_writeのクロージャ内へアクセスを閉じます。
+上のコードは、先ほどdemandの管理で見たDemandTrackerです。状態変更のrequestは&mut self、読み取りのhas_demandは&selfと、所有権の中で素直に書けています。
+複数actorや境界から共有する必要が生じた箇所だけSharedLockで包み、with_readとwith_writeのクロージャ内へアクセスを閉じます。下のコードがSharedLockの実際の構造で、Arc相当の共有参照ArcSharedの内側に、ロック実装を隠すbackendを持ちます。
 スライド下部の内部可変性とは、共有参照のまま中身を書き換えられる仕組みのことです。最初からすべてを共有可変状態にせず、共有範囲を設計上の例外として狭くします。
 この「共有が必要な箇所」の実例が、次に見るisland境界の共有FIFOです。
 -->
