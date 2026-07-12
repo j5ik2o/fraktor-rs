@@ -827,8 +827,8 @@ style: |
     <ul>
       <li>所属：IDEO PLUS合同会社 代表社員</li>
       <li>主な活動：SaaS企業の技術顧問<br><span class="muted small">ZOZO / Leverages / Precena / カンリー</span></li>
-      <li>OSS：Amadeus（AI-DLC）/ TAKT / <strong>fraktor</strong><br><span class="muted small">fraktor が本トークの題材</span></li>
-      <li>個人エンジニア支援：月額1万円で実施中</li>
+      <li>OSS：Amadeus（AI-DLC v2）/ TAKT / <strong>fraktor</strong><br><span class="muted small">fraktor が本トークの題材</span></li>
+      <li>個人エンジニア支援：月額1万円で実施中<br><span class="muted small">キャリア相談 / モブプロ・ペアプロ / コードレビュー ほか（<a href="https://utopian-cyclamen-728.notion.site/3051c086c12c809c9662eccc50dbf132">案内ページ</a>）</span></li>
     </ul>
   </div>
   <img class="profile-photo" src="./self-profile.jpg" alt="プロフィール画像">
@@ -837,8 +837,8 @@ style: |
 <!--
 [目安 30秒]
 IDEO PLUS合同会社の代表社員として、ZOZO、Leverages、Precena、カンリーなどSaaS企業の技術顧問をしています。
-OSSでは、AI駆動開発ライフサイクル、AI-DLCを支援するAmadeusのほか、TAKT、そして本トークの題材であるfraktorを開発しています。
-また、月額1万円で個人エンジニアの支援もやっています。興味があればお声がけください。
+OSSでは、AI駆動開発ライフサイクルの新版、AI-DLC v2を支援するAmadeusのほか、TAKT、そして本トークの題材であるfraktorを開発しています。
+また、月額1万円で個人エンジニアの支援もやっています。キャリア相談、モブプロ・ペアプロ、コードレビューなどです。興味があればお声がけください。
 -->
 
 ---
