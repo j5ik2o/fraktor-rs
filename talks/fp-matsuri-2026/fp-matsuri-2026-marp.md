@@ -1059,13 +1059,13 @@ fraktor-rs全体は六つの領域を持ち、それぞれをno_stdのcoreとstd
 
 # 要素型と materialized value を、別々に型で持つ
 
-<div class="flow" style="margin-top: 70px">
+<div class="flow" style="margin-top: 56px">
   <div class="node hot">Source&lt;Out, Mat&gt;</div><div class="arrow">→</div>
   <div class="node hot">Flow&lt;In, Out, Mat&gt;</div><div class="arrow">→</div>
   <div class="node hot">Sink&lt;In, Mat&gt;</div>
 </div>
 
-<div class="two-col" style="margin-top: 60px">
+<div class="two-col" style="margin-top: 30px">
   <div><h2>要素型</h2><p><code>In</code> / <code>Out</code><br><span class="muted">ステージを流れる値</span></p></div>
   <div><h2>materialized value</h2><p><code>Mat</code><br><span class="muted">実行時に得られる値</span></p></div>
 </div>
