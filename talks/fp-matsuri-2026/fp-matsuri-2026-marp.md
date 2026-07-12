@@ -155,6 +155,10 @@ style: |
     margin-top: 42px;
   }
 
+  section.profile .profile-grid { margin-top: 16px; }
+  section.profile li { font-size: 25px; margin: 0.18em 0; }
+  section.profile li .muted.small { font-size: 19px; }
+
   .profile-photo {
     aspect-ratio: 1 / 1;
     background: rgba(255, 255, 255, 0.88);
@@ -793,6 +797,7 @@ style: |
 
   .small { font-size: 21px; }
   .tiny { font-size: 18px; }
+  .nowrap { white-space: nowrap; }
   .center { text-align: center; }
   .no-page::after { display: none; }
   .code-compact pre code { font-size: 18px; }
@@ -825,9 +830,10 @@ style: |
   <div>
     <p class="lead"><strong>かとじゅん（@j5ik2o）</strong></p>
     <ul>
-      <li>所属：IDEO PLUS合同会社 代表社員</li>
+      <li>所属：IDEO PLUS合同会社 代表社員<br><span class="muted small">2014〜2024年末は Kubell（旧Chatwork）に在籍</span></li>
       <li>主な活動：SaaS企業の技術顧問<br><span class="muted small">ZOZO / Leverages / Precena / カンリー</span></li>
-      <li>OSS：Amadeus（AI-DLC v2）/ TAKT / <strong>fraktor</strong><br><span class="muted small">fraktor が本トークの題材</span></li>
+      <li>言語：ながらく Scala、最近は言語問わず<br><span class="muted small">GitHub（github.com/j5ik2o）では Rust がメイン</span></li>
+      <li>OSS：Amadeus（AI-DLC v2 + <span class="nowrap">選挙に基づくマルチエージェント</span>）/ TAKT / <strong>fraktor</strong><br><span class="muted small">fraktor が本トークの題材</span></li>
       <li>個人エンジニア支援：月額1万円で実施中<br><span class="muted small">キャリア相談 / モブプロ・ペアプロ / コードレビュー ほか（<a href="https://utopian-cyclamen-728.notion.site/3051c086c12c809c9662eccc50dbf132">案内ページ</a>）</span></li>
     </ul>
   </div>
@@ -836,8 +842,9 @@ style: |
 
 <!--
 [目安 30秒]
-IDEO PLUS合同会社の代表社員として、ZOZO、Leverages、Precena、カンリーなどSaaS企業の技術顧問をしています。
-OSSでは、AI駆動開発ライフサイクルの新版、AI-DLC v2を支援するAmadeusのほか、TAKT、そして本トークの題材であるfraktorを開発しています。
+IDEO PLUS合同会社の代表社員として、ZOZO、Leverages、Precena、カンリーなどSaaS企業の技術顧問をしています。2014年から2024年末まではKubell、旧Chatworkに在籍していました。
+ながらくScalaをやってきましたが、最近は言語を問わず活動していて、GitHubではRustがメインです。
+OSSでは、AI駆動開発ライフサイクルの新版であるAI-DLC v2と、選挙に基づくマルチエージェントを支援するAmadeusのほか、TAKT、そして本トークの題材であるfraktorを開発しています。
 また、月額1万円で個人エンジニアの支援もやっています。キャリア相談、モブプロ・ペアプロ、コードレビューなどです。興味があればお声がけください。
 -->
 
