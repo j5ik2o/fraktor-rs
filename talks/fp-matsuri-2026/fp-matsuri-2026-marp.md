@@ -1025,14 +1025,14 @@ StreamはSource、Flow、Sinkとして処理グラフを宣言し、需要量と
   <div class="metric"><strong>236</strong><span>3 crate の public 型宣言</span></div>
   <div class="metric"><strong>94%</strong><span>Pekko 主要50概念中 47 実装</span></div>
   <div class="metric"><strong>約4.6万</strong><span>3 crate の実装コード行数</span></div>
-  <div class="metric"><strong>約4.4万</strong><span>3 crate のテストコード行数</span></div>
+  <div class="metric"><strong>約4.7万</strong><span>3 crate のテストコード行数</span></div>
 </div>
 
 <!--
 [目安 1分30秒]
 ここまでのactor、mailbox、dispatcherが、本題に必要な前提知識です。次に、その本題であるstreamが、fraktor-rs全体のどこに位置するかを確認します。
 fraktor-rs全体は六つの領域を持ち、それぞれをno_stdのcoreとstd環境向けadaptorに分けています。coreはさらに、中心ロジックのkernelと、型安全な公開APIを提供するtypedに分かれている領域があります。本トークで掘り下げるのは右端のstreamです。
-数値は今月コードを走査した値です。236は三つのstream crateにあるpublicなstruct、enum、trait、type aliasの合計です。94パーセントは、リポジトリのギャップ分析文書で定義した、Pekkoの主要50概念のうち47を実装している割合です。実装コードは三つのstream crateの合計で約4万6千行、テストコードは約4万4千行で、実装とほぼ同量のテストを備えています。計測コマンドもリポジトリで公開しているので、手元で再計測できます。
+数値は今月コードを走査した値です。236は三つのstream crateにあるpublicなstruct、enum、trait、type aliasの合計です。94パーセントは、リポジトリのギャップ分析文書で定義した、Pekkoの主要50概念のうち47を実装している割合です。実装コードは三つのstream crateの合計で約4万6千行、テストコードは単体テストと統合テストを合わせて約4万7千行で、実装と同量以上のテストを備えています。計測コマンドもリポジトリで公開しているので、手元で再計測できます。
 規模を誇るためではなく、ここから示す設計が試作に留まらず、相応の実装面積で使われていることを示すための数値です。
 -->
 
