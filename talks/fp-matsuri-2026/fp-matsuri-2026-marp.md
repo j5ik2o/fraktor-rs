@@ -734,7 +734,7 @@ style: |
   .branch-arrows { color: var(--cyan); font-family: 'IBM Plex Mono', monospace; font-size: 34px; letter-spacing: 1.8em; margin: 7px 0 4px 1.8em; }
   .terminal-options { display: grid; gap: 10px; grid-template-columns: repeat(3, 1fr); }
 
-  .terminal-lanes { display: grid; gap: 24px; margin-top: 42px; }
+  .terminal-lanes { display: grid; gap: 10px; margin-top: 12px; }
   .terminal-lane { align-items: center; display: grid; gap: 18px; grid-template-columns: 150px 1fr; }
   .terminal-lane > b { color: var(--cyan); font-family: 'IBM Plex Mono', monospace; font-size: 20px; }
 
@@ -1548,7 +1548,7 @@ async_with_dispatcherでは二つの指定が重なっています。async bound
   </div>
 </div>
 
-<p class="center muted small" style="margin-top: 24px">時間は左から右へ進む。FIFO本体に加え、拒否された1件だけを pending として保持する。</p>
+<p class="center muted small" style="margin-top: 24px">時間は左から右へ進む。FIFO本体に加え、拒否された1件だけを pending として保持する。<br><span class="tiny">枠の塗りは残量のゲージで、位置に意味はない。要素は先に入れたものから順に下流へ渡る。</span></p>
 
 <!--
 [目安 1分40秒]
@@ -1563,6 +1563,8 @@ async_with_dispatcherでは二つの指定が重なっています。async bound
 <div class="eyebrow">04 · async boundary / island</div>
 
 # 終端シグナルは、データを追い越してはいけない
+
+<p class="center muted tiny" style="margin-top: -6px">island に分けると、上流の完了・失敗の通知が、境界 FIFO にまだ残っているデータより先に下流へ届き得る。<br>そのままでは、最後の要素を渡す前にストリームが終わったことになってしまう</p>
 
 <div class="terminal-lanes">
   <div class="terminal-lane">
@@ -1583,9 +1585,9 @@ async_with_dispatcherでは二つの指定が重なっています。async bound
   </div>
 </div>
 
-<p class="quote" style="margin-top: 48px">データ列が空になるまで、制御列の終端を見せない。</p>
+<p class="quote" style="margin-top: 20px">データ列が空になるまで、制御列の終端を見せない。</p>
 
-<p class="center muted"><code>Open</code> → <code>Completed</code> / <code>Failed</code> / <code>DownstreamCancelled</code></p>
+<p class="center muted tiny" style="margin-top: 8px"><code>Open</code> → <code>Completed</code> / <code>Failed</code> / <code>DownstreamCancelled</code></p>
 
 <!--
 [目安 1分30秒]
