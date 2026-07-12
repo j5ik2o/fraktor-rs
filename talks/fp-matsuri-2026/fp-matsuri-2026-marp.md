@@ -736,6 +736,8 @@ style: |
 
   .terminal-lanes { display: grid; gap: 10px; margin-top: 12px; }
   .terminal-lane { align-items: center; display: grid; gap: 18px; grid-template-columns: 150px 1fr; }
+  .terminal-lane .flow { justify-content: flex-start; margin: 0; }
+  .quote.tight { margin-top: 22px; }
   .terminal-lane > b { color: var(--cyan); font-family: 'IBM Plex Mono', monospace; font-size: 20px; }
 
   .command-flow .node { font-size: 16px; padding: 14px 12px; }
@@ -1585,7 +1587,7 @@ async_with_dispatcherでは二つの指定が重なっています。async bound
   </div>
 </div>
 
-<p class="quote" style="margin-top: 20px">データ列が空になるまで、制御列の終端を見せない。</p>
+<p class="quote tight">データ列が空になるまで、制御列の終端を見せない。</p>
 
 <p class="center muted tiny" style="margin-top: 8px"><code>Open</code> → <code>Completed</code> / <code>Failed</code> / <code>DownstreamCancelled</code></p>
 
