@@ -1046,14 +1046,14 @@ fraktor-rs全体は六つの領域を持ち、それぞれをno_stdのcoreとstd
   <div class="layer"><b>Actor System</b><span class="path">actor × N ← tick</span><span class="desc">actor の生成・実行を管理する基盤</span></div>
 </div>
 
-<p class="center muted small" style="margin-top: 18px">設計図（blueprint）= ステージ・接続・属性を保持する、実行前のデータ<br>tick = 一定間隔で実行を前へ進める合図（詳細は後半）</p>
+<p class="center muted small" style="margin-top: 18px">ステージ = Source / Flow / Sink など、処理グラフを構成する1つの処理単位<br>設計図（blueprint）= ステージ・接続・属性を保持する、実行前のデータ<br>tick = 一定間隔で実行を前へ進める合図（詳細は後半）</p>
 
-<p class="lead center" style="margin-top: 26px">使うのは簡単。<strong>難しいのは、それを成立させる下2層の実行系である。</strong></p>
+<p class="lead center" style="margin-top: 26px">使うのは簡単。<strong>難しいのは、それを成立させる下2層だ。</strong></p>
 
 <!--
 [目安 45秒]
 本トークの主張は一つです。宣言的ストリームDSLは使う側にとっては簡単ですが、その簡単さを成立させる下の実行系が難しいのです。
-以降は三層を上から順に降りていきます。まずSource、Flow、Sinkで実行前の設計図を作ります。
+以降は三層を上から順に降りていきます。まずSource、Flow、Sinkで実行前の設計図を作ります。このSourceやFlowのような一つひとつの処理単位を、以降はステージと呼びます。
 次にMaterializerが設計図を実行計画へ変換し、最後にActor Systemが複数のactorとして駆動します。図にあるtickは、一定間隔で実行を前へ進める合図で、後半で詳しく扱います。
 この順序を覚えておくと、後半の型名や内部処理を位置づけやすくなります。
 -->
