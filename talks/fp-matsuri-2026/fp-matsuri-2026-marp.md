@@ -1073,15 +1073,15 @@ fraktor-rs全体は六つの領域を持ち、それぞれをno_stdのcoreとstd
 </div>
 
 <div class="two-col" style="margin-top: 30px">
-  <div><h2>要素型</h2><p><code>In</code> / <code>Out</code><br><span class="muted">ステージを流れる値</span></p></div>
+  <div><h2>要素型</h2><p><code>In</code> / <code>Out</code><br><span class="muted">ステージを流れる要素</span></p></div>
   <div><h2>materialized value</h2><p><code>Mat</code><br><span class="muted">実行時に得られる値</span></p></div>
 </div>
 
 <!--
 [目安 1分20秒]
 Source、Flow、Sinkは、流れる要素の型とmaterialized valueの型を別々に持ちます。
-なぜ型が二つ要るのか。ストリームは実行を開始すると呼び出し元の手を離れて流れ続けるので、中を流れる値とは別に、完了値や制御ハンドルを呼び出し元が受け取る口が必要だからです。
-OutやInはステージ間を流れるデータです。一方のMatがその受け取る口で、ストリームを実行した結果として外側へ返すハンドルや完了値です。
+なぜ型が二つ要るのか。ストリームは実行を開始すると呼び出し元の手を離れて流れ続けるので、中を流れる要素とは別に、完了値や制御ハンドルを呼び出し元が受け取る口が必要だからです。
+OutやInはステージ間を流れる要素です。一方のMatがその受け取る口で、ストリームを実行した結果として外側へ返すハンドルや完了値です。
 データ経路と実行結果を同じ型引数へ押し込まず、二つの関心を型レベルで分けています。
 -->
 
@@ -1113,7 +1113,7 @@ let result = running.materialized()
 [目安 1分10秒]
 41を一要素だけ生成し、mapで1を加え、先頭要素を受け取るSinkへ接続しています。graphを組み立てた段階では、まだ値は流れません。
 runは実行を開始し、Sink::headのmaterialized valueであるStreamFutureを、Materializedという実行ハンドルに包んで返します。処理結果の42は、そのfutureの完了を待って初めて得られます。wait_blockingに渡しているStdBlockerは、std環境で完了を待つための待機実装です。
-runの戻り値とストリームを流れる値を混同しないことが、この後のMaterializerの役割を理解する入口になります。
+runの戻り値とストリームを流れる要素を混同しないことが、この後のMaterializerの役割を理解する入口になります。
 into_matの第2引数に渡しているKeepRightの意味は、少し後で説明します。
 -->
 
@@ -1761,7 +1761,7 @@ pub struct SharedLock<T> {
 
 # 所有権を返す共有 API は、`FnOnce + R` で表現する
 
-<p class="center muted small" style="margin-top: -6px">境界 FIFO が満杯のとき、値を捨てず所有権ごと返して pending 再試行する（04 の循環）を支える API</p>
+<p class="center muted small" style="margin-top: -6px">境界 FIFO が満杯のとき、要素を捨てず所有権ごと返して pending 再試行する（04 の循環）を支える API</p>
 
 <p class="tiny muted" style="margin-bottom: -8px">前ページの SharedLock も実装する、SharedAccess 契約の with_write。FnOnce = 一度だけ呼べるクロージャ、R = その戻り値型</p>
 
@@ -1781,8 +1781,8 @@ let result = boundary.with_write(move |inner| {
 
 <!--
 [目安 1分20秒]
-island境界のFIFOには、満杯のとき値を捨てず、所有権ごと呼び出し元へ返して再試行させるという要件があります。共有された状態に触りながら所有権を外へ戻す、この組み合わせがRustでは設計上の課題になります。
-答えがこのシグネチャです。前のページのSharedLockが実装するSharedAccessのwith_writeは、FnOnceを受け、任意の戻り値Rを返せます。値をクロージャへmoveし、FIFOが満杯ならtry_pushが拒否した値をResultのErrとして、同じ所有権のまま外へ戻せます。呼び出し元はそれをpendingとして再試行します。
+island境界のFIFOには、満杯のとき要素を捨てず、所有権ごと呼び出し元へ返して再試行させるという要件があります。共有された状態に触りながら所有権を外へ戻す、この組み合わせがRustでは設計上の課題になります。
+答えがこのシグネチャです。前のページのSharedLockが実装するSharedAccessのwith_writeは、FnOnceを受け、任意の戻り値Rを返せます。要素をクロージャへmoveし、FIFOが満杯ならtry_pushが拒否した要素をResultのErrとして、同じ所有権のまま外へ戻せます。呼び出し元はそれをpendingとして再試行します。
 したがって、所有権を返すためにロックが必須なわけではありません。現在のIslandBoundarySharedはSharedLockへ寄せられるリファクタリング候補で、重要なのは共有API自体をFnOnceとRで設計することです。
 -->
 
