@@ -955,7 +955,7 @@ cart_ref.tell(CartCommand::AddItem { item_id: 1, qty: 1 });
         <span class="step">Flow</span><span class="arrow">→</span>
         <span class="step">Sink</span>
       </div>
-      <div class="lane-code">Source::single(41).map(|v| v + 1).to(Sink::head())</div>
+      <div class="lane-code">Source::single(41).map(|v| v + 1).into_mat(Sink::head(), KeepRight)</div>
     </div>
     <div class="lane-note">処理グラフ・需要量（demand）・終端伝播</div>
   </div>
@@ -1372,7 +1372,7 @@ DemandTrackerは、下流があと何件受け取れるかを管理します。S
 
 <!-- _class: no-page -->
 
-<div class="eyebrow">04 · The key message</div>
+<div class="eyebrow">04 · async boundary / island</div>
 
 # 同じ “async” でも、指しているものが違う
 
@@ -1726,7 +1726,7 @@ wake通知で再スケジュールする方式とtick方式は、どちらもno_
 # まず `&mut self`。共有は必要な場所だけ
 
 ```rust
-// ロジックは所有権の中で &mut self として素直に更新（例: P19 の DemandTracker）
+// ロジックは所有権の中で &mut self として素直に更新（例: demand 管理で見た DemandTracker）
 pub struct DemandTracker { demand: Demand }
 impl DemandTracker {
   pub fn request(&mut self, amount: u64) -> Result<(), StreamError> { /* 加算 */ }
