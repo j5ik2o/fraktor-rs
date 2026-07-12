@@ -1460,6 +1460,8 @@ Materializerはそこでステージ間の接続を切り、上流側をIsland 1
 
 # 切断後もつながっているまとまりが、island になる
 
+<p class="center muted small">edge（辺）= ステージとステージの間の接続。<code>StreamPlan</code> はステージ一覧と edge 一覧を持つ</p>
+
 ```rust
 for edge in &plan.edges {
   if plan.stages[from_stage].attributes().is_async() {
@@ -1474,7 +1476,7 @@ for edge in &plan.edges {
 }
 ```
 
-<p class="muted">辺（= ステージ間の接続）のうち、async 印のステージから出るものは切断点として除く。<br>残った辺でつながるまとまり（= 連結成分）を BFS（幅優先探索）で求め、上流→下流の順に island ID を振る。</p>
+<p class="muted small">edge のうち、async 印のステージから出るものは切断点として除く。<br>残った edge でつながるまとまり（= 連結成分）を BFS（幅優先探索）で求め、上流→下流の順に island ID を振る。</p>
 
 <!--
 [目安 1分20秒]
