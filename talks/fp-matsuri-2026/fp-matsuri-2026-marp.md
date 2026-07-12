@@ -1005,15 +1005,15 @@ StreamはSource、Flow、Sinkとして処理グラフを宣言し、需要量と
 
 <div class="eyebrow">01 · Intro</div>
 
-# 6ドメイン × 2層。その中の stream を掘り下げる
+# 6領域 × 2層。その中の stream を掘り下げる
 
 <div class="workspace-grid">
   <div class="head"></div><div class="head">utils</div><div class="head">actor</div><div class="head">persistence</div><div class="head">remote</div><div class="head">cluster</div><div class="head focus">stream</div>
-  <div class="rowhead">core<br><span class="muted">#![no_std]</span></div><div>core</div><div>core</div><div>core</div><div>core</div><div>core</div><div class="focus">core-kernel</div>
+  <div class="rowhead">core<br><span class="muted">#![no_std]</span></div><div>core</div><div>kernel<br>typed</div><div>kernel<br>typed</div><div>core</div><div>kernel<br>typed</div><div class="focus">kernel<br>actor-typed</div>
   <div class="rowhead">adaptor-std<br><span class="muted">Tokio 等</span></div><div>std</div><div>std</div><div>std</div><div>std</div><div>std</div><div class="focus">adaptor-std</div>
 </div>
 
-<p class="tiny center muted" style="margin-top: 12px">core = 共通契約、adaptor-std = std 環境の実装</p>
+<p class="tiny center muted" style="margin-top: 12px">core = 共通契約（kernel = 中心ロジック、typed = 型安全な公開 API）、adaptor-std = std 環境の実装</p>
 
 <div class="metric-row">
   <div class="metric"><strong>236</strong><span>3 stream crate の public 型宣言</span></div>
@@ -1024,7 +1024,7 @@ StreamはSource、Flow、Sinkとして処理グラフを宣言し、需要量と
 <!--
 [目安 1分30秒]
 ここまでのactor、mailbox、dispatcherが、本題に必要な前提知識です。次に、その本題であるstreamが、fraktor-rs全体のどこに位置するかを確認します。
-fraktor-rs全体は六つのドメインを持ち、それぞれをno_stdのcoreとstd環境向けadaptorに分けています。本トークで掘り下げるのは右端のstreamです。
+fraktor-rs全体は六つの領域を持ち、それぞれをno_stdのcoreとstd環境向けadaptorに分けています。coreはさらに、中心ロジックのkernelと、型安全な公開APIを提供するtypedに分かれている領域があります。本トークで掘り下げるのは右端のstreamです。
 数値は今月10日にコードを走査した値です。236は三つのstream crateにあるpublicなstruct、enum、trait、type aliasの合計です。94パーセントは、リポジトリのギャップ分析文書で定義した、Pekkoとの固定50概念中47概念です。約4.2万行はstream-core-kernelのテストファイルを合計した4万2500行です。計測コマンドもリポジトリで公開しているので、手元で再計測できます。
 規模を誇るためではなく、ここから示す設計が試作に留まらず、相応の実装面積で使われていることを示すための数値です。
 -->
