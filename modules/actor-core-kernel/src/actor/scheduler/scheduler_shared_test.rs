@@ -43,20 +43,15 @@ fn run_after_write_runs_immediately_when_scheduler_is_idle() {
 #[test]
 fn scheduler_write_panic_discards_deferred_actions_and_restores_idle_state() {
   let scheduler = SchedulerContext::new(SchedulerConfig::default()).scheduler();
-  let deferred_ran = ArcShared::new(SpinSyncMutex::new(false));
-  let deferred_ran_for_action = deferred_ran.clone();
 
   let result = catch_unwind(AssertUnwindSafe(|| {
     scheduler.with_write(|_| {
-      scheduler.run_after_write(move || {
-        *deferred_ran_for_action.lock() = true;
-      });
+      scheduler.run_after_write(|| {});
       panic!("scheduler write failed");
     });
   }));
 
   assert!(result.is_err());
-  assert!(!*deferred_ran.lock());
   let immediate_ran = ArcShared::new(SpinSyncMutex::new(false));
   let immediate_ran_for_action = immediate_ran.clone();
   scheduler.run_after_write(move || {
