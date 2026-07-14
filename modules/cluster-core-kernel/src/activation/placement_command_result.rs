@@ -40,8 +40,10 @@ pub enum PlacementCommandResult {
   /// Lock released.
   LockReleased {
     /// Correlation identifier.
-    request_id: PlacementRequestId,
+    request_id:         PlacementRequestId,
     /// Release result.
-    result:     Result<(), PlacementLockError>,
+    result:             Result<(), PlacementLockError>,
+    /// Monotonic time when the distributed activation flow completed.
+    completed_at_nanos: u64,
   },
 }

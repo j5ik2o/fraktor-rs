@@ -297,7 +297,7 @@ impl ClusterApi {
   fn resolve_actor_ref(&self, identity: &ClusterIdentity) -> Result<ActorRef, ClusterResolveError> {
     let key = identity.key();
     let idle_now_nanos = self.system.state().scheduler().current_time_nanos();
-    let now_secs = idle_now_nanos.div_ceil(1_000_000_000);
+    let now_secs = pid_cache_time_secs(idle_now_nanos);
     let (pid_result, placement_events) = {
       let core = self.extension.core_shared();
       core.with_lock(|guard| {
@@ -343,6 +343,10 @@ impl ClusterApi {
     let result = self.system.state().scheduler().with_write(|scheduler| scheduler.schedule_once(timeout, command));
     result.map(|_| ()).map_err(|error| ClusterRequestError::TimeoutScheduleFailed { reason: format!("{error:?}") })
   }
+}
+
+const fn pid_cache_time_secs(now_nanos: u64) -> u64 {
+  now_nanos / 1_000_000_000
 }
 
 impl ClusterIdentityResolver for ClusterApi {

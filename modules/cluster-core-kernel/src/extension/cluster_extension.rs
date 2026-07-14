@@ -614,6 +614,9 @@ impl ClusterExtension {
     })?;
     let scheduler = system.state().scheduler();
     let sweep_interval = interval.min(scheduler.maximum_delay());
+    let interval_nanos = u64::try_from(interval.as_nanos()).unwrap_or(u64::MAX);
+    let next_sweep_at =
+      SharedLock::new_with_driver::<DefaultMutex<_>>(scheduler.current_time_nanos().saturating_add(interval_nanos));
     let actor_ref = self.idle_passivation_actor.with_lock(|actor| -> Result<ActorRef, ClusterError> {
       if let Some(actor_ref) = actor.clone() {
         return Ok(actor_ref);
@@ -641,6 +644,16 @@ impl ClusterExtension {
     let runnable: ArcShared<dyn SchedulerRunnable> = ArcShared::new(move |batch: &ExecutionBatch| {
       let nanos = resolution.as_nanos().saturating_mul(u128::from(batch.execution_tick()));
       let now = u64::try_from(nanos).unwrap_or(u64::MAX);
+      let sweep_due = next_sweep_at.with_lock(|next_sweep_at| {
+        if now < *next_sweep_at {
+          return false;
+        }
+        *next_sweep_at = now.saturating_add(interval_nanos);
+        true
+      });
+      if !sweep_due {
+        return;
+      }
       let mut receiver = actor_ref.clone();
       receiver.try_tell(AnyMessage::new(now)).unwrap_or_else(|error| report_idle_passivation_delivery_failure(&error));
     });

@@ -16,13 +16,12 @@ mod tests;
 
 #[derive(Debug, Clone)]
 struct PendingRequest {
-  key:                   GrainKey,
-  authority:             String,
-  decided_at:            u64,
-  idle_decided_at_nanos: u64,
-  lease:                 Option<PlacementLease>,
-  activation:            Option<ActivationRecord>,
-  locality:              PlacementLocality,
+  key:        GrainKey,
+  authority:  String,
+  decided_at: u64,
+  lease:      Option<PlacementLease>,
+  activation: Option<ActivationRecord>,
+  locality:   PlacementLocality,
 }
 
 /// Core placement coordinator (no_std).
@@ -239,13 +238,12 @@ impl PlacementCoordinatorCore {
 
     let request_id = self.next_request_id();
     let pending = PendingRequest {
-      key:                   key.clone(),
-      authority:             owner.clone(),
-      decided_at:            now_secs,
-      idle_decided_at_nanos: idle_now_nanos,
-      lease:                 None,
-      activation:            None,
-      locality:              PlacementLocality::Local,
+      key:        key.clone(),
+      authority:  owner.clone(),
+      decided_at: now_secs,
+      lease:      None,
+      activation: None,
+      locality:   PlacementLocality::Local,
     };
     self.pending.insert(request_id, pending);
 
@@ -329,7 +327,7 @@ impl PlacementCoordinatorCore {
         self.events.extend(events);
         Ok(PlacementCoordinatorOutcome { resolution: None, commands: vec![command], events: Vec::new() })
       },
-      | PlacementCommandResult::LockReleased { result, .. } => {
+      | PlacementCommandResult::LockReleased { result, completed_at_nanos, .. } => {
         let release_result = result;
         let activation = pending.activation.as_ref();
 
@@ -339,8 +337,8 @@ impl PlacementCoordinatorCore {
         }
 
         if let Some(record) = activation {
-          let resolution = self.finalize_resolution(&pending, record);
-          events.extend(self.collect_registry_events(pending.decided_at));
+          let resolution = self.finalize_resolution(&pending, record, completed_at_nanos);
+          events.extend(self.collect_registry_events(completed_at_nanos / 1_000_000_000));
           self.events.extend(events);
           return Ok(PlacementCoordinatorOutcome {
             resolution: Some(resolution),
@@ -385,14 +383,19 @@ impl PlacementCoordinatorCore {
     PlacementRequestId(self.next_request_id)
   }
 
-  fn finalize_resolution(&mut self, pending: &PendingRequest, record: &ActivationRecord) -> PlacementResolution {
+  fn finalize_resolution(
+    &mut self,
+    pending: &PendingRequest,
+    record: &ActivationRecord,
+    completed_at_nanos: u64,
+  ) -> PlacementResolution {
     let pid = record.pid.clone();
     self.registry.record_activation_at(
       &pending.key,
       &pending.authority,
       record,
-      pending.decided_at,
-      pending.idle_decided_at_nanos,
+      completed_at_nanos / 1_000_000_000,
+      completed_at_nanos,
     );
     PlacementResolution {
       decision: PlacementDecision {

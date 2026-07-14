@@ -120,8 +120,58 @@ fn handle_command_result_completes_activation_flow() {
   assert!(matches!(command, PlacementCommand::Release { .. }));
 
   let outcome = coordinator
-    .handle_command_result(PlacementCommandResult::LockReleased { request_id, result: Ok(()) })
+    .handle_command_result(PlacementCommandResult::LockReleased {
+      request_id,
+      result: Ok(()),
+      completed_at_nanos: 1_000_000_000_000,
+    })
     .expect("lock released");
   let resolution = outcome.resolution.expect("resolution");
   assert_eq!(resolution.pid, record.pid);
+}
+
+#[test]
+fn distributed_activation_uses_completion_time_for_idle_passivation() {
+  let mut coordinator = PlacementCoordinatorCore::new(128, 60);
+  coordinator.start_member().expect("start");
+  coordinator.set_distributed_activation(true);
+  coordinator.update_topology(vec!["node1:8080".to_string()]);
+  coordinator.set_local_authority("node1:8080".to_string());
+
+  let key = GrainKey::new("user/slow".to_string());
+  let outcome = coordinator.resolve_at(&key, 0, 0).expect("resolve");
+  let PlacementCommand::TryAcquire { request_id, .. } = outcome.commands[0] else {
+    panic!("expected TryAcquire");
+  };
+  let lease = PlacementLease { key: key.clone(), owner: "node1:8080".to_string(), expires_at: 10 };
+  let _ = coordinator
+    .handle_command_result(PlacementCommandResult::LockAcquired { request_id, result: Ok(lease) })
+    .expect("lock acquired");
+  let _ = coordinator
+    .handle_command_result(PlacementCommandResult::ActivationLoaded { request_id, result: Ok(None) })
+    .expect("activation loaded");
+  let record = ActivationRecord::new("node1:8080::user/slow".to_string(), None, 0);
+  let _ = coordinator
+    .handle_command_result(PlacementCommandResult::ActivationEnsured { request_id, result: Ok(record) })
+    .expect("activation ensured");
+  let _ = coordinator
+    .handle_command_result(PlacementCommandResult::ActivationStored { request_id, result: Ok(()) })
+    .expect("activation stored");
+  let _ = coordinator
+    .handle_command_result(PlacementCommandResult::LockReleased {
+      request_id,
+      result: Ok(()),
+      completed_at_nanos: 2_000_000_000,
+    })
+    .expect("lock released");
+  let _ = coordinator.drain_events();
+
+  coordinator.passivate_idle_at(2_500_000_000, 1_000_000_000);
+
+  assert!(
+    !coordinator
+      .drain_events()
+      .iter()
+      .any(|event| matches!(event, PlacementEvent::Passivated { key: passivated, .. } if *passivated == key))
+  );
 }

@@ -96,6 +96,7 @@ fn complete_pending_activation(
   key: &GrainKey,
   owner: &str,
   pid: &str,
+  completed_at_secs: u64,
 ) -> PlacementResolution {
   // protocol の各 step を展開しておくことで、placement の流れを loop table に
   // 隠さず、契約として emitted command transition を明示する。
@@ -158,7 +159,11 @@ fn complete_pending_activation(
   let release_request_id = command_request_id(command);
 
   let outcome = lookup
-    .handle_command_result(PlacementCommandResult::LockReleased { request_id: release_request_id, result: Ok(()) })
+    .handle_command_result(PlacementCommandResult::LockReleased {
+      request_id:         release_request_id,
+      result:             Ok(()),
+      completed_at_nanos: completed_at_secs.saturating_mul(1_000_000_000),
+    })
     .unwrap_or_else(|err| panic!("LockReleased for {release_request_id:?} should complete activation: {err:?}"));
   outcome.resolution.expect("completed resolution")
 }
@@ -201,7 +206,7 @@ fn active_pid_is_reused_on_repeated_resolve() {
   let key = grain_key("user/cache-hit");
 
   let (request_id, owner) = begin_pending_activation(&mut lookup, &key, 1000);
-  let first = complete_pending_activation(&mut lookup, request_id, &key, &owner, "custom-cache-hit-pid");
+  let first = complete_pending_activation(&mut lookup, request_id, &key, &owner, "custom-cache-hit-pid", 1000);
   clear_observed_events(&mut lookup);
   let second = lookup.resolve(&key, 1001).expect("second resolution");
 
@@ -280,7 +285,7 @@ fn distributed_activation_reports_pending_then_completes_after_command_results()
 
   let (request_id, owner) = begin_pending_activation(&mut lookup, &key, 1000);
   let pid = "custom-pending-pid";
-  let resolution = complete_pending_activation(&mut lookup, request_id, &key, &owner, pid);
+  let resolution = complete_pending_activation(&mut lookup, request_id, &key, &owner, pid, 1000);
   assert_eq!(resolution.pid, pid);
   assert_eq!(resolution.locality, PlacementLocality::Local);
 
@@ -305,7 +310,7 @@ fn public_resolve_stays_pending_until_distributed_activation_completes() {
   assert!(matches!(repeated, Err(LookupError::Pending)));
 
   let pid = "custom-public-pending-pid";
-  let completed = complete_pending_activation(&mut lookup, request_id, &key, &owner, pid);
+  let completed = complete_pending_activation(&mut lookup, request_id, &key, &owner, pid, 1002);
   assert_eq!(completed.pid, pid);
   assert_eq!(completed.decision.authority, owner);
 
@@ -344,7 +349,7 @@ fn member_left_lookup_with_active_entry() -> (PartitionIdentityLookup, GrainKey,
   let (request_id, owner) = begin_pending_activation(&mut lookup, &key, 1000);
   // PID 文字列は authority と意図的に無関係にする。member-left invalidation は
   // PID の parse ではなく、lease owner によって駆動される必要がある。
-  let first = complete_pending_activation(&mut lookup, request_id, &key, &owner, "custom-member-left-pid");
+  let first = complete_pending_activation(&mut lookup, request_id, &key, &owner, "custom-member-left-pid", 1000);
   clear_observed_events(&mut lookup);
   (lookup, key, first)
 }
@@ -416,11 +421,24 @@ fn passivation_removes_idle_activation_but_keeps_recent_activation() {
   let recent_key = grain_key("user/recent");
   let idle_key = grain_key("user/idle");
   let (idle_request_id, idle_owner) = begin_pending_activation(&mut lookup, &idle_key, IDLE_ACTIVATED_AT);
-  let _idle = complete_pending_activation(&mut lookup, idle_request_id, &idle_key, &idle_owner, "custom-idle-pid");
+  let _idle = complete_pending_activation(
+    &mut lookup,
+    idle_request_id,
+    &idle_key,
+    &idle_owner,
+    "custom-idle-pid",
+    IDLE_ACTIVATED_AT,
+  );
   clear_observed_events(&mut lookup);
   let (recent_request_id, recent_owner) = begin_pending_activation(&mut lookup, &recent_key, RECENT_ACTIVATED_AT);
-  let recent =
-    complete_pending_activation(&mut lookup, recent_request_id, &recent_key, &recent_owner, "custom-recent-pid");
+  let recent = complete_pending_activation(
+    &mut lookup,
+    recent_request_id,
+    &recent_key,
+    &recent_owner,
+    "custom-recent-pid",
+    RECENT_ACTIVATED_AT,
+  );
   clear_observed_events(&mut lookup);
 
   lookup.passivate_idle(PASSIVATION_NOW, IDLE_TTL);

@@ -277,6 +277,12 @@ fn subsecond_access_is_not_passivated_at_the_next_second_boundary() {
 }
 
 #[test]
+fn pid_cache_time_uses_elapsed_whole_seconds() {
+  assert_eq!(super::pid_cache_time_secs(990_000_000), 0);
+  assert_eq!(super::pid_cache_time_secs(1_010_000_000), 1);
+}
+
+#[test]
 fn request_returns_error_when_lookup_fails() {
   let (system, ext) = build_system_with_extension(|| Box::new(NoopIdentityLookup::new()));
   ext.start_member().expect("start member");

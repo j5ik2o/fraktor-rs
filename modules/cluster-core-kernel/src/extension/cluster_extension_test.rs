@@ -650,7 +650,16 @@ fn queued_idle_passivation_is_ignored_after_shutdown() {
 fn default_idle_passivation_starts_with_nanosecond_scheduler_resolution() {
   let scheduler_config = SchedulerConfig::new(Duration::from_nanos(1), SchedulerCapacityProfile::standard());
   let system = create_noop_actor_system_with(|config| config.with_scheduler_config(scheduler_config));
-  let ext_id = stub_extension_id(ClusterExtensionConfig::new().with_advertised_address("fraktor://demo"));
+  let passivations = ArcShared::new(SpinSyncMutex::new(0));
+  let ext_id = ClusterExtensionId::new(
+    ClusterExtensionConfig::new().with_advertised_address("fraktor://demo"),
+    Box::new(StubProvider),
+    ArcShared::new(StubBlockList),
+    Box::new(NoopDowningProvider::new()),
+    Box::new(StubGossiper),
+    Box::new(StubPubSub),
+    Box::new(CountingPassivationIdentity { passivations: passivations.clone() }),
+  );
   let extension = system.extended().register_extension(&ext_id);
 
   extension.start_member().expect("start member");
@@ -664,6 +673,7 @@ fn default_idle_passivation_starts_with_nanosecond_scheduler_resolution() {
 
   assert_eq!(system.state().scheduler().with_read(|scheduler| scheduler.dump().jobs().len()), 1);
   assert!(!handle.is_cancelled());
+  assert_eq!(*passivations.lock(), 0, "maximum-delay wakeups must not trigger early sweeps");
 }
 
 fn assert_failed_duplicate_start_preserves_idle_passivation_task(
