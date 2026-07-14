@@ -26,7 +26,6 @@ use fraktor_actor_core_kernel_rs::{
 };
 use fraktor_utils_core_rs::sync::{ArcShared, SharedAccess};
 
-use super::scheduler_time::scheduler_time_secs;
 use crate::{
   ClusterApiError, ClusterError, ClusterEvent, ClusterEventType, ClusterExtension, ClusterRequestError,
   ClusterResolveError, ClusterSubscriptionInitialStateMode,
@@ -328,7 +327,7 @@ impl ClusterApi {
   }
 
   fn current_time_secs(&self) -> u64 {
-    scheduler_time_secs(&self.system.state().scheduler())
+    self.system.state().scheduler().current_time_secs()
   }
 
   fn schedule_timeout(

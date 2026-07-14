@@ -212,9 +212,9 @@ fn configured_idle_passivation_runs_from_install_and_start_to_events_and_metrics
   let recent = ClusterIdentity::new("user", "recent").expect("recent identity");
 
   let _ = api.get(&idle).expect("activate idle Grain");
-  advance_scheduler(&system, Duration::from_secs(1));
+  run_scheduler(&system, Duration::from_secs(1));
   let _ = api.get(&recent).expect("activate recent Grain");
-  advance_scheduler(&system, Duration::from_secs(1));
+  run_scheduler(&system, Duration::from_secs(1));
 
   let events = recorder.events();
   assert!(events.iter().any(|event| matches!(event, GrainEvent::ActivationPassivated { key } if *key == idle.key())));
@@ -238,9 +238,9 @@ fn subsecond_access_is_not_passivated_at_the_next_second_boundary() {
   let api = ClusterApi::try_from_system(&system).expect("cluster api");
   let identity = ClusterIdentity::new("user", "recent").expect("recent identity");
 
-  advance_scheduler(&system, Duration::from_millis(990));
+  run_scheduler(&system, Duration::from_millis(990));
   let _ = api.get(&identity).expect("activate recent Grain");
-  advance_scheduler(&system, Duration::from_millis(10));
+  run_scheduler(&system, Duration::from_millis(10));
 
   assert!(
     !recorder
@@ -829,24 +829,12 @@ fn subscribe_with_singleton_stuck_filter_receives_only_stuck_events() {
 
 fn run_scheduler(system: &ActorSystem, duration: Duration) {
   let scheduler: SchedulerShared = system.state().scheduler();
-  let resolution = scheduler.with_read(|inner| inner.config().resolution());
-  let resolution_ns = resolution.as_nanos().max(1);
-  let ticks = duration.as_nanos().div_ceil(resolution_ns).max(1);
-  let now = TimerInstant::from_ticks(ticks as u64, resolution);
-  scheduler.with_write(|inner| {
-    let _ = inner.run_due(now);
-  });
-}
-
-fn advance_scheduler(system: &ActorSystem, duration: Duration) {
-  let scheduler: SchedulerShared = system.state().scheduler();
-  let (current_tick, resolution) =
-    scheduler.with_read(|inner| (inner.dump().current_tick(), inner.config().resolution()));
+  let (current_tick, resolution) = scheduler.with_read(|inner| (inner.current_tick(), inner.config().resolution()));
   let resolution_ns = resolution.as_nanos().max(1);
   let ticks = duration.as_nanos().div_ceil(resolution_ns).max(1);
   let now = TimerInstant::from_ticks(current_tick.saturating_add(ticks as u64), resolution);
   scheduler.with_write(|inner| {
-    inner.run_due(now);
+    let _ = inner.run_due(now);
   });
 }
 

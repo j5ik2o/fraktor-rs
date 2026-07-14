@@ -635,7 +635,7 @@ fn queued_idle_passivation_is_ignored_after_shutdown() {
     extension.idle_passivation_actor.with_lock(|actor| actor.clone()).expect("idle passivation actor");
   extension.shutdown(true).expect("shutdown");
 
-  actor_ref.tell(AnyMessage::new(()));
+  actor_ref.try_tell(AnyMessage::new(0_u64)).expect("enqueue passivation message after shutdown");
 
   assert_eq!(*passivations.lock(), 0);
 }

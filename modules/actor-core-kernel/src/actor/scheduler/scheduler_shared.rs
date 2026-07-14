@@ -5,8 +5,7 @@
 
 use core::time::Duration;
 
-use fraktor_utils_core_rs::sync::{ArcShared, SharedAccess, SharedRwLock};
-use portable_atomic::{AtomicU64, Ordering};
+use fraktor_utils_core_rs::sync::{SharedAccess, SharedRwLock};
 
 use super::Scheduler;
 
@@ -24,43 +23,36 @@ use super::Scheduler;
 /// let _ = SchedulerShared::new(SharedRwLock::new_with_driver::<DefaultRwLock<_>>(scheduler));
 /// ```
 pub struct SchedulerShared {
-  inner:           SharedRwLock<Scheduler>,
-  observable_tick: ArcShared<AtomicU64>,
-  resolution:      Duration,
+  inner: SharedRwLock<Scheduler>,
 }
 
 impl Clone for SchedulerShared {
   fn clone(&self) -> Self {
-    Self {
-      inner:           self.inner.clone(),
-      observable_tick: self.observable_tick.clone(),
-      resolution:      self.resolution,
-    }
+    Self { inner: self.inner.clone() }
   }
 }
 
 impl SchedulerShared {
   /// Wrap an existing shared rw lock.
   #[must_use]
-  pub(crate) fn new(inner: SharedRwLock<Scheduler>) -> Self {
-    let (observable_tick, resolution) =
-      inner.with_read(|scheduler| (scheduler.observable_tick(), scheduler.resolution()));
-    Self { inner, observable_tick, resolution }
+  pub(crate) const fn new(inner: SharedRwLock<Scheduler>) -> Self {
+    Self { inner }
   }
 
   /// Returns the scheduler's current logical time rounded up to whole seconds,
-  /// without building a diagnostics snapshot or acquiring the scheduler lock.
+  /// without building a diagnostics snapshot.
   #[must_use]
   pub fn current_time_secs(&self) -> u64 {
-    let ticks = self.observable_tick.load(Ordering::Acquire);
-    let nanos = self.resolution.as_nanos().saturating_mul(u128::from(ticks));
-    u64::try_from(nanos.div_ceil(1_000_000_000)).unwrap_or(u64::MAX)
+    self.inner.with_read(|scheduler| {
+      let nanos = scheduler.resolution().as_nanos().saturating_mul(u128::from(scheduler.current_tick()));
+      u64::try_from(nanos.div_ceil(1_000_000_000)).unwrap_or(u64::MAX)
+    })
   }
 
   /// Returns the longest delay accepted by this scheduler resolution.
   #[must_use]
   pub fn maximum_delay(&self) -> Duration {
-    self.resolution.checked_mul(i32::MAX as u32).unwrap_or(Duration::MAX)
+    self.inner.with_read(|scheduler| scheduler.resolution().checked_mul(i32::MAX as u32).unwrap_or(Duration::MAX))
   }
 }
 

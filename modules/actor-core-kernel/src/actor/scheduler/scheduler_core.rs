@@ -10,11 +10,9 @@ mod tests;
 use ahash::RandomState;
 use fraktor_utils_core_rs::{
   collections::queue::{OverflowPolicy, backend::BinaryHeapPriorityBackend},
-  sync::ArcShared,
   time::{ManualClock, TimerEntry, TimerHandleId, TimerInstant, TimerWheel, TimerWheelConfig},
 };
 use hashbrown::HashMap;
-use portable_atomic::{AtomicU64, Ordering};
 
 use super::{
   ExecutionBatch, SchedulerHandle, SchedulerMode, SchedulerWarning,
@@ -36,21 +34,20 @@ const DEFAULT_DRIFT_BUDGET_PCT: u8 = 5;
 
 /// Scheduler responsible for registering delayed and periodic jobs.
 pub struct Scheduler {
-  clock:           ManualClock,
-  config:          SchedulerConfig,
-  wheel:           TimerWheel<ScheduledPayload>,
-  registry:        CancellableRegistry,
-  metrics:         SchedulerMetrics,
-  warnings:        Vec<SchedulerWarning>,
-  next_handle:     u64,
-  jobs:            HashMap<u64, ScheduledJob, RandomState>,
-  current_tick:    u64,
-  observable_tick: ArcShared<AtomicU64>,
-  closed:          bool,
-  task_runs:       TaskRunQueue,
-  task_run_seq:    u64,
-  shutting_down:   bool,
-  diagnostics:     SchedulerDiagnostics,
+  clock:         ManualClock,
+  config:        SchedulerConfig,
+  wheel:         TimerWheel<ScheduledPayload>,
+  registry:      CancellableRegistry,
+  metrics:       SchedulerMetrics,
+  warnings:      Vec<SchedulerWarning>,
+  next_handle:   u64,
+  jobs:          HashMap<u64, ScheduledJob, RandomState>,
+  current_tick:  u64,
+  closed:        bool,
+  task_runs:     TaskRunQueue,
+  task_run_seq:  u64,
+  shutting_down: bool,
+  diagnostics:   SchedulerDiagnostics,
 }
 
 struct ScheduledJob {
@@ -112,7 +109,6 @@ impl Scheduler {
       next_handle: 1,
       jobs: HashMap::with_hasher(RandomState::new()),
       current_tick: 0,
-      observable_tick: ArcShared::new(AtomicU64::new(0)),
       closed: false,
       task_runs: TaskRunQueue::new(task_run_backend),
       task_run_seq: 0,
@@ -127,8 +123,10 @@ impl Scheduler {
     self.config.resolution()
   }
 
-  pub(crate) fn observable_tick(&self) -> ArcShared<AtomicU64> {
-    self.observable_tick.clone()
+  /// Returns the scheduler's current logical tick.
+  #[must_use]
+  pub const fn current_tick(&self) -> u64 {
+    self.current_tick
   }
 
   /// Returns the scheduler configuration copy.
@@ -309,7 +307,6 @@ impl Scheduler {
   /// Runs due timers at the provided instant, returning the number of executed jobs.
   pub fn run_due(&mut self, now: TimerInstant) -> usize {
     self.current_tick = now.ticks();
-    self.observable_tick.store(self.current_tick, Ordering::Release);
     let expired = self.wheel.collect_expired(now);
     let mut executed = 0;
     for entry in expired {
@@ -453,7 +450,7 @@ impl Scheduler {
           if let Some(warning) = warning {
             self.record_warning(warning);
           }
-          BatchPreparation::Ready(batch)
+          BatchPreparation::Ready(batch.with_execution_tick(self.current_tick))
         },
         | PeriodicBatchDecision::Cancel { warning } => {
           self.record_warning(warning);
@@ -461,7 +458,7 @@ impl Scheduler {
           BatchPreparation::Cancelled
         },
       },
-      | None => BatchPreparation::Ready(ExecutionBatch::oneshot()),
+      | None => BatchPreparation::Ready(ExecutionBatch::oneshot().with_execution_tick(self.current_tick)),
     }
   }
 

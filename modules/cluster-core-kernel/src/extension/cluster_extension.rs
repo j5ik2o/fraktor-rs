@@ -15,14 +15,14 @@ use fraktor_actor_core_kernel_rs::{
     actor_ref::ActorRef,
     messaging::AnyMessage,
     props::Props,
-    scheduler::{SchedulerCommand, SchedulerHandle},
+    scheduler::{ExecutionBatch, SchedulerCommand, SchedulerHandle, SchedulerRunnable},
   },
   event::stream::{
     EventStreamEvent, EventStreamShared, EventStreamSubscriber, EventStreamSubscription, subscriber_handle,
   },
   system::{ActorSystem, ActorSystemWeak},
 };
-use fraktor_utils_core_rs::sync::{DefaultMutex, SharedAccess, SharedLock};
+use fraktor_utils_core_rs::sync::{ArcShared, DefaultMutex, SharedAccess, SharedLock};
 
 use super::grain_idle_passivation_actor::GrainIdlePassivationActor;
 use crate::{
@@ -615,14 +615,8 @@ impl ClusterExtension {
         let core = self.core.clone();
         let event_stream = self.event_stream.clone();
         let grain_metrics = self.grain_metrics.clone();
-        let actor_scheduler = scheduler.clone();
         let props = Props::from_fn(move || {
-          GrainIdlePassivationActor::new(
-            core.clone(),
-            event_stream.clone(),
-            grain_metrics.clone(),
-            actor_scheduler.clone(),
-          )
+          GrainIdlePassivationActor::new(core.clone(), event_stream.clone(), grain_metrics.clone())
         });
         let actor_ref = system
           .extended()
@@ -635,18 +629,33 @@ impl ClusterExtension {
         actor_ref
       },
     };
-    self.idle_passivation_task.with_lock(|task| {
+    if self.idle_passivation_task.with_lock(|task| task.is_some()) {
+      return Ok(());
+    }
+    let resolution = scheduler.with_read(|scheduler| scheduler.resolution());
+    let runnable: ArcShared<dyn SchedulerRunnable> = ArcShared::new(move |batch: &ExecutionBatch| {
+      let nanos = resolution.as_nanos().saturating_mul(u128::from(batch.execution_tick()));
+      let now = u64::try_from(nanos.div_ceil(1_000_000_000)).unwrap_or(u64::MAX);
+      let mut receiver = actor_ref.clone();
+      if let Err(_error) = receiver.try_tell(AnyMessage::new(now)) {}
+    });
+    let command = SchedulerCommand::RunRunnable { runnable };
+    let handle = scheduler
+      .with_write(|scheduler| scheduler.schedule_at_fixed_rate(sweep_interval, sweep_interval, command))
+      .map_err(|error| ClusterError::GrainIdlePassivationScheduler { reason: format!("{error}") })?;
+    let duplicate = self.idle_passivation_task.with_lock(|task| {
       if task.is_some() {
-        return Ok(());
+        return true;
       }
-      let command =
-        SchedulerCommand::SendMessage { receiver: actor_ref, message: AnyMessage::new(()), sender: None };
-      let handle = scheduler
-        .with_write(|scheduler| scheduler.schedule_at_fixed_rate(sweep_interval, sweep_interval, command))
-        .map_err(|error| ClusterError::GrainIdlePassivationScheduler { reason: format!("{error}") })?;
-      *task = Some(handle);
-      Ok(())
-    })
+      *task = Some(handle.clone());
+      false
+    });
+    if duplicate && !scheduler.with_write(|scheduler| scheduler.cancel(&handle)) {
+      return Err(ClusterError::GrainIdlePassivationScheduler {
+        reason: String::from("duplicate idle passivation task cancellation failed"),
+      });
+    }
+    Ok(())
   }
 
   fn cancel_idle_passivation_task(&self) -> Result<(), ClusterError> {
@@ -664,6 +673,7 @@ impl ClusterExtension {
     if cancelled {
       return Ok(());
     }
+    self.idle_passivation_task.with_lock(|task| *task = Some(handle));
     Err(ClusterError::GrainIdlePassivationScheduler {
       reason: String::from("idle passivation task cancellation failed"),
     })

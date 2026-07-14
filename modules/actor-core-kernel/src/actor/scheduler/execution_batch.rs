@@ -19,16 +19,17 @@ pub enum BatchMode {
 /// Execution metadata shared with scheduler tasks.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ExecutionBatch {
-  runs:        NonZeroU32,
-  missed_runs: u32,
-  mode:        BatchMode,
+  runs:           NonZeroU32,
+  missed_runs:    u32,
+  mode:           BatchMode,
+  execution_tick: u64,
 }
 
 impl ExecutionBatch {
   /// Creates a new batch description.
   #[must_use]
   pub const fn new(runs: NonZeroU32, missed_runs: u32, mode: BatchMode) -> Self {
-    Self { runs, missed_runs, mode }
+    Self { runs, missed_runs, mode, execution_tick: 0 }
   }
 
   /// Batch describing a single run with no accumulated backlog.
@@ -61,5 +62,16 @@ impl ExecutionBatch {
   #[must_use]
   pub const fn mode(&self) -> BatchMode {
     self.mode
+  }
+
+  /// Returns the scheduler tick at which this batch was executed.
+  #[must_use]
+  pub const fn execution_tick(&self) -> u64 {
+    self.execution_tick
+  }
+
+  pub(crate) const fn with_execution_tick(mut self, execution_tick: u64) -> Self {
+    self.execution_tick = execution_tick;
+    self
   }
 }

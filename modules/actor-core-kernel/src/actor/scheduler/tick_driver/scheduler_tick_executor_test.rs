@@ -13,12 +13,14 @@ use crate::actor::scheduler::{
 #[derive(Clone)]
 struct RecordingRunnable {
   log:   ArcShared<SpinSyncMutex<Vec<&'static str>>>,
+  ticks: ArcShared<SpinSyncMutex<Vec<u64>>>,
   label: &'static str,
 }
 
 impl SchedulerRunnable for RecordingRunnable {
-  fn run(&self, _batch: &ExecutionBatch) {
+  fn run(&self, batch: &ExecutionBatch) {
     self.log.lock().push(self.label);
+    self.ticks.lock().push(batch.execution_tick());
   }
 }
 
@@ -32,7 +34,8 @@ fn drive_pending_executes_scheduled_job() {
   let mut executor = SchedulerTickExecutor::new(scheduler.clone(), feed.clone(), signal);
 
   let log = ArcShared::new(SpinSyncMutex::new(Vec::new()));
-  let runnable = ArcShared::new(RecordingRunnable { log: log.clone(), label: "fired" });
+  let ticks = ArcShared::new(SpinSyncMutex::new(Vec::new()));
+  let runnable = ArcShared::new(RecordingRunnable { log: log.clone(), ticks: ticks.clone(), label: "fired" });
   scheduler.with_write(|s| {
     s.schedule_once(Duration::from_millis(10), SchedulerCommand::RunRunnable { runnable }).expect("schedule once");
   });
@@ -43,4 +46,5 @@ fn drive_pending_executes_scheduled_job() {
   let entries = log.lock();
   assert_eq!(entries.len(), 1);
   assert_eq!(entries[0], "fired");
+  assert_eq!(*ticks.lock(), [1]);
 }
