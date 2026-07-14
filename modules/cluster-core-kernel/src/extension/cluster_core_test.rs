@@ -508,7 +508,7 @@ fn build_core_with_partition_lookup(config: &ClusterExtensionConfig) -> ClusterC
 }
 
 #[test]
-fn resolve_pid_applies_configured_grain_idle_passivation_threshold() {
+fn passivate_idle_applies_configured_grain_idle_passivation_threshold() {
   let config = ClusterExtensionConfig::new()
     .with_advertised_address("node-a:4050")
     .with_grain_idle_passivation_threshold(Duration::from_secs(200));
@@ -525,7 +525,12 @@ fn resolve_pid_applies_configured_grain_idle_passivation_threshold() {
   let _ = core.drain_placement_events();
   let recent = core.resolve_pid(&recent_key, 1150).expect("resolve recent Grain");
   let _ = core.drain_placement_events();
-  let _ = core.resolve_pid(&trigger_key, 1200).expect("trigger passivation");
+  let _ = core.resolve_pid(&trigger_key, 1200).expect("resolve trigger Grain");
+
+  let resolution_events = core.drain_placement_events();
+  assert!(!resolution_events.iter().any(|event| matches!(event, PlacementEvent::Passivated { .. })));
+
+  core.passivate_idle(1200);
 
   let events = core.drain_placement_events();
   assert!(events.iter().any(|event| matches!(event, PlacementEvent::Passivated { key, .. } if *key == idle_key)));
@@ -549,6 +554,7 @@ fn resolve_pid_refreshes_requested_grain_before_idle_passivation() {
   let _ = core.drain_placement_events();
 
   let second = core.resolve_pid(&key, 1100).expect("resolution at idle boundary");
+  core.passivate_idle(1100);
 
   assert_eq!(second.pid, first.pid);
   assert!(

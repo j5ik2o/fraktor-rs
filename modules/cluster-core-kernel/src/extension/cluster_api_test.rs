@@ -210,13 +210,11 @@ fn configured_idle_passivation_runs_from_install_and_start_to_events_and_metrics
   let api = ClusterApi::try_from_system(&system).expect("cluster api");
   let idle = ClusterIdentity::new("user", "idle").expect("idle identity");
   let recent = ClusterIdentity::new("user", "recent").expect("recent identity");
-  let trigger = ClusterIdentity::new("user", "trigger").expect("trigger identity");
 
   let _ = api.get(&idle).expect("activate idle Grain");
-  advance_to_next_monotonic_second(&system);
+  advance_scheduler(&system, Duration::from_secs(1));
   let _ = api.get(&recent).expect("activate recent Grain");
-  advance_to_next_monotonic_second(&system);
-  let _ = api.get(&trigger).expect("trigger idle passivation");
+  advance_scheduler(&system, Duration::from_secs(1));
 
   let events = recorder.events();
   assert!(events.iter().any(|event| matches!(event, GrainEvent::ActivationPassivated { key } if *key == idle.key())));
@@ -814,9 +812,16 @@ fn run_scheduler(system: &ActorSystem, duration: Duration) {
   });
 }
 
-fn advance_to_next_monotonic_second(system: &ActorSystem) {
-  let current = system.state().monotonic_now().as_secs();
-  while system.state().monotonic_now().as_secs() == current {}
+fn advance_scheduler(system: &ActorSystem, duration: Duration) {
+  let scheduler: SchedulerShared = system.state().scheduler();
+  let (current_tick, resolution) =
+    scheduler.with_read(|inner| (inner.dump().current_tick(), inner.config().resolution()));
+  let resolution_ns = resolution.as_nanos().max(1);
+  let ticks = duration.as_nanos().div_ceil(resolution_ns).max(1);
+  let now = TimerInstant::from_ticks(current_tick.saturating_add(ticks as u64), resolution);
+  scheduler.with_write(|inner| {
+    inner.run_due(now);
+  });
 }
 
 fn build_system_with_extension<F>(identity_lookup_factory: F) -> (ActorSystem, ArcShared<ClusterExtension>)

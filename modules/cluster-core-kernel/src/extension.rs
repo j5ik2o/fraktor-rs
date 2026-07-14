@@ -21,6 +21,7 @@ mod cluster_router_pool_config;
 mod cluster_sharding_state_store_mode;
 mod cluster_subscription_initial_state_mode;
 mod metrics_error;
+mod scheduler_time;
 mod startup_mode;
 
 pub use cluster_api::ClusterApi;

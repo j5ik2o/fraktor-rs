@@ -64,7 +64,7 @@ pub struct ClusterCore {
 }
 
 impl ClusterCore {
-  fn validate_configuration(&self) -> Result<(), ClusterExtensionConfigError> {
+  pub(crate) fn validate_configuration(&self) -> Result<(), ClusterExtensionConfigError> {
     self.failure_detector_config.validate()?;
     ClusterExtensionConfig::validate_grain_idle_passivation_threshold(self.grain_idle_passivation_threshold)
   }
@@ -119,6 +119,12 @@ impl ClusterCore {
   #[must_use]
   pub const fn metrics_enabled(&self) -> bool {
     self.metrics_enabled
+  }
+
+  /// Returns the configured Grain idle passivation threshold.
+  #[must_use]
+  pub(crate) const fn grain_idle_passivation_threshold(&self) -> Duration {
+    self.grain_idle_passivation_threshold
   }
 
   /// Returns the advertised address shared by member and client modes.
@@ -177,12 +183,13 @@ impl ClusterCore {
   ///
   /// Returns an error when placement resolution fails or is pending.
   pub fn resolve_pid(&mut self, key: &GrainKey, now: u64) -> Result<PlacementResolution, LookupError> {
+    self.identity_lookup.with_write(|lookup| lookup.resolve(key, now))
+  }
+
+  /// Passivates activations that exceeded the configured idle threshold.
+  pub(crate) fn passivate_idle(&mut self, now: u64) {
     let idle_ttl = self.grain_idle_passivation_threshold.as_secs();
-    self.identity_lookup.with_write(|lookup| {
-      let resolution = lookup.resolve(key, now);
-      lookup.passivate_idle(now, idle_ttl);
-      resolution
-    })
+    self.identity_lookup.with_write(|lookup| lookup.passivate_idle(now, idle_ttl));
   }
 
   /// Drains placement events emitted by identity lookup.

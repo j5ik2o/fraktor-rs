@@ -31,6 +31,11 @@ pub enum ClusterError {
   Identity(IdentitySetupError),
   /// Gossip start/stop failure.
   Gossip(&'static str),
+  /// Grain idle passivation scheduling failure.
+  GrainIdlePassivationScheduler {
+    /// Scheduler failure details.
+    reason: String,
+  },
   /// PubSub start/stop failure.
   PubSub(PubSubError),
 }
