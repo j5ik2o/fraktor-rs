@@ -598,11 +598,11 @@ impl ClusterExtension {
     publish_activation_events(&self.event_stream, &self.grain_metrics, events);
   }
 
-  fn prepare_idle_passivation_task(&self) -> Result<(), ClusterError> {
+  fn prepare_idle_passivation_task(&self) -> Result<bool, ClusterError> {
     self.core.with_lock(|core| core.validate_configuration()).map_err(ClusterError::from)?;
     let interval = self.core.with_lock(|core| core.grain_idle_passivation_threshold());
     if self.idle_passivation_task.with_lock(|task| task.is_some()) {
-      return Ok(());
+      return Ok(false);
     }
     let system = self._system.upgrade().ok_or_else(|| ClusterError::GrainIdlePassivationScheduler {
       reason: String::from("actor system is unavailable"),
@@ -630,7 +630,7 @@ impl ClusterExtension {
       },
     };
     if self.idle_passivation_task.with_lock(|task| task.is_some()) {
-      return Ok(());
+      return Ok(false);
     }
     let resolution = scheduler.with_read(|scheduler| scheduler.resolution());
     let runnable: ArcShared<dyn SchedulerRunnable> = ArcShared::new(move |batch: &ExecutionBatch| {
@@ -641,7 +641,9 @@ impl ClusterExtension {
     });
     let command = SchedulerCommand::RunRunnable { runnable };
     let handle = scheduler
-      .with_write(|scheduler| scheduler.schedule_at_fixed_rate(sweep_interval, sweep_interval, command))
+      .with_write(|scheduler| {
+        scheduler.schedule_with_fixed_delay_skipping_missed(sweep_interval, sweep_interval, command)
+      })
       .map_err(|error| ClusterError::GrainIdlePassivationScheduler { reason: format!("{error}") })?;
     let duplicate = self.idle_passivation_task.with_lock(|task| {
       if task.is_some() {
@@ -655,7 +657,7 @@ impl ClusterExtension {
         reason: String::from("duplicate idle passivation task cancellation failed"),
       });
     }
-    Ok(())
+    Ok(!duplicate)
   }
 
   fn cancel_idle_passivation_task(&self) -> Result<(), ClusterError> {
@@ -731,18 +733,18 @@ impl ClusterExtension {
       was_terminated
     });
     self.start_in_progress.with_lock(|start_in_progress| *start_in_progress = true);
-    let result = match self.prepare_idle_passivation_task() {
-      | Ok(()) => self.core.with_lock(|core| core.start_member()),
+    let (result, passivation_task_created) = match self.prepare_idle_passivation_task() {
+      | Ok(created) => (self.core.with_lock(|core| core.start_member()), created),
       | Err(error) => {
         self.publish_pre_start_failure(StartupMode::Member, &error);
-        Err(error)
+        (Err(error), false)
       },
     };
     self.start_in_progress.with_lock(|start_in_progress| *start_in_progress = false);
     if result.is_ok() {
       self.subscribe_topology_events();
     } else {
-      let cancel_result = self.cancel_idle_passivation_task();
+      let cancel_result = if passivation_task_created { self.cancel_idle_passivation_task() } else { Ok(()) };
       let failed_identity = self.self_member_identity.with_lock(|self_member_identity| self_member_identity.clone());
       if let Some(failed_identity) = failed_identity
         && previous_identity.as_ref().is_none_or(|previous| !identity_matches(previous, &failed_identity))
@@ -783,18 +785,18 @@ impl ClusterExtension {
       was_terminated
     });
     self.start_in_progress.with_lock(|start_in_progress| *start_in_progress = true);
-    let result = match self.prepare_idle_passivation_task() {
-      | Ok(()) => self.core.with_lock(|core| core.start_client()),
+    let (result, passivation_task_created) = match self.prepare_idle_passivation_task() {
+      | Ok(created) => (self.core.with_lock(|core| core.start_client()), created),
       | Err(error) => {
         self.publish_pre_start_failure(StartupMode::Client, &error);
-        Err(error)
+        (Err(error), false)
       },
     };
     self.start_in_progress.with_lock(|start_in_progress| *start_in_progress = false);
     if result.is_ok() {
       self.subscribe_topology_events();
     } else {
-      let cancel_result = self.cancel_idle_passivation_task();
+      let cancel_result = if passivation_task_created { self.cancel_idle_passivation_task() } else { Ok(()) };
       let failed_identity = self.self_member_identity.with_lock(|self_member_identity| self_member_identity.clone());
       if let Some(failed_identity) = failed_identity
         && previous_identity.as_ref().is_none_or(|previous| !identity_matches(previous, &failed_identity))

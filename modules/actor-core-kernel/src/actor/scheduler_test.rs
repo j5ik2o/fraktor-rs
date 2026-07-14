@@ -726,6 +726,26 @@ fn fixed_delay_backlog_marks_handle_cancelled() {
 }
 
 #[test]
+fn fixed_delay_skipping_missed_runs_remains_scheduled_after_backlog() {
+  let profile = SchedulerCapacityProfile::standard();
+  let config = SchedulerConfig::new(Duration::from_millis(1), profile).with_backlog_limit(1);
+  let mut scheduler = Scheduler::new(config);
+  let handle = scheduler
+    .schedule_with_fixed_delay_skipping_missed(
+      Duration::from_millis(1),
+      Duration::from_millis(1),
+      SchedulerCommand::Noop,
+    )
+    .expect("handle");
+
+  scheduler.run_for_test(5);
+  scheduler.run_for_test(5);
+
+  assert!(!handle.is_cancelled());
+  assert_eq!(scheduler.job_count_for_test(), 1);
+}
+
+#[test]
 fn scheduler_backed_delay_provider_completes_future() {
   let (shared, mut provider) = shared_scheduler_state();
   let mut future = provider.delay(Duration::from_millis(1));

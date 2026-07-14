@@ -226,6 +226,22 @@ impl Scheduler {
     self.register_job(initial_delay, SchedulerMode::FixedDelay, Some(delay), command)
   }
 
+  /// Registers a fixed-delay job that executes once after a delayed tick and remains scheduled.
+  ///
+  /// Missed runs are skipped instead of accumulated or cancelled by the backlog policy.
+  ///
+  /// # Errors
+  ///
+  /// Returns `SchedulerError` if the delay is invalid or capacity is exceeded.
+  pub fn schedule_with_fixed_delay_skipping_missed(
+    &mut self,
+    initial_delay: Duration,
+    delay: Duration,
+    command: SchedulerCommand,
+  ) -> Result<SchedulerHandle, SchedulerError> {
+    self.register_job_with_missed_run_policy(initial_delay, SchedulerMode::FixedDelay, Some(delay), command, true)
+  }
+
   /// Registers a custom command to be executed after the provided delay.
   ///
   /// # Errors
@@ -386,6 +402,17 @@ impl Scheduler {
     period: Option<Duration>,
     command: SchedulerCommand,
   ) -> Result<SchedulerHandle, SchedulerError> {
+    self.register_job_with_missed_run_policy(delay, mode, period, command, false)
+  }
+
+  fn register_job_with_missed_run_policy(
+    &mut self,
+    delay: Duration,
+    mode: SchedulerMode,
+    period: Option<Duration>,
+    command: SchedulerCommand,
+    skip_missed: bool,
+  ) -> Result<SchedulerHandle, SchedulerError> {
     if self.closed {
       return Err(SchedulerError::Closed);
     }
@@ -400,7 +427,7 @@ impl Scheduler {
     entry.mark_scheduled();
     self.registry.register(handle.raw(), entry);
     self.metrics.increment_active();
-    let periodic = self.build_periodic_context(mode, period, deadline.ticks())?;
+    let periodic = self.build_periodic_context(mode, period, deadline.ticks(), skip_missed)?;
     let job =
       ScheduledJob { handle: handle.clone(), wheel_id, mode, periodic, command, deadline_tick: deadline.ticks() };
     self.jobs.insert(handle.raw(), job);
@@ -413,6 +440,7 @@ impl Scheduler {
     mode: SchedulerMode,
     period: Option<Duration>,
     start_tick: u64,
+    skip_missed: bool,
   ) -> Result<Option<PeriodicContext>, SchedulerError> {
     match mode {
       | SchedulerMode::OneShot => Ok(None),
@@ -433,12 +461,17 @@ impl Scheduler {
         let ticks = self.duration_to_ticks(period_duration)?;
         let period_ticks = NonZeroU64::new(ticks).ok_or(SchedulerError::InvalidDelay)?;
         let policy = self.config.fixed_delay_policy();
-        Ok(Some(PeriodicContext::FixedDelay(FixedDelayContext::new(
-          start_tick,
-          period_ticks,
-          policy.backlog_limit(),
-          policy.burst_threshold(),
-        ))))
+        let context = if skip_missed {
+          FixedDelayContext::new_skipping_missed(
+            start_tick,
+            period_ticks,
+            policy.backlog_limit(),
+            policy.burst_threshold(),
+          )
+        } else {
+          FixedDelayContext::new(start_tick, period_ticks, policy.backlog_limit(), policy.burst_threshold())
+        };
+        Ok(Some(PeriodicContext::FixedDelay(context)))
       },
     }
   }

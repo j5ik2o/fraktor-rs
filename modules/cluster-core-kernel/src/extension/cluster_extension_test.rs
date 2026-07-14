@@ -648,8 +648,47 @@ fn default_idle_passivation_starts_with_nanosecond_scheduler_resolution() {
   let extension = system.extended().register_extension(&ext_id);
 
   extension.start_member().expect("start member");
+  let handle = extension.idle_passivation_task.with_lock(|task| task.clone()).expect("passivation handle");
+  system.state().scheduler().with_write(|scheduler| {
+    scheduler.run_due(TimerInstant::from_ticks(12_000_000_000, Duration::from_nanos(1)));
+  });
 
   assert_eq!(system.state().scheduler().with_read(|scheduler| scheduler.dump().jobs().len()), 1);
+  assert!(!handle.is_cancelled());
+}
+
+fn assert_failed_duplicate_start_preserves_idle_passivation_task(
+  start: impl Fn(&ClusterExtension) -> Result<(), ClusterError>,
+) {
+  let system = create_noop_actor_system();
+  let ext_id = ClusterExtensionId::new(
+    ClusterExtensionConfig::new().with_advertised_address("fraktor://demo"),
+    Box::new(StartOnceThenFailProvider::new()),
+    ArcShared::new(StubBlockList),
+    Box::new(NoopDowningProvider::new()),
+    Box::new(StubGossiper),
+    Box::new(StubPubSub),
+    Box::new(StubIdentity),
+  );
+  let extension = system.extended().register_extension(&ext_id);
+
+  start(&extension).expect("initial start");
+  let handle = extension.idle_passivation_task.with_lock(|task| task.clone()).expect("passivation handle");
+  assert!(start(&extension).is_err());
+
+  let current = extension.idle_passivation_task.with_lock(|task| task.clone()).expect("preserved passivation handle");
+  assert_eq!(current.raw(), handle.raw());
+  assert!(!handle.is_cancelled());
+}
+
+#[test]
+fn failed_duplicate_member_start_preserves_idle_passivation_task() {
+  assert_failed_duplicate_start_preserves_idle_passivation_task(ClusterExtension::start_member);
+}
+
+#[test]
+fn failed_duplicate_client_start_preserves_idle_passivation_task() {
+  assert_failed_duplicate_start_preserves_idle_passivation_task(ClusterExtension::start_client);
 }
 
 /// Helper to build `ClusterExtensionId` with a real partition identity lookup.

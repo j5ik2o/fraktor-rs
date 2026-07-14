@@ -11,6 +11,7 @@ pub(crate) struct FixedDelayContext {
   period_ticks:    NonZeroU64,
   backlog_limit:   NonZeroU32,
   burst_threshold: NonZeroU32,
+  skip_missed:     bool,
 }
 
 impl FixedDelayContext {
@@ -21,19 +22,31 @@ impl FixedDelayContext {
     backlog_limit: NonZeroU32,
     burst_threshold: NonZeroU32,
   ) -> Self {
-    Self { next_tick: start_tick, period_ticks, backlog_limit, burst_threshold }
+    Self { next_tick: start_tick, period_ticks, backlog_limit, burst_threshold, skip_missed: false }
+  }
+
+  pub(crate) const fn new_skipping_missed(
+    start_tick: u64,
+    period_ticks: NonZeroU64,
+    backlog_limit: NonZeroU32,
+    burst_threshold: NonZeroU32,
+  ) -> Self {
+    Self { next_tick: start_tick, period_ticks, backlog_limit, burst_threshold, skip_missed: true }
   }
 
   pub(crate) fn build_batch(&mut self, now: u64, handle_id: u64) -> PeriodicBatchDecision {
     let missed = self.compute_missed(now);
-    if missed >= self.backlog_limit.get() {
+    if !self.skip_missed && missed >= self.backlog_limit.get() {
       return PeriodicBatchDecision::Cancel { warning: SchedulerWarning::BacklogExceeded { handle_id, missed } };
     }
 
-    let warning =
-      if missed > self.burst_threshold.get() { Some(SchedulerWarning::BurstFire { handle_id, missed }) } else { None };
+    let warning = if !self.skip_missed && missed > self.burst_threshold.get() {
+      Some(SchedulerWarning::BurstFire { handle_id, missed })
+    } else {
+      None
+    };
 
-    let runs_total = missed.saturating_add(1);
+    let runs_total = if self.skip_missed { 1 } else { missed.saturating_add(1) };
     // SAFETY: runs_total is at least 1 (0 + 1)
     let runs = unsafe { NonZeroU32::new_unchecked(runs_total) };
     self.next_tick = now.saturating_add(self.period_ticks.get());
