@@ -15,12 +15,13 @@ const SHARDING_IDENTITY_LOOKUP_CHOICE_REASON: &str = "sharding identity lookup i
 const SHARDING_IDENTITY_LOOKUP_TUNING_REASON: &str =
   "sharding identity lookup tuning values are local-only and need not match across nodes during join compatibility";
 
-static REQUIRED_KEYS: [ClusterCompatibilityKey; 5] = [
+static REQUIRED_KEYS: [ClusterCompatibilityKey; 6] = [
   ClusterCompatibilityKeyCatalog::PUBSUB,
   ClusterCompatibilityKeyCatalog::DOWNING_PROVIDER,
   ClusterCompatibilityKeyCatalog::FAILURE_DETECTOR,
   ClusterCompatibilityKeyCatalog::SINGLETON,
   ClusterCompatibilityKeyCatalog::SHARDING_STATE_STORE_MODE,
+  ClusterCompatibilityKeyCatalog::GRAIN_IDLE_PASSIVATION_THRESHOLD,
 ];
 
 static CONDITIONAL_KEYS: [ClusterCompatibilityKey; 1] = [ClusterCompatibilityKeyCatalog::SPLIT_BRAIN_RESOLVER_CONFIG];
@@ -35,10 +36,9 @@ static EXCLUDED_KEYS: [ClusterCompatibilityKey; 5] = [
 
 /// Catalog of stable cluster join compatibility keys.
 ///
-/// Grain/placement (sharding) settings are currently excluded from comparison:
-/// identity lookup selection is factory-injected and the remaining tunables are
-/// local-only. A future sharding key should be promoted to required only when a
-/// mismatch would break grain delivery or placement correctness across nodes.
+/// Grain identity lookup settings remain excluded because they are factory-injected
+/// or local-only. Runtime settings such as idle passivation are required when a
+/// mismatch would change Grain lifecycle behavior across nodes.
 pub struct ClusterCompatibilityKeyCatalog;
 
 impl ClusterCompatibilityKeyCatalog {
@@ -55,6 +55,9 @@ impl ClusterCompatibilityKeyCatalog {
   /// Failure detector implementation choice vocabulary key.
   pub const FAILURE_DETECTOR_CHOICE: ClusterCompatibilityKey =
     ClusterCompatibilityKey::excluded("cluster.failure-detector.choice", UNOWNED_FAILURE_DETECTOR_CHOICE_REASON);
+  /// Grain idle-passivation threshold compatibility key.
+  pub const GRAIN_IDLE_PASSIVATION_THRESHOLD: ClusterCompatibilityKey =
+    ClusterCompatibilityKey::required("cluster.grain.idle-passivation-threshold");
   /// Pub/sub configuration compatibility key.
   pub const PUBSUB: ClusterCompatibilityKey = ClusterCompatibilityKey::required("cluster.pubsub");
   /// Sharding identity lookup implementation choice key excluded because it is factory-injected and

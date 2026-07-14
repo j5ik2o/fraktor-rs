@@ -3,9 +3,55 @@
 //! Hides the `SharedRwLock<...>` internals and exposes only
 //! the `with_read` / `with_write` closure API.
 
-use fraktor_utils_core_rs::sync::{SharedAccess, SharedRwLock};
+#[cfg(test)]
+#[path = "scheduler_shared_test.rs"]
+mod tests;
+
+use alloc::{boxed::Box, vec::Vec};
+use core::{mem, time::Duration};
+
+use fraktor_utils_core_rs::{
+  sync::{ArcShared, DefaultMutex, SharedAccess, SharedLock, SharedRwLock},
+  time::TimerInstant,
+};
+use portable_atomic::{AtomicBool, AtomicU64, Ordering};
 
 use super::Scheduler;
+
+type SchedulerAfterWriteAction = Box<dyn FnOnce() + Send + 'static>;
+
+struct SchedulerWriteGuard<'a> {
+  active:   &'a AtomicBool,
+  actions:  &'a SharedLock<Vec<SchedulerAfterWriteAction>>,
+  finished: bool,
+}
+
+impl<'a> SchedulerWriteGuard<'a> {
+  fn new(active: &'a AtomicBool, actions: &'a SharedLock<Vec<SchedulerAfterWriteAction>>) -> Self {
+    active.store(true, Ordering::Release);
+    Self { active, actions, finished: false }
+  }
+
+  fn finish(mut self) -> Vec<SchedulerAfterWriteAction> {
+    let actions = self.actions.with_write(|actions| {
+      self.active.store(false, Ordering::Release);
+      mem::take(actions)
+    });
+    self.finished = true;
+    actions
+  }
+}
+
+impl Drop for SchedulerWriteGuard<'_> {
+  fn drop(&mut self) {
+    if !self.finished {
+      self.actions.with_write(|actions| {
+        self.active.store(false, Ordering::Release);
+        actions.clear();
+      });
+    }
+  }
+}
 
 /// Thin shared wrapper around [`SharedRwLock<Scheduler>`].
 ///
@@ -21,20 +67,88 @@ use super::Scheduler;
 /// let _ = SchedulerShared::new(SharedRwLock::new_with_driver::<DefaultRwLock<_>>(scheduler));
 /// ```
 pub struct SchedulerShared {
-  inner: SharedRwLock<Scheduler>,
+  inner:               SharedRwLock<Scheduler>,
+  current_tick:        ArcShared<AtomicU64>,
+  resolution:          Duration,
+  write_in_progress:   ArcShared<AtomicBool>,
+  after_write_actions: SharedLock<Vec<SchedulerAfterWriteAction>>,
 }
 
 impl Clone for SchedulerShared {
   fn clone(&self) -> Self {
-    Self { inner: self.inner.clone() }
+    Self {
+      inner:               self.inner.clone(),
+      current_tick:        self.current_tick.clone(),
+      resolution:          self.resolution,
+      write_in_progress:   self.write_in_progress.clone(),
+      after_write_actions: self.after_write_actions.clone(),
+    }
   }
 }
 
 impl SchedulerShared {
   /// Wrap an existing shared rw lock.
   #[must_use]
-  pub(crate) const fn new(inner: SharedRwLock<Scheduler>) -> Self {
-    Self { inner }
+  pub(crate) fn new(inner: SharedRwLock<Scheduler>) -> Self {
+    let (current_tick, resolution) = inner.with_read(|scheduler| (scheduler.current_tick(), scheduler.resolution()));
+    Self {
+      inner,
+      current_tick: ArcShared::new(AtomicU64::new(current_tick)),
+      resolution,
+      write_in_progress: ArcShared::new(AtomicBool::new(false)),
+      after_write_actions: SharedLock::new_with_driver::<DefaultMutex<_>>(Vec::new()),
+    }
+  }
+
+  /// Returns the scheduler's current logical time rounded up to whole seconds,
+  /// without building a diagnostics snapshot.
+  #[must_use]
+  pub fn current_time_secs(&self) -> u64 {
+    let nanos = self.resolution.as_nanos().saturating_mul(u128::from(self.current_tick.load(Ordering::Acquire)));
+    u64::try_from(nanos.div_ceil(1_000_000_000)).unwrap_or(u64::MAX)
+  }
+
+  /// Returns the scheduler's current logical time in nanoseconds.
+  #[must_use]
+  pub fn current_time_nanos(&self) -> u64 {
+    let nanos = self.resolution.as_nanos().saturating_mul(u128::from(self.current_tick.load(Ordering::Acquire)));
+    u64::try_from(nanos).unwrap_or(u64::MAX)
+  }
+
+  /// Returns the longest delay accepted by this scheduler resolution.
+  #[must_use]
+  pub fn maximum_delay(&self) -> Duration {
+    self.resolution.checked_mul(i32::MAX as u32).unwrap_or(Duration::MAX)
+  }
+
+  /// Runs due timers while keeping the lock-free time snapshot current for callbacks.
+  #[must_use]
+  pub fn run_due(&self, now: TimerInstant) -> usize {
+    self.record_current_tick(now.ticks());
+    self.with_write(|scheduler| scheduler.run_due(now))
+  }
+
+  pub(crate) fn record_current_tick(&self, current_tick: u64) {
+    self.current_tick.store(current_tick, Ordering::Release);
+  }
+
+  /// Runs an action after an in-progress scheduler write releases its lock.
+  ///
+  /// The action runs immediately when no scheduler write is active. Scheduler
+  /// callbacks can use this method to move re-entrant external work outside
+  /// the scheduler lock without delaying ordinary call sites.
+  pub fn run_after_write(&self, action: impl FnOnce() + Send + 'static) {
+    let mut action: Option<SchedulerAfterWriteAction> = Some(Box::new(action));
+    self.after_write_actions.with_write(|actions| {
+      if self.write_in_progress.load(Ordering::Acquire)
+        && let Some(action) = action.take()
+      {
+        actions.push(action);
+      }
+    });
+    if let Some(action) = action {
+      action();
+    }
   }
 }
 
@@ -46,6 +160,15 @@ impl SharedAccess<Scheduler> for SchedulerShared {
 
   #[inline]
   fn with_write<R>(&self, f: impl FnOnce(&mut Scheduler) -> R) -> R {
-    self.inner.with_write(f)
+    let (result, actions) = self.inner.with_write(|scheduler| {
+      let guard = SchedulerWriteGuard::new(&self.write_in_progress, &self.after_write_actions);
+      let result = f(scheduler);
+      self.record_current_tick(scheduler.current_tick());
+      (result, guard.finish())
+    });
+    for action in actions {
+      action();
+    }
+    result
   }
 }

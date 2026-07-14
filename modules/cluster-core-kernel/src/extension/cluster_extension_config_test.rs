@@ -2,12 +2,42 @@ use core::time::Duration;
 
 use super::*;
 use crate::{
-  ClusterShardingStateStoreMode, ClusterTopology, ConfigValidation, JoinConfigCompatChecker,
+  ClusterExtensionConfigError, ClusterShardingStateStoreMode, ClusterTopology, ConfigValidation,
+  JoinConfigCompatChecker,
   downing_provider::{DowningProviderCompatibility, SplitBrainResolverConfig, SplitBrainResolverStrategy},
   failure_detector::{FailureDetectorConfig, FailureDetectorConfigError},
   pub_sub::PubSubConfig,
   singleton::{ClusterSingletonConfigError, ClusterSingletonManagerConfig, ClusterSingletonProxyConfig},
 };
+
+#[test]
+fn grain_idle_passivation_threshold_defaults_to_one_hour() {
+  let config = ClusterExtensionConfig::new();
+
+  assert_eq!(config.grain_idle_passivation_threshold(), Duration::from_secs(3600));
+}
+
+#[test]
+fn grain_idle_passivation_threshold_is_preserved() {
+  let threshold = Duration::from_secs(90);
+  let config = ClusterExtensionConfig::new().with_grain_idle_passivation_threshold(threshold);
+
+  assert_eq!(config.grain_idle_passivation_threshold(), threshold);
+}
+
+#[test]
+fn validate_rejects_grain_idle_passivation_threshold_below_one_second() {
+  let config = ClusterExtensionConfig::new().with_grain_idle_passivation_threshold(Duration::from_millis(999));
+
+  assert_eq!(config.validate(), Err(ClusterExtensionConfigError::GrainIdlePassivationThresholdBelowOneSecond));
+}
+
+#[test]
+fn validate_rejects_fractional_grain_idle_passivation_threshold() {
+  let config = ClusterExtensionConfig::new().with_grain_idle_passivation_threshold(Duration::from_millis(1500));
+
+  assert_eq!(config.validate(), Err(ClusterExtensionConfigError::GrainIdlePassivationThresholdNotWholeSeconds));
+}
 
 #[test]
 fn metrics_flag_and_address_are_preserved() {
@@ -88,7 +118,10 @@ fn validate_delegates_to_failure_detector_config() {
   let config =
     ClusterExtensionConfig::new().with_failure_detector_config(FailureDetectorConfig::new().with_phi_threshold(0.0));
 
-  assert_eq!(config.validate(), Err(FailureDetectorConfigError::InvalidPhiThreshold));
+  assert_eq!(
+    config.validate(),
+    Err(ClusterExtensionConfigError::FailureDetector(FailureDetectorConfigError::InvalidPhiThreshold))
+  );
 }
 
 #[test]
@@ -133,6 +166,7 @@ fn join_compatibility_key_manifest_separates_required_and_conditional_non_sensit
     "cluster.failure-detector",
     "cluster.singleton",
     "cluster.sharding.state-store-mode",
+    "cluster.grain.idle-passivation-threshold",
   ]);
   assert_eq!(conditional_keys, &[
     "fraktor.cluster.downing-provider.split-brain-resolver.stable-after",
@@ -143,6 +177,7 @@ fn join_compatibility_key_manifest_separates_required_and_conditional_non_sensit
   assert!(ClusterExtensionConfig::is_required_join_compatibility_key("cluster.failure-detector"));
   assert!(ClusterExtensionConfig::is_required_join_compatibility_key("cluster.singleton"));
   assert!(ClusterExtensionConfig::is_required_join_compatibility_key("cluster.sharding.state-store-mode"));
+  assert!(ClusterExtensionConfig::is_required_join_compatibility_key("cluster.grain.idle-passivation-threshold"));
   assert!(!ClusterExtensionConfig::is_required_join_compatibility_key("cluster.failure-detector.choice"));
   assert!(!ClusterExtensionConfig::is_required_join_compatibility_key("cluster.failure-detector.phi-threshold"));
   assert!(!ClusterExtensionConfig::is_required_join_compatibility_key(
@@ -436,10 +471,9 @@ fn validate_singleton_delegates_to_proxy_and_returns_error_on_buffer_size_out_of
 }
 
 #[test]
-fn validate_does_not_change_signature_with_singleton_fields_added() {
-  // 既存 validate() のシグネチャが変わっていないことを確認（要件 8.1 / 8.3）
+fn validate_accepts_default_configuration() {
   let config = ClusterExtensionConfig::new();
-  let result: Result<(), FailureDetectorConfigError> = config.validate();
+  let result: Result<(), ClusterExtensionConfigError> = config.validate();
   assert_eq!(result, Ok(()));
 }
 
@@ -530,5 +564,17 @@ fn join_compatibility_reports_sharding_state_store_mode_mismatch() {
 
   assert_eq!(validation, ConfigValidation::Incompatible {
     reason: "cluster.sharding.state-store-mode mismatch: state_store_mode".to_string(),
+  });
+}
+
+#[test]
+fn join_compatibility_reports_grain_idle_passivation_threshold_mismatch() {
+  let local = ClusterExtensionConfig::new().with_grain_idle_passivation_threshold(Duration::from_secs(10));
+  let joining = ClusterExtensionConfig::new().with_grain_idle_passivation_threshold(Duration::from_secs(3600));
+
+  let validation = local.check_join_compatibility(&joining);
+
+  assert_eq!(validation, ConfigValidation::Incompatible {
+    reason: "cluster.grain.idle-passivation-threshold mismatch: grain_idle_passivation_threshold".to_string(),
   });
 }

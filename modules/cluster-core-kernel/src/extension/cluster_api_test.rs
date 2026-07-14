@@ -12,7 +12,7 @@ use fraktor_actor_core_kernel_rs::{
     extension::ExtensionInstallers,
     messaging::{AnyMessage, AnyMessageView},
     props::Props,
-    scheduler::{SchedulerConfig, SchedulerShared},
+    scheduler::{ExecutionBatch, SchedulerCommand, SchedulerConfig, SchedulerRunnable, SchedulerShared},
     setup::ActorSystemConfig,
   },
   event::stream::{
@@ -32,7 +32,7 @@ use crate::{
   MetricsError, TopologyUpdate,
   activation::{
     ActivatedKind, ClusterIdentity, IdentityLookup, IdentitySetupError, LookupError, NoopIdentityLookup,
-    PlacementDecision, PlacementEvent, PlacementLocality, PlacementResolution,
+    PartitionIdentityLookup, PlacementDecision, PlacementEvent, PlacementLocality, PlacementResolution,
   },
   cluster_provider::{ClusterProvider, NoopClusterProvider},
   downing_provider::{DowningDecision, DowningInput, DowningProvider, DowningProviderCompatibility},
@@ -196,6 +196,93 @@ fn get_publishes_activation_events_and_updates_metrics() {
 }
 
 #[test]
+fn scheduler_callback_defers_grain_notifications_until_after_scheduler_write() {
+  let (system, ext) = build_system_with_extension(|| Box::new(EventfulIdentityLookup::new("node1:8080")));
+  ext.start_member().expect("start member");
+  ext.setup_member_kinds(vec![ActivatedKind::new("user")]).expect("setup kinds");
+
+  let scheduler = system.state().scheduler();
+  let subscriber = SchedulingGrainSubscriber::new(scheduler.clone());
+  let subscriber_handle = test_subscriber_handle(subscriber.clone());
+  let _subscription = system.event_stream().subscribe(&subscriber_handle);
+  let api = ClusterApi::try_from_system(&system).expect("cluster api");
+  let identity = ClusterIdentity::new("user", "scheduled").expect("identity");
+  let runnable: ArcShared<dyn SchedulerRunnable> = ArcShared::new(move |_batch: &ExecutionBatch| {
+    let _actor_ref = api.get(&identity).expect("resolve from scheduler callback");
+  });
+  scheduler.with_write(|inner| {
+    inner
+      .schedule_once(Duration::from_millis(10), SchedulerCommand::RunRunnable { runnable })
+      .expect("schedule callback");
+  });
+
+  assert_eq!(run_scheduler(&system, Duration::from_millis(10)), 1);
+
+  assert!(subscriber.notified());
+}
+
+#[test]
+fn configured_idle_passivation_runs_from_install_and_start_to_events_and_metrics() {
+  let cluster_config = ClusterExtensionConfig::new()
+    .with_advertised_address("node1:8080")
+    .with_metrics_enabled(true)
+    .with_grain_idle_passivation_threshold(Duration::from_secs(2));
+  let (system, ext) =
+    build_system_with_cluster_config(|| Box::new(PartitionIdentityLookup::with_defaults()), cluster_config);
+  ext.start_member().expect("start member");
+  ext.setup_member_kinds(vec![ActivatedKind::new("user")]).expect("setup kinds");
+  ext.on_topology(&build_topology_update(1, Vec::new(), Vec::new()));
+  let (recorder, _subscription) = subscribe_grain_events(&system.event_stream());
+  let api = ClusterApi::try_from_system(&system).expect("cluster api");
+  let idle = ClusterIdentity::new("user", "idle").expect("idle identity");
+  let recent = ClusterIdentity::new("user", "recent").expect("recent identity");
+
+  let _ = api.get(&idle).expect("activate idle Grain");
+  assert_eq!(run_scheduler(&system, Duration::from_secs(1)), 0);
+  let _ = api.get(&recent).expect("activate recent Grain");
+  assert_eq!(run_scheduler(&system, Duration::from_secs(1)), 1);
+
+  let events = recorder.events();
+  assert!(events.iter().any(|event| matches!(event, GrainEvent::ActivationPassivated { key } if *key == idle.key())));
+  assert!(
+    !events.iter().any(|event| matches!(event, GrainEvent::ActivationPassivated { key } if *key == recent.key()))
+  );
+  assert_eq!(ext.grain_metrics().expect("metrics").activations_passivated(), 1);
+}
+
+#[test]
+fn subsecond_access_is_not_passivated_at_the_next_second_boundary() {
+  let cluster_config = ClusterExtensionConfig::new()
+    .with_advertised_address("node1:8080")
+    .with_grain_idle_passivation_threshold(Duration::from_secs(1));
+  let (system, ext) =
+    build_system_with_cluster_config(|| Box::new(PartitionIdentityLookup::with_defaults()), cluster_config);
+  ext.start_member().expect("start member");
+  ext.setup_member_kinds(vec![ActivatedKind::new("user")]).expect("setup kinds");
+  ext.on_topology(&build_topology_update(1, Vec::new(), Vec::new()));
+  let (recorder, _subscription) = subscribe_grain_events(&system.event_stream());
+  let api = ClusterApi::try_from_system(&system).expect("cluster api");
+  let identity = ClusterIdentity::new("user", "recent").expect("recent identity");
+
+  assert_eq!(run_scheduler(&system, Duration::from_millis(990)), 0);
+  let _ = api.get(&identity).expect("activate recent Grain");
+  assert_eq!(run_scheduler(&system, Duration::from_millis(10)), 1);
+
+  assert!(
+    !recorder
+      .events()
+      .iter()
+      .any(|event| matches!(event, GrainEvent::ActivationPassivated { key } if *key == identity.key()))
+  );
+}
+
+#[test]
+fn pid_cache_time_uses_elapsed_whole_seconds() {
+  assert_eq!(super::pid_cache_time_secs(990_000_000), 0);
+  assert_eq!(super::pid_cache_time_secs(1_010_000_000), 1);
+}
+
+#[test]
 fn request_returns_error_when_lookup_fails() {
   let (system, ext) = build_system_with_extension(|| Box::new(NoopIdentityLookup::new()));
   ext.start_member().expect("start member");
@@ -234,7 +321,7 @@ fn request_future_completes_with_timeout_payload() {
 
   assert!(!future.with_read(|inner| inner.is_ready()));
 
-  run_scheduler(&system, Duration::from_millis(1));
+  assert_eq!(run_scheduler(&system, Duration::from_millis(1)), 1);
 
   let result = future.with_write(|inner| inner.try_take()).expect("timeout payload");
   assert!(result.is_err(), "expect timeout error");
@@ -772,15 +859,13 @@ fn subscribe_with_singleton_stuck_filter_receives_only_stuck_events() {
   );
 }
 
-fn run_scheduler(system: &ActorSystem, duration: Duration) {
+fn run_scheduler(system: &ActorSystem, duration: Duration) -> usize {
   let scheduler: SchedulerShared = system.state().scheduler();
-  let resolution = scheduler.with_read(|inner| inner.config().resolution());
+  let (current_tick, resolution) = scheduler.with_read(|inner| (inner.current_tick(), inner.config().resolution()));
   let resolution_ns = resolution.as_nanos().max(1);
   let ticks = duration.as_nanos().div_ceil(resolution_ns).max(1);
-  let now = TimerInstant::from_ticks(ticks as u64, resolution);
-  scheduler.with_write(|inner| {
-    let _ = inner.run_due(now);
-  });
+  let now = TimerInstant::from_ticks(current_tick.saturating_add(ticks as u64), resolution);
+  scheduler.run_due(now)
 }
 
 fn build_system_with_extension<F>(identity_lookup_factory: F) -> (ActorSystem, ArcShared<ClusterExtension>)
@@ -795,9 +880,18 @@ fn build_system_with_extension_config<F>(
 ) -> (ActorSystem, ArcShared<ClusterExtension>)
 where
   F: Fn() -> Box<dyn IdentityLookup> + Send + Sync + 'static, {
-  let scheduler_config = SchedulerConfig::default().with_runner_api_enabled(true);
   let cluster_config =
     ClusterExtensionConfig::new().with_advertised_address("node1:8080").with_metrics_enabled(metrics_enabled);
+  build_system_with_cluster_config(identity_lookup_factory, cluster_config)
+}
+
+fn build_system_with_cluster_config<F>(
+  identity_lookup_factory: F,
+  cluster_config: ClusterExtensionConfig,
+) -> (ActorSystem, ArcShared<ClusterExtension>)
+where
+  F: Fn() -> Box<dyn IdentityLookup> + Send + Sync + 'static, {
+  let scheduler_config = SchedulerConfig::default().with_runner_api_enabled(true);
   let cluster_installer = ClusterExtensionInstaller::new(cluster_config, |_event_stream, _block_list, _address| {
     Box::new(NoopClusterProvider::new())
   })
@@ -848,6 +942,36 @@ fn subscribe_grain_events(event_stream: &EventStreamShared) -> (RecordingGrainEv
   let subscriber = test_subscriber_handle(recorder.clone());
   let subscription = event_stream.subscribe(&subscriber);
   (recorder, subscription)
+}
+
+#[derive(Clone)]
+struct SchedulingGrainSubscriber {
+  scheduler: SchedulerShared,
+  notified:  ArcShared<SpinSyncMutex<bool>>,
+}
+
+impl SchedulingGrainSubscriber {
+  fn new(scheduler: SchedulerShared) -> Self {
+    Self { scheduler, notified: ArcShared::new(SpinSyncMutex::new(false)) }
+  }
+
+  fn notified(&self) -> bool {
+    *self.notified.lock()
+  }
+}
+
+impl EventStreamSubscriber for SchedulingGrainSubscriber {
+  fn on_event(&mut self, event: &EventStreamEvent) {
+    if let EventStreamEvent::Extension { name, payload } = event
+      && name == GRAIN_EVENT_STREAM_NAME
+      && matches!(payload.payload().downcast_ref::<GrainEvent>(), Some(GrainEvent::ActivationCreated { .. }))
+    {
+      self.scheduler.with_write(|inner| {
+        inner.schedule_once(Duration::from_millis(10), SchedulerCommand::Noop).expect("schedule from Grain subscriber");
+      });
+      *self.notified.lock() = true;
+    }
+  }
 }
 
 #[derive(Clone)]

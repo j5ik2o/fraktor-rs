@@ -23,8 +23,9 @@ use fraktor_utils_core_rs::{
 };
 
 use crate::{
-  BlockListProvider, ClusterError, ClusterEvent, ClusterExtensionConfig, ClusterMetrics, ClusterMetricsSnapshot,
-  ClusterProviderError, ClusterProviderShared, MetricsError, StartupMode, TopologyApplyError, TopologyUpdate,
+  BlockListProvider, ClusterError, ClusterEvent, ClusterExtensionConfig, ClusterExtensionConfigError, ClusterMetrics,
+  ClusterMetricsSnapshot, ClusterProviderError, ClusterProviderShared, MetricsError, StartupMode, TopologyApplyError,
+  TopologyUpdate,
   activation::{
     ActivatedKind, IdentityLookupShared, IdentitySetupError, LookupError, PidCache, PlacementEvent, PlacementResolution,
   },
@@ -44,6 +45,7 @@ pub struct ClusterCore {
   gossiper: GossiperShared,
   pub_sub: ClusterPubSubShared,
   failure_detector_config: FailureDetectorConfig,
+  grain_idle_passivation_threshold: Duration,
   startup_state: ClusterStartupState,
   metrics_enabled: bool,
   kind_registry: KindRegistry,
@@ -62,6 +64,11 @@ pub struct ClusterCore {
 }
 
 impl ClusterCore {
+  pub(crate) fn validate_configuration(&self) -> Result<(), ClusterExtensionConfigError> {
+    self.failure_detector_config.validate()?;
+    ClusterExtensionConfig::validate_grain_idle_passivation_threshold(self.grain_idle_passivation_threshold)
+  }
+
   /// Builds a new cluster core from the provided dependencies.
   #[must_use]
   #[allow(clippy::too_many_arguments)]
@@ -89,6 +96,7 @@ impl ClusterCore {
       gossiper,
       pub_sub: pubsub,
       failure_detector_config: *config.failure_detector_config(),
+      grain_idle_passivation_threshold: config.grain_idle_passivation_threshold(),
       startup_state,
       metrics_enabled,
       kind_registry,
@@ -111,6 +119,12 @@ impl ClusterCore {
   #[must_use]
   pub const fn metrics_enabled(&self) -> bool {
     self.metrics_enabled
+  }
+
+  /// Returns the configured Grain idle passivation threshold.
+  #[must_use]
+  pub(crate) const fn grain_idle_passivation_threshold(&self) -> Duration {
+    self.grain_idle_passivation_threshold
   }
 
   /// Returns the advertised address shared by member and client modes.
@@ -170,6 +184,26 @@ impl ClusterCore {
   /// Returns an error when placement resolution fails or is pending.
   pub fn resolve_pid(&mut self, key: &GrainKey, now: u64) -> Result<PlacementResolution, LookupError> {
     self.identity_lookup.with_write(|lookup| lookup.resolve(key, now))
+  }
+
+  /// Resolves a PID while preserving exact monotonic time for idle tracking.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error when placement resolution fails or is pending.
+  pub(crate) fn resolve_pid_at(
+    &mut self,
+    key: &GrainKey,
+    now_secs: u64,
+    idle_now_nanos: u64,
+  ) -> Result<PlacementResolution, LookupError> {
+    self.identity_lookup.with_write(|lookup| lookup.resolve_at(key, now_secs, idle_now_nanos))
+  }
+
+  /// Passivates activations that exceeded the configured idle threshold.
+  pub(crate) fn passivate_idle_at(&mut self, now_nanos: u64) {
+    let idle_ttl_nanos = u64::try_from(self.grain_idle_passivation_threshold.as_nanos()).unwrap_or(u64::MAX);
+    self.identity_lookup.with_write(|lookup| lookup.passivate_idle_at(now_nanos, idle_ttl_nanos));
   }
 
   /// Drains placement events emitted by identity lookup.
@@ -265,7 +299,7 @@ impl ClusterCore {
   /// Returns an error if configuration validation, pub/sub, gossiper, or provider startup fails.
   pub fn start_member(&mut self) -> Result<(), ClusterError> {
     let address = self.startup_address();
-    self.failure_detector_config.validate().map_err(|error| {
+    self.validate_configuration().map_err(|error| {
       self.publish_cluster_event(ClusterEvent::StartupFailed {
         address: address.clone(),
         mode:    StartupMode::Member,
@@ -324,7 +358,7 @@ impl ClusterCore {
   /// Returns an error if configuration validation, pub/sub, gossiper, or provider startup fails.
   pub fn start_client(&mut self) -> Result<(), ClusterError> {
     let address = self.startup_address();
-    self.failure_detector_config.validate().map_err(|error| {
+    self.validate_configuration().map_err(|error| {
       self.publish_cluster_event(ClusterEvent::StartupFailed {
         address: address.clone(),
         mode:    StartupMode::Client,

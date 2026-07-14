@@ -3,6 +3,7 @@ use core::{
   future::Future,
   pin::Pin,
   task::{Context, Poll, RawWaker, RawWakerVTable, Waker},
+  time::Duration,
 };
 
 use fraktor_actor_adaptor_std_rs::tick_driver::TestTickDriver;
@@ -102,6 +103,36 @@ fn install_rejects_invalid_failure_detector_config_before_building_components() 
   assert_eq!(*provider_calls.lock(), 0);
   assert_eq!(*gossiper_calls.lock(), 0);
   assert_eq!(*pubsub_calls.lock(), 0);
+  assert_eq!(*identity_lookup_calls.lock(), 0);
+}
+
+#[test]
+fn install_rejects_invalid_grain_idle_passivation_threshold_before_building_components() {
+  let provider_calls = ArcShared::new(SpinSyncMutex::new(0usize));
+  let identity_lookup_calls = ArcShared::new(SpinSyncMutex::new(0usize));
+  let provider_calls_for_factory = provider_calls.clone();
+  let identity_lookup_calls_for_factory = identity_lookup_calls.clone();
+  let cluster_config = ClusterExtensionConfig::new().with_grain_idle_passivation_threshold(Duration::ZERO);
+  let cluster_installer =
+    ClusterExtensionInstaller::new(cluster_config, move |_event_stream, _block_list, _address| {
+      *provider_calls_for_factory.lock() += 1;
+      Box::new(NoopClusterProvider::new())
+    })
+    .with_identity_lookup_factory(move || {
+      *identity_lookup_calls_for_factory.lock() += 1;
+      Box::new(NoopIdentityLookup::new())
+    });
+  let props = Props::from_fn(|| TestGuardian);
+  let system = ActorSystem::create_from_props(&props, ActorSystemConfig::new(TestTickDriver::default()))
+    .expect("build actor system");
+
+  let result = cluster_installer.install(&system);
+
+  let Err(ActorSystemBuildError::Configuration(reason)) = result else {
+    panic!("invalid Grain idle passivation threshold should reject actor system build");
+  };
+  assert!(reason.contains("GrainIdlePassivationThresholdBelowOneSecond"));
+  assert_eq!(*provider_calls.lock(), 0);
   assert_eq!(*identity_lookup_calls.lock(), 0);
 }
 

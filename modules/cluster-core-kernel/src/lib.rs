@@ -84,8 +84,8 @@ pub mod topology;
 use crate::{
   extension::{
     ClusterApi, ClusterApiError, ClusterCore, ClusterError, ClusterExtension, ClusterExtensionConfig,
-    ClusterExtensionId, ClusterProviderError, ClusterProviderShared, ClusterRequestError, ClusterResolveError,
-    ClusterRouterGroupConfig, ClusterRouterPoolConfig, ClusterShardingStateStoreMode,
+    ClusterExtensionConfigError, ClusterExtensionId, ClusterProviderError, ClusterProviderShared, ClusterRequestError,
+    ClusterResolveError, ClusterRouterGroupConfig, ClusterRouterPoolConfig, ClusterShardingStateStoreMode,
     ClusterSubscriptionInitialStateMode, MetricsError, StartupMode,
   },
   topology::{

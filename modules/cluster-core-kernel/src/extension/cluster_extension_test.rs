@@ -1,22 +1,26 @@
 use alloc::{boxed::Box, string::String, vec, vec::Vec};
 use core::time::Duration;
 
-use fraktor_actor_adaptor_std_rs::system::create_noop_actor_system;
+use fraktor_actor_adaptor_std_rs::system::{create_noop_actor_system, create_noop_actor_system_with};
 use fraktor_actor_core_kernel_rs::{
-  actor::messaging::AnyMessage,
+  actor::{
+    error::SendError,
+    messaging::AnyMessage,
+    scheduler::{SchedulerCommand, SchedulerConfig},
+  },
   event::stream::{
     EventStreamEvent, EventStreamShared, EventStreamSubscriber, EventStreamSubscriberShared, EventStreamSubscription,
     subscriber_handle,
   },
 };
 use fraktor_utils_core_rs::{
-  sync::{ArcShared, SpinSyncMutex},
-  time::TimerInstant,
+  sync::{ArcShared, SharedAccess, SpinSyncMutex},
+  time::{SchedulerCapacityProfile, TimerInstant},
 };
 
 use crate::{
   BlockListProvider, ClusterError, ClusterEvent, ClusterExtension, ClusterExtensionConfig, ClusterExtensionId,
-  ClusterProviderError, ClusterTopology, TopologyUpdate,
+  ClusterProviderError, ClusterTopology, StartupMode, TopologyUpdate,
   activation::{
     ActivatedKind, IdentityLookup, IdentitySetupError, LookupError, PartitionIdentityLookup, PlacementResolution,
   },
@@ -67,6 +71,11 @@ fn publish_member_status(
   let payload = AnyMessage::new(cluster_event);
   let event = EventStreamEvent::Extension { name: String::from("cluster"), payload };
   event_stream.publish(&event);
+}
+
+#[test]
+fn idle_passivation_delivery_failure_is_reported() {
+  super::report_idle_passivation_delivery_failure(&SendError::closed(AnyMessage::new(0_u64)));
 }
 
 struct StubProvider;
@@ -523,6 +532,24 @@ impl IdentityLookup for StubIdentity {
   }
 }
 
+struct CountingPassivationIdentity {
+  passivations: ArcShared<SpinSyncMutex<usize>>,
+}
+
+impl IdentityLookup for CountingPassivationIdentity {
+  fn setup_member(&mut self, _kinds: &[ActivatedKind]) -> Result<(), IdentitySetupError> {
+    Ok(())
+  }
+
+  fn setup_client(&mut self, _kinds: &[ActivatedKind]) -> Result<(), IdentitySetupError> {
+    Ok(())
+  }
+
+  fn passivate_idle(&mut self, _now: u64, _idle_ttl: u64) {
+    *self.passivations.lock() += 1;
+  }
+}
+
 struct StubBlockList;
 impl crate::BlockListProvider for StubBlockList {
   fn blocked_members(&self) -> Vec<String> {
@@ -552,6 +579,133 @@ fn registers_extension_and_starts_member() {
   let ext_shared = system.extended().register_extension(&ext_id);
   let result = ext_shared.start_member();
   assert!(result.is_ok());
+}
+
+#[test]
+fn idle_passivation_scheduler_failure_preserves_reason() {
+  let profile = SchedulerCapacityProfile::new("one-slot", 1, 1, 1);
+  let scheduler_config = SchedulerConfig::new(Duration::from_millis(1), profile).with_max_pending_jobs(2);
+  let system = create_noop_actor_system_with(|config| config.with_scheduler_config(scheduler_config));
+  let scheduler = system.state().scheduler();
+  scheduler
+    .with_write(|scheduler| scheduler.schedule_once(Duration::from_secs(1), SchedulerCommand::Noop))
+    .expect("fill scheduler capacity");
+  let ext_id = stub_extension_id(ClusterExtensionConfig::new().with_advertised_address("fraktor://demo"));
+  let extension = system.extended().register_extension(&ext_id);
+  let (recorder, _subscription) = subscribe_recorder(&system.event_stream());
+
+  let error = extension.start_member().expect_err("passivation scheduling should fail");
+
+  assert_eq!(error, ClusterError::GrainIdlePassivationScheduler {
+    reason: String::from("scheduler capacity exceeded"),
+  });
+  assert!(recorder.events().iter().any(|event| matches!(
+    event,
+    ClusterEvent::StartupFailed { mode: StartupMode::Member, reason, .. }
+      if reason.contains("scheduler capacity exceeded")
+  )));
+}
+
+#[test]
+fn shutdown_removes_idle_passivation_job_from_scheduler_queue() {
+  let system = create_noop_actor_system();
+  let ext_id = stub_extension_id(ClusterExtensionConfig::new().with_advertised_address("fraktor://demo"));
+  let extension = system.extended().register_extension(&ext_id);
+  let scheduler = system.state().scheduler();
+
+  extension.start_member().expect("start member");
+  assert_eq!(scheduler.with_read(|scheduler| scheduler.dump().jobs().len()), 1);
+
+  extension.shutdown(true).expect("shutdown");
+
+  assert!(scheduler.with_read(|scheduler| scheduler.dump().jobs().is_empty()));
+}
+
+#[test]
+fn queued_idle_passivation_is_ignored_after_shutdown() {
+  let system = create_noop_actor_system();
+  let passivations = ArcShared::new(SpinSyncMutex::new(0));
+  let ext_id = ClusterExtensionId::new(
+    ClusterExtensionConfig::new().with_advertised_address("fraktor://demo"),
+    Box::new(StubProvider),
+    ArcShared::new(StubBlockList),
+    Box::new(NoopDowningProvider::new()),
+    Box::new(StubGossiper),
+    Box::new(StubPubSub),
+    Box::new(CountingPassivationIdentity { passivations: passivations.clone() }),
+  );
+  let extension = system.extended().register_extension(&ext_id);
+
+  extension.start_member().expect("start member");
+  let mut actor_ref =
+    extension.idle_passivation_actor.with_lock(|actor| actor.clone()).expect("idle passivation actor");
+  extension.shutdown(true).expect("shutdown");
+
+  actor_ref.try_tell(AnyMessage::new(0_u64)).expect("enqueue passivation message after shutdown");
+
+  assert_eq!(*passivations.lock(), 0);
+}
+
+#[test]
+fn default_idle_passivation_starts_with_nanosecond_scheduler_resolution() {
+  let scheduler_config = SchedulerConfig::new(Duration::from_nanos(1), SchedulerCapacityProfile::standard());
+  let system = create_noop_actor_system_with(|config| config.with_scheduler_config(scheduler_config));
+  let passivations = ArcShared::new(SpinSyncMutex::new(0));
+  let ext_id = ClusterExtensionId::new(
+    ClusterExtensionConfig::new().with_advertised_address("fraktor://demo"),
+    Box::new(StubProvider),
+    ArcShared::new(StubBlockList),
+    Box::new(NoopDowningProvider::new()),
+    Box::new(StubGossiper),
+    Box::new(StubPubSub),
+    Box::new(CountingPassivationIdentity { passivations: passivations.clone() }),
+  );
+  let extension = system.extended().register_extension(&ext_id);
+
+  extension.start_member().expect("start member");
+  let handle = extension.idle_passivation_task.with_lock(|task| task.clone()).expect("passivation handle");
+  assert!(
+    system.state().scheduler().run_due(TimerInstant::from_ticks(12_000_000_000, Duration::from_nanos(1))) > 0,
+    "scheduler should run the idle passivation job"
+  );
+
+  assert_eq!(system.state().scheduler().with_read(|scheduler| scheduler.dump().jobs().len()), 1);
+  assert!(!handle.is_cancelled());
+  assert_eq!(*passivations.lock(), 0, "maximum-delay wakeups must not trigger early sweeps");
+}
+
+fn assert_failed_duplicate_start_preserves_idle_passivation_task(
+  start: impl Fn(&ClusterExtension) -> Result<(), ClusterError>,
+) {
+  let system = create_noop_actor_system();
+  let ext_id = ClusterExtensionId::new(
+    ClusterExtensionConfig::new().with_advertised_address("fraktor://demo"),
+    Box::new(StartOnceThenFailProvider::new()),
+    ArcShared::new(StubBlockList),
+    Box::new(NoopDowningProvider::new()),
+    Box::new(StubGossiper),
+    Box::new(StubPubSub),
+    Box::new(StubIdentity),
+  );
+  let extension = system.extended().register_extension(&ext_id);
+
+  start(&extension).expect("initial start");
+  let handle = extension.idle_passivation_task.with_lock(|task| task.clone()).expect("passivation handle");
+  assert!(start(&extension).is_err());
+
+  let current = extension.idle_passivation_task.with_lock(|task| task.clone()).expect("preserved passivation handle");
+  assert_eq!(current.raw(), handle.raw());
+  assert!(!handle.is_cancelled());
+}
+
+#[test]
+fn failed_duplicate_member_start_preserves_idle_passivation_task() {
+  assert_failed_duplicate_start_preserves_idle_passivation_task(ClusterExtension::start_member);
+}
+
+#[test]
+fn failed_duplicate_client_start_preserves_idle_passivation_task() {
+  assert_failed_duplicate_start_preserves_idle_passivation_task(ClusterExtension::start_client);
 }
 
 /// Helper to build `ClusterExtensionId` with a real partition identity lookup.

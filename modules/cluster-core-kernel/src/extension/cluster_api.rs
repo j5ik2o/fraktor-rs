@@ -8,7 +8,6 @@ use alloc::{
   collections::BTreeSet,
   format,
   string::{String, ToString},
-  vec::Vec,
 };
 use core::time::Duration;
 
@@ -20,8 +19,7 @@ use fraktor_actor_core_kernel_rs::{
     scheduler::{ExecutionBatch, SchedulerCommand, SchedulerRunnable},
   },
   event::stream::{
-    EventStreamEvent, EventStreamShared, EventStreamSubscriber, EventStreamSubscriberShared, EventStreamSubscription,
-    subscriber_handle,
+    EventStreamEvent, EventStreamSubscriber, EventStreamSubscriberShared, EventStreamSubscription, subscriber_handle,
   },
   support::futures::ActorFutureShared,
   system::ActorSystem,
@@ -31,9 +29,9 @@ use fraktor_utils_core_rs::sync::{ArcShared, SharedAccess};
 use crate::{
   ClusterApiError, ClusterError, ClusterEvent, ClusterEventType, ClusterExtension, ClusterRequestError,
   ClusterResolveError, ClusterSubscriptionInitialStateMode,
-  activation::{ClusterIdentity, LookupError, PlacementEvent},
+  activation::{ClusterIdentity, LookupError},
   extension::ClusterIdentityResolver,
-  grain::{GRAIN_EVENT_STREAM_NAME, GrainEvent, GrainMetricsShared},
+  grain::GrainMetricsShared,
   membership::CurrentClusterState,
 };
 
@@ -298,7 +296,6 @@ impl ClusterApi {
 
   fn resolve_actor_ref(&self, identity: &ClusterIdentity) -> Result<ActorRef, ClusterResolveError> {
     let key = identity.key();
-    let now = self.current_time_secs();
     let (pid_result, placement_events) = {
       let core = self.extension.core_shared();
       core.with_lock(|guard| {
@@ -308,7 +305,9 @@ impl ClusterApi {
         if !guard.is_kind_registered(identity.kind()) {
           return Err(ClusterResolveError::KindNotRegistered { kind: identity.kind().to_string() });
         }
-        let resolution = guard.resolve_pid(&key, now).map_err(|error| match error {
+        let idle_now_nanos = self.system.state().scheduler().current_time_nanos();
+        let now_secs = pid_cache_time_secs(idle_now_nanos);
+        let resolution = guard.resolve_pid_at(&key, now_secs, idle_now_nanos).map_err(|error| match error {
           | LookupError::Pending => ClusterResolveError::LookupPending,
           | _ => ClusterResolveError::LookupFailed,
         });
@@ -316,7 +315,12 @@ impl ClusterApi {
         Ok((resolution.map(|value| value.pid), events))
       })?
     };
-    self.publish_activation_events(placement_events);
+    if !placement_events.is_empty() {
+      let extension = self.extension.clone();
+      self.system.state().scheduler().run_after_write(move || {
+        extension.publish_activation_events(placement_events);
+      });
+    }
     let pid = pid_result?;
 
     let (authority, path) = split_pid(&pid)?;
@@ -326,10 +330,6 @@ impl ClusterApi {
       .map_err(|error| ClusterResolveError::InvalidPidFormat { pid: pid.clone(), reason: error.to_string() })?;
 
     self.system.resolve_actor_ref(actor_path).map_err(ClusterResolveError::ActorRefResolve)
-  }
-
-  fn current_time_secs(&self) -> u64 {
-    self.system.state().monotonic_now().as_secs()
   }
 
   fn schedule_timeout(
@@ -343,31 +343,10 @@ impl ClusterApi {
     let result = self.system.state().scheduler().with_write(|scheduler| scheduler.schedule_once(timeout, command));
     result.map(|_| ()).map_err(|error| ClusterRequestError::TimeoutScheduleFailed { reason: format!("{error:?}") })
   }
+}
 
-  fn publish_activation_events(&self, events: Vec<PlacementEvent>) {
-    let metrics = self.grain_metrics_shared();
-    if metrics.is_none() && events.is_empty() {
-      return;
-    }
-    let event_stream = self.system.event_stream();
-    for event in events {
-      match event {
-        | PlacementEvent::Activated { key, pid, .. } => {
-          publish_grain_event(&event_stream, GrainEvent::ActivationCreated { key, pid });
-          if let Some(metrics) = &metrics {
-            metrics.with_write(|inner| inner.record_activation_created());
-          }
-        },
-        | PlacementEvent::Passivated { key, .. } => {
-          publish_grain_event(&event_stream, GrainEvent::ActivationPassivated { key });
-          if let Some(metrics) = &metrics {
-            metrics.with_write(|inner| inner.record_activation_passivated());
-          }
-        },
-        | _ => {},
-      }
-    }
-  }
+const fn pid_cache_time_secs(now_nanos: u64) -> u64 {
+  now_nanos / 1_000_000_000
 }
 
 impl ClusterIdentityResolver for ClusterApi {
@@ -388,12 +367,6 @@ fn split_pid(pid: &str) -> Result<(&str, &str), ClusterResolveError> {
     return Err(ClusterResolveError::InvalidPidFormat { pid: pid.to_string(), reason: "path is empty".into() });
   }
   Ok((authority, path))
-}
-
-fn publish_grain_event(event_stream: &EventStreamShared, event: GrainEvent) {
-  let payload = AnyMessage::new(event);
-  let extension_event = EventStreamEvent::Extension { name: String::from(GRAIN_EVENT_STREAM_NAME), payload };
-  event_stream.publish(&extension_event);
 }
 
 struct TimeoutRunnable {

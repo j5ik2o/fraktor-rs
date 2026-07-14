@@ -15,7 +15,7 @@ use core::{
 use ahash::RandomState;
 use fraktor_utils_core_rs::{
   sync::{ArcShared, SharedAccess, SharedRwLock, SpinSyncMutex, SpinSyncRwLock},
-  time::{SchedulerCapacityProfile, SchedulerTickHandle},
+  time::{SchedulerCapacityProfile, SchedulerTickHandle, TimerInstant},
   timing::delay::{DelayFuture, DelayProvider},
 };
 use hashbrown::HashMap;
@@ -93,6 +93,27 @@ fn shared_scheduler_state() -> (SharedScheduler, SchedulerBackedDelayProvider) {
   let shared = SchedulerShared::new(SharedRwLock::new_with_driver::<SpinSyncRwLock<_>>(scheduler));
   let provider = SchedulerBackedDelayProvider::new(shared.clone());
   (shared, provider)
+}
+
+#[test]
+fn shared_scheduler_time_rounds_partial_seconds_up_without_dump() {
+  let scheduler =
+    Scheduler::new(SchedulerConfig::new(Duration::from_millis(100), SchedulerCapacityProfile::standard()));
+  let shared = SchedulerShared::new(SharedRwLock::new_with_driver::<SpinSyncRwLock<_>>(scheduler));
+
+  let _ = shared.run_due(TimerInstant::from_ticks(15, Duration::from_millis(100)));
+
+  assert_eq!(shared.current_time_secs(), 2);
+  assert_eq!(shared.current_time_nanos(), 1_500_000_000);
+}
+
+#[test]
+fn shared_scheduler_maximum_delay_matches_resolution_limit() {
+  let resolution = Duration::from_millis(100);
+  let scheduler = Scheduler::new(SchedulerConfig::new(resolution, SchedulerCapacityProfile::standard()));
+  let shared = SchedulerShared::new(SharedRwLock::new_with_driver::<SpinSyncRwLock<_>>(scheduler));
+
+  assert_eq!(shared.maximum_delay(), resolution.checked_mul(i32::MAX as u32).expect("maximum delay"));
 }
 
 fn noop_waker() -> Waker {
@@ -710,6 +731,26 @@ fn fixed_delay_backlog_marks_handle_cancelled() {
     .expect("handle");
   scheduler.run_for_test(5);
   assert!(handle.is_cancelled(), "fixed-delay handle should report cancelled after backlog drop");
+}
+
+#[test]
+fn fixed_delay_skipping_missed_runs_remains_scheduled_after_backlog() {
+  let profile = SchedulerCapacityProfile::standard();
+  let config = SchedulerConfig::new(Duration::from_millis(1), profile).with_backlog_limit(1);
+  let mut scheduler = Scheduler::new(config);
+  let handle = scheduler
+    .schedule_with_fixed_delay_skipping_missed(
+      Duration::from_millis(1),
+      Duration::from_millis(1),
+      SchedulerCommand::Noop,
+    )
+    .expect("handle");
+
+  scheduler.run_for_test(5);
+  scheduler.run_for_test(5);
+
+  assert!(!handle.is_cancelled());
+  assert_eq!(scheduler.job_count_for_test(), 1);
 }
 
 #[test]

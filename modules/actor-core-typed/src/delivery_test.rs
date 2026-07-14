@@ -43,11 +43,11 @@ fn test_system() -> TypedActorSystem<u32> {
 }
 
 fn advance_scheduler_by_ticks(system: &TypedActorSystem<u32>, ticks: u64) {
-  system.as_untyped().scheduler().with_write(|scheduler| {
-    let current_tick = scheduler.dump().current_tick();
-    let now = TimerInstant::from_ticks(current_tick.saturating_add(ticks), scheduler.resolution());
-    let _ = scheduler.run_due(now);
-  });
+  let scheduler = system.as_untyped().scheduler();
+  let (current_tick, resolution) =
+    scheduler.with_read(|scheduler| (scheduler.dump().current_tick(), scheduler.resolution()));
+  let now = TimerInstant::from_ticks(current_tick.saturating_add(ticks), resolution);
+  let _ = scheduler.run_due(now);
 }
 
 fn durable_queue_probe_behavior<A>(

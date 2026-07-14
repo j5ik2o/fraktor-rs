@@ -42,8 +42,9 @@ impl SchedulerTickExecutor {
       return;
     }
 
+    let scheduler_time = self.scheduler.clone();
     self.scheduler.with_write(|s| {
-      self.runner.drive(s);
+      self.runner.drive_with_tick_observer(s, |tick| scheduler_time.record_current_tick(tick));
     });
   }
 

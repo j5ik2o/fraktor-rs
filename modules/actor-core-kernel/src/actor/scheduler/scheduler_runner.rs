@@ -58,8 +58,14 @@ impl<'a> SchedulerRunner<'a> {
 
   /// Processes the currently pending ticks.
   pub fn run_once(&mut self, scheduler: &mut Scheduler) {
+    self.run_once_with_tick_observer(scheduler, |_| {});
+  }
+
+  pub(crate) fn run_once_with_tick_observer(&mut self, scheduler: &mut Scheduler, mut observe_tick: impl FnMut(u64)) {
     while let Some(ticks) = self.tick_lease.try_pull() {
-      scheduler.run_for_ticks(u64::from(ticks));
+      let ticks = u64::from(ticks);
+      observe_tick(scheduler.current_tick().saturating_add(ticks));
+      scheduler.run_for_ticks(ticks);
     }
   }
 }

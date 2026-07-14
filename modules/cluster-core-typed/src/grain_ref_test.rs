@@ -86,12 +86,7 @@ fn run_scheduler(system: &ActorSystem, duration: Duration) {
   let resolution_ns = resolution.as_nanos().max(1);
   let ticks = duration.as_nanos().div_ceil(resolution_ns).max(1);
   let now = TimerInstant::from_ticks(ticks as u64, resolution);
-  scheduler.with_write(|inner| {
-    // retry scheduler 実行（戻り値は安全に無視、タイムアウト処理のみ目的）
-    // SAFETY: run_due は schedule 済みのコールバックを実行するだけ。
-    //   戻り値はスケジューラの内部診断（空ならOk(0)）であり、破棄しても契約は壊れない。
-    let _ = inner.run_due(now);
-  });
+  let _ = scheduler.run_due(now);
 }
 
 // ─── 往復検証: GrainRef を構築して identity/as_kernel/into_kernel をテストする ──

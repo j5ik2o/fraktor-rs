@@ -123,6 +123,12 @@ impl Scheduler {
     self.config.resolution()
   }
 
+  /// Returns the scheduler's current logical tick.
+  #[must_use]
+  pub const fn current_tick(&self) -> u64 {
+    self.current_tick
+  }
+
   /// Returns the scheduler configuration copy.
   #[must_use]
   pub const fn config(&self) -> SchedulerConfig {
@@ -172,7 +178,7 @@ impl Scheduler {
       let next_tick = job.periodic.as_ref().map(PeriodicContext::next_deadline_ticks);
       jobs.push(SchedulerDumpJob::new(job.handle.raw(), job.mode, job.deadline_tick, next_tick));
     }
-    SchedulerDump::new(self.config.resolution(), self.current_tick, self.metrics, jobs, self.warnings.clone())
+    SchedulerDump::new(self.config.resolution(), self.current_tick(), self.metrics, jobs, self.warnings.clone())
   }
 
   /// Registers a one-shot job backed by the provided [`SchedulerCommand`].
@@ -218,6 +224,22 @@ impl Scheduler {
     command: SchedulerCommand,
   ) -> Result<SchedulerHandle, SchedulerError> {
     self.register_job(initial_delay, SchedulerMode::FixedDelay, Some(delay), command)
+  }
+
+  /// Registers a fixed-delay job that executes once after a delayed tick and remains scheduled.
+  ///
+  /// Missed runs are skipped instead of accumulated or cancelled by the backlog policy.
+  ///
+  /// # Errors
+  ///
+  /// Returns `SchedulerError` if the delay is invalid or capacity is exceeded.
+  pub fn schedule_with_fixed_delay_skipping_missed(
+    &mut self,
+    initial_delay: Duration,
+    delay: Duration,
+    command: SchedulerCommand,
+  ) -> Result<SchedulerHandle, SchedulerError> {
+    self.register_job_with_missed_run_policy(initial_delay, SchedulerMode::FixedDelay, Some(delay), command, true)
   }
 
   /// Registers a custom command to be executed after the provided delay.
@@ -380,6 +402,17 @@ impl Scheduler {
     period: Option<Duration>,
     command: SchedulerCommand,
   ) -> Result<SchedulerHandle, SchedulerError> {
+    self.register_job_with_missed_run_policy(delay, mode, period, command, false)
+  }
+
+  fn register_job_with_missed_run_policy(
+    &mut self,
+    delay: Duration,
+    mode: SchedulerMode,
+    period: Option<Duration>,
+    command: SchedulerCommand,
+    skip_missed: bool,
+  ) -> Result<SchedulerHandle, SchedulerError> {
     if self.closed {
       return Err(SchedulerError::Closed);
     }
@@ -394,7 +427,7 @@ impl Scheduler {
     entry.mark_scheduled();
     self.registry.register(handle.raw(), entry);
     self.metrics.increment_active();
-    let periodic = self.build_periodic_context(mode, period, deadline.ticks())?;
+    let periodic = self.build_periodic_context(mode, period, deadline.ticks(), skip_missed)?;
     let job =
       ScheduledJob { handle: handle.clone(), wheel_id, mode, periodic, command, deadline_tick: deadline.ticks() };
     self.jobs.insert(handle.raw(), job);
@@ -407,6 +440,7 @@ impl Scheduler {
     mode: SchedulerMode,
     period: Option<Duration>,
     start_tick: u64,
+    skip_missed: bool,
   ) -> Result<Option<PeriodicContext>, SchedulerError> {
     match mode {
       | SchedulerMode::OneShot => Ok(None),
@@ -427,24 +461,29 @@ impl Scheduler {
         let ticks = self.duration_to_ticks(period_duration)?;
         let period_ticks = NonZeroU64::new(ticks).ok_or(SchedulerError::InvalidDelay)?;
         let policy = self.config.fixed_delay_policy();
-        Ok(Some(PeriodicContext::FixedDelay(FixedDelayContext::new(
-          start_tick,
-          period_ticks,
-          policy.backlog_limit(),
-          policy.burst_threshold(),
-        ))))
+        let context = if skip_missed {
+          FixedDelayContext::new_skipping_missed(
+            start_tick,
+            period_ticks,
+            policy.backlog_limit(),
+            policy.burst_threshold(),
+          )
+        } else {
+          FixedDelayContext::new(start_tick, period_ticks, policy.backlog_limit(), policy.burst_threshold())
+        };
+        Ok(Some(PeriodicContext::FixedDelay(context)))
       },
     }
   }
 
   fn prepare_batch(&mut self, job: &mut ScheduledJob, handle_id: u64) -> BatchPreparation {
     match job.periodic.as_mut() {
-      | Some(context) => match context.build_batch(self.current_tick, handle_id) {
+      | Some(context) => match context.build_batch(self.current_tick(), handle_id) {
         | PeriodicBatchDecision::Execute { batch, warning } => {
           if let Some(warning) = warning {
             self.record_warning(warning);
           }
-          BatchPreparation::Ready(batch)
+          BatchPreparation::Ready(batch.with_execution_tick(self.current_tick()))
         },
         | PeriodicBatchDecision::Cancel { warning } => {
           self.record_warning(warning);
@@ -452,7 +491,7 @@ impl Scheduler {
           BatchPreparation::Cancelled
         },
       },
-      | None => BatchPreparation::Ready(ExecutionBatch::oneshot()),
+      | None => BatchPreparation::Ready(ExecutionBatch::oneshot().with_execution_tick(self.current_tick())),
     }
   }
 
@@ -500,7 +539,7 @@ impl Scheduler {
   }
 
   const fn deadline_from_ticks(&self, delta: u64) -> TimerInstant {
-    let ticks = self.current_tick.saturating_add(delta);
+    let ticks = self.current_tick().saturating_add(delta);
     TimerInstant::from_ticks(ticks, self.config.resolution())
   }
 
@@ -547,7 +586,7 @@ impl Scheduler {
   fn record_scheduled_event(&mut self, handle_id: u64, deadline: TimerInstant, mode: SchedulerMode) {
     self.diagnostics.record(DeterministicEvent::Scheduled {
       handle_id,
-      scheduled_tick: self.current_tick,
+      scheduled_tick: self.current_tick(),
       deadline_tick: deadline.ticks(),
     });
     self.publish_stream_with_drop(SchedulerDiagnosticsEvent::Scheduled {
@@ -558,14 +597,20 @@ impl Scheduler {
   }
 
   fn record_fire_event(&mut self, handle_id: u64, batch: ExecutionBatch) {
-    self.diagnostics.record(DeterministicEvent::Fired { handle_id, fired_tick: self.current_tick, batch });
-    self.publish_stream_with_drop(SchedulerDiagnosticsEvent::Fired { handle_id, fired_tick: self.current_tick, batch });
+    self.diagnostics.record(DeterministicEvent::Fired { handle_id, fired_tick: self.current_tick(), batch });
+    self.publish_stream_with_drop(SchedulerDiagnosticsEvent::Fired {
+      handle_id,
+      fired_tick: self.current_tick(),
+      batch,
+    });
   }
 
   fn record_cancel_event(&mut self, handle_id: u64) {
-    self.diagnostics.record(DeterministicEvent::Cancelled { handle_id, cancelled_tick: self.current_tick });
-    self
-      .publish_stream_with_drop(SchedulerDiagnosticsEvent::Cancelled { handle_id, cancelled_tick: self.current_tick });
+    self.diagnostics.record(DeterministicEvent::Cancelled { handle_id, cancelled_tick: self.current_tick() });
+    self.publish_stream_with_drop(SchedulerDiagnosticsEvent::Cancelled {
+      handle_id,
+      cancelled_tick: self.current_tick(),
+    });
   }
 
   fn publish_stream_with_drop(&mut self, event: SchedulerDiagnosticsEvent) {

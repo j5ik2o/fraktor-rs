@@ -8,9 +8,10 @@ use alloc::{string::String, vec::Vec};
 use core::time::Duration;
 
 use crate::{
-  ClusterShardingStateStoreMode, ClusterTopology, ConfigValidation, JoinConfigCompatChecker,
+  ClusterExtensionConfigError, ClusterShardingStateStoreMode, ClusterTopology, ConfigValidation,
+  JoinConfigCompatChecker,
   downing_provider::DowningProviderCompatibility,
-  failure_detector::{FailureDetectorConfig, FailureDetectorConfigError},
+  failure_detector::FailureDetectorConfig,
   pub_sub::PubSubConfig,
   singleton::{ClusterSingletonConfigError, ClusterSingletonManagerConfig, ClusterSingletonProxyConfig},
   topology::{ClusterCompatibilityKey, ClusterCompatibilityKeyCatalog},
@@ -24,6 +25,8 @@ const PUBSUB_SUBSCRIBER_TIMEOUT_KEY: &str = "fraktor.cluster.pubsub.subscriber-t
 const PUBSUB_SUSPENDED_TTL_KEY: &str = "fraktor.cluster.pubsub.suspended-ttl";
 const DOWNING_PROVIDER_KEY: &str = "fraktor.cluster.downing-provider.provider-key";
 const FAILURE_DETECTOR_KEY: &str = ClusterCompatibilityKeyCatalog::FAILURE_DETECTOR.name();
+const GRAIN_IDLE_PASSIVATION_THRESHOLD_KEY: &str =
+  ClusterCompatibilityKeyCatalog::GRAIN_IDLE_PASSIVATION_THRESHOLD.name();
 const SINGLETON_KEY: &str = ClusterCompatibilityKeyCatalog::SINGLETON.name();
 const SHARDING_STATE_STORE_MODE_KEY: &str = ClusterCompatibilityKeyCatalog::SHARDING_STATE_STORE_MODE.name();
 const SBR_STABLE_AFTER_KEY: &str = "fraktor.cluster.downing-provider.split-brain-resolver.stable-after";
@@ -37,6 +40,7 @@ const REQUIRED_JOIN_COMPATIBILITY_KEYS: &[&str] = &[
   FAILURE_DETECTOR_KEY,
   SINGLETON_KEY,
   SHARDING_STATE_STORE_MODE_KEY,
+  GRAIN_IDLE_PASSIVATION_THRESHOLD_KEY,
 ];
 const CONDITIONAL_JOIN_COMPATIBILITY_KEYS: &[&str] =
   &[SBR_STABLE_AFTER_KEY, SBR_ACTIVE_STRATEGY_KEY, SBR_DOWN_ALL_WHEN_UNSTABLE_KEY];
@@ -72,22 +76,27 @@ const JOIN_COMPATIBILITY_CHECKS: &[JoinCompatibilityCheck] = &[
     ClusterCompatibilityKeyCatalog::SHARDING_STATE_STORE_MODE,
     sharding_state_store_mode_mismatch_detail,
   ),
+  JoinCompatibilityCheck::new(
+    ClusterCompatibilityKeyCatalog::GRAIN_IDLE_PASSIVATION_THRESHOLD,
+    grain_idle_passivation_threshold_mismatch_detail,
+  ),
 ];
 
 /// Configuration applied when installing the cluster extension.
 #[derive(Clone, Debug, PartialEq)]
 pub struct ClusterExtensionConfig {
-  advertised_address:        String,
-  metrics_enabled:           bool,
-  static_topology:           Option<ClusterTopology>,
-  pubsub_config:             PubSubConfig,
-  failure_detector_config:   FailureDetectorConfig,
-  app_version:               String,
-  roles:                     Vec<String>,
-  downing_provider:          DowningProviderCompatibility,
-  singleton_manager_config:  ClusterSingletonManagerConfig,
-  singleton_proxy_config:    ClusterSingletonProxyConfig,
+  advertised_address: String,
+  metrics_enabled: bool,
+  static_topology: Option<ClusterTopology>,
+  pubsub_config: PubSubConfig,
+  failure_detector_config: FailureDetectorConfig,
+  app_version: String,
+  roles: Vec<String>,
+  downing_provider: DowningProviderCompatibility,
+  singleton_manager_config: ClusterSingletonManagerConfig,
+  singleton_proxy_config: ClusterSingletonProxyConfig,
   sharding_state_store_mode: ClusterShardingStateStoreMode,
+  grain_idle_passivation_threshold: Duration,
 }
 
 impl ClusterExtensionConfig {
@@ -99,17 +108,18 @@ impl ClusterExtensionConfig {
   #[must_use]
   pub fn new() -> Self {
     Self {
-      advertised_address:        String::new(),
-      metrics_enabled:           false,
-      static_topology:           None,
-      pubsub_config:             PubSubConfig::new(Duration::from_secs(3), Duration::from_secs(60)),
-      failure_detector_config:   FailureDetectorConfig::new(),
-      app_version:               String::from(env!("CARGO_PKG_VERSION")),
-      roles:                     Vec::new(),
-      downing_provider:          DowningProviderCompatibility::noop(),
-      singleton_manager_config:  ClusterSingletonManagerConfig::new(),
-      singleton_proxy_config:    ClusterSingletonProxyConfig::new(),
+      advertised_address: String::new(),
+      metrics_enabled: false,
+      static_topology: None,
+      pubsub_config: PubSubConfig::new(Duration::from_secs(3), Duration::from_secs(60)),
+      failure_detector_config: FailureDetectorConfig::new(),
+      app_version: String::from(env!("CARGO_PKG_VERSION")),
+      roles: Vec::new(),
+      downing_provider: DowningProviderCompatibility::noop(),
+      singleton_manager_config: ClusterSingletonManagerConfig::new(),
+      singleton_proxy_config: ClusterSingletonProxyConfig::new(),
       sharding_state_store_mode: ClusterShardingStateStoreMode::default(),
+      grain_idle_passivation_threshold: Duration::from_secs(3600),
     }
   }
 
@@ -127,6 +137,13 @@ impl ClusterExtensionConfig {
     self
   }
 
+  /// Sets the maximum Grain idle duration before passivation.
+  #[must_use]
+  pub const fn with_grain_idle_passivation_threshold(mut self, threshold: Duration) -> Self {
+    self.grain_idle_passivation_threshold = threshold;
+    self
+  }
+
   /// Returns the configured advertised address.
   #[must_use]
   pub fn advertised_address(&self) -> &str {
@@ -137,6 +154,12 @@ impl ClusterExtensionConfig {
   #[must_use]
   pub const fn metrics_enabled(&self) -> bool {
     self.metrics_enabled
+  }
+
+  /// Returns the maximum Grain idle duration before passivation.
+  #[must_use]
+  pub const fn grain_idle_passivation_threshold(&self) -> Duration {
+    self.grain_idle_passivation_threshold
   }
 
   /// Sets the static topology to be published on startup.
@@ -309,10 +332,23 @@ impl ClusterExtensionConfig {
   ///
   /// # Errors
   ///
-  /// Returns [`FailureDetectorConfigError`] when the configured failure detector
-  /// observation parameters are outside the accepted range.
-  pub fn validate(&self) -> Result<(), FailureDetectorConfigError> {
-    self.failure_detector_config.validate()
+  /// Returns [`ClusterExtensionConfigError`] when a configured value is outside
+  /// the accepted range.
+  pub fn validate(&self) -> Result<(), ClusterExtensionConfigError> {
+    self.failure_detector_config.validate()?;
+    Self::validate_grain_idle_passivation_threshold(self.grain_idle_passivation_threshold)
+  }
+
+  pub(crate) fn validate_grain_idle_passivation_threshold(
+    threshold: Duration,
+  ) -> Result<(), ClusterExtensionConfigError> {
+    if threshold < Duration::from_secs(1) {
+      Err(ClusterExtensionConfigError::GrainIdlePassivationThresholdBelowOneSecond)
+    } else if threshold.subsec_nanos() != 0 {
+      Err(ClusterExtensionConfigError::GrainIdlePassivationThresholdNotWholeSeconds)
+    } else {
+      Ok(())
+    }
   }
 }
 
@@ -429,6 +465,17 @@ fn sharding_state_store_mode_mismatch_detail(
     None
   } else {
     Some(String::from("state_store_mode"))
+  }
+}
+
+fn grain_idle_passivation_threshold_mismatch_detail(
+  local: &ClusterExtensionConfig,
+  joining: &ClusterExtensionConfig,
+) -> Option<String> {
+  if local.grain_idle_passivation_threshold == joining.grain_idle_passivation_threshold {
+    None
+  } else {
+    Some(String::from("grain_idle_passivation_threshold"))
   }
 }
 

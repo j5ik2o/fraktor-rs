@@ -9,7 +9,8 @@ fn catalog_exposes_required_stable_key_names() {
     "cluster.downing-provider",
     "cluster.failure-detector",
     "cluster.singleton",
-    "cluster.sharding.state-store-mode"
+    "cluster.sharding.state-store-mode",
+    "cluster.grain.idle-passivation-threshold"
   ]);
 }
 

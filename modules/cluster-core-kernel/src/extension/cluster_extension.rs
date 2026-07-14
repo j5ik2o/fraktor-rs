@@ -4,26 +4,43 @@
 #[path = "cluster_extension_test.rs"]
 mod tests;
 
-use alloc::{format, string::String, vec::Vec};
+use alloc::{
+  format,
+  string::{String, ToString},
+  vec::Vec,
+};
 
 use fraktor_actor_core_kernel_rs::{
-  actor::messaging::AnyMessage,
+  actor::{
+    actor_ref::ActorRef,
+    error::SendError,
+    messaging::AnyMessage,
+    props::Props,
+    scheduler::{ExecutionBatch, SchedulerCommand, SchedulerHandle, SchedulerRunnable},
+  },
   event::stream::{
     EventStreamEvent, EventStreamShared, EventStreamSubscriber, EventStreamSubscription, subscriber_handle,
   },
   system::{ActorSystem, ActorSystemWeak},
 };
-use fraktor_utils_core_rs::sync::{DefaultMutex, SharedAccess, SharedLock};
+use fraktor_utils_core_rs::sync::{ArcShared, DefaultMutex, SharedAccess, SharedLock};
 
+use super::grain_idle_passivation_actor::GrainIdlePassivationActor;
 use crate::{
-  ClusterCore, ClusterError, ClusterEvent, ClusterMetricsSnapshot, MetricsError, TopologyUpdate,
-  activation::{ActivatedKind, IdentitySetupError},
-  grain::{GrainMetrics, GrainMetricsShared, GrainMetricsSnapshot, GrainReadinessSnapshot},
+  ClusterCore, ClusterError, ClusterEvent, ClusterMetricsSnapshot, MetricsError, StartupMode, TopologyUpdate,
+  activation::{ActivatedKind, IdentitySetupError, PlacementEvent},
+  grain::{
+    GRAIN_EVENT_STREAM_NAME, GrainEvent, GrainMetrics, GrainMetricsShared, GrainMetricsSnapshot, GrainReadinessSnapshot,
+  },
   membership::NodeStatus,
   pub_sub::ClusterPubSubShared,
 };
 
 const CLUSTER_EVENT_STREAM_NAME: &str = "cluster";
+
+fn report_idle_passivation_delivery_failure(error: &SendError) {
+  tracing::warn!(?error, "failed to enqueue Grain idle passivation sweep");
+}
 
 /// Internal subscriber that applies topology updates to ClusterCore.
 struct ClusterTopologySubscriber {
@@ -508,6 +525,8 @@ pub struct ClusterExtension {
   starting_identity: SharedLock<Option<SelfMemberIdentity>>,
   start_in_progress: SharedLock<bool>,
   topology_absent_identities: SharedLock<Vec<SelfMemberIdentity>>,
+  idle_passivation_task: SharedLock<Option<SchedulerHandle>>,
+  idle_passivation_actor: SharedLock<Option<ActorRef>>,
   _self_member_status_subscription: EventStreamSubscription,
   _system: ActorSystemWeak,
 }
@@ -528,6 +547,8 @@ impl ClusterExtension {
     let start_in_progress = SharedLock::new_with_driver::<DefaultMutex<_>>(false);
     let topology_absent_identities = SharedLock::new_with_driver::<DefaultMutex<_>>(Vec::new());
     let terminated = SharedLock::new_with_driver::<DefaultMutex<_>>(false);
+    let idle_passivation_task = SharedLock::new_with_driver::<DefaultMutex<_>>(None);
+    let idle_passivation_actor = SharedLock::new_with_driver::<DefaultMutex<_>>(None);
     let status_subscriber = subscriber_handle(SelfMemberStatusTrackerSubscriber::new(
       self_address,
       self_member_status.clone(),
@@ -553,6 +574,8 @@ impl ClusterExtension {
       starting_identity,
       start_in_progress,
       topology_absent_identities,
+      idle_passivation_task,
+      idle_passivation_actor,
       _self_member_status_subscription: self_member_status_subscription,
       _system: system.downgrade(),
     }
@@ -574,6 +597,129 @@ impl ClusterExtension {
   #[must_use]
   pub(crate) fn grain_metrics_shared(&self) -> Option<GrainMetricsShared> {
     self.grain_metrics.clone()
+  }
+
+  pub(crate) fn publish_activation_events(&self, events: Vec<PlacementEvent>) {
+    publish_activation_events(&self.event_stream, &self.grain_metrics, events);
+  }
+
+  fn prepare_idle_passivation_task(&self) -> Result<bool, ClusterError> {
+    self.core.with_lock(|core| core.validate_configuration()).map_err(ClusterError::from)?;
+    let interval = self.core.with_lock(|core| core.grain_idle_passivation_threshold());
+    if self.idle_passivation_task.with_lock(|task| task.is_some()) {
+      return Ok(false);
+    }
+    let system = self._system.upgrade().ok_or_else(|| ClusterError::GrainIdlePassivationScheduler {
+      reason: String::from("actor system is unavailable"),
+    })?;
+    let scheduler = system.state().scheduler();
+    let sweep_interval = interval.min(scheduler.maximum_delay());
+    let interval_nanos = u64::try_from(interval.as_nanos()).unwrap_or(u64::MAX);
+    let next_sweep_at =
+      SharedLock::new_with_driver::<DefaultMutex<_>>(scheduler.current_time_nanos().saturating_add(interval_nanos));
+    let actor_ref = if let Some(actor_ref) = self.idle_passivation_actor.with_lock(|actor| actor.clone()) {
+      actor_ref
+    } else {
+      let core = self.core.clone();
+      let event_stream = self.event_stream.clone();
+      let grain_metrics = self.grain_metrics.clone();
+      let props = Props::from_fn(move || {
+        GrainIdlePassivationActor::new(core.clone(), event_stream.clone(), grain_metrics.clone())
+      });
+      let actor_ref = system
+        .extended()
+        .spawn_system_actor(&props)
+        .map_err(|error| ClusterError::GrainIdlePassivationScheduler {
+          reason: format!("idle passivation actor spawn failed: {error}"),
+        })?
+        .into_actor_ref();
+      let (actor_ref, duplicate) = self.idle_passivation_actor.with_lock(|actor| {
+        if let Some(existing) = actor.clone() {
+          return (existing, Some(actor_ref));
+        }
+        *actor = Some(actor_ref.clone());
+        (actor_ref, None)
+      });
+      if let Some(duplicate) = duplicate {
+        system.extended().stop(&duplicate).map_err(|error| ClusterError::GrainIdlePassivationScheduler {
+          reason: format!("duplicate idle passivation actor stop failed: {error:?}"),
+        })?;
+      }
+      actor_ref
+    };
+    if self.idle_passivation_task.with_lock(|task| task.is_some()) {
+      return Ok(false);
+    }
+    let resolution = scheduler.with_read(|scheduler| scheduler.resolution());
+    let runnable: ArcShared<dyn SchedulerRunnable> = ArcShared::new(move |batch: &ExecutionBatch| {
+      let nanos = resolution.as_nanos().saturating_mul(u128::from(batch.execution_tick()));
+      let now = u64::try_from(nanos).unwrap_or(u64::MAX);
+      let sweep_due = next_sweep_at.with_lock(|next_sweep_at| {
+        if now < *next_sweep_at {
+          return false;
+        }
+        *next_sweep_at = now.saturating_add(interval_nanos);
+        true
+      });
+      if !sweep_due {
+        return;
+      }
+      let mut receiver = actor_ref.clone();
+      receiver.try_tell(AnyMessage::new(now)).unwrap_or_else(|error| report_idle_passivation_delivery_failure(&error));
+    });
+    let command = SchedulerCommand::RunRunnable { runnable };
+    let handle = scheduler
+      .with_write(|scheduler| {
+        scheduler.schedule_with_fixed_delay_skipping_missed(sweep_interval, sweep_interval, command)
+      })
+      .map_err(|error| ClusterError::GrainIdlePassivationScheduler { reason: format!("{error}") })?;
+    let duplicate = self.idle_passivation_task.with_lock(|task| {
+      if task.is_some() {
+        return true;
+      }
+      *task = Some(handle.clone());
+      false
+    });
+    if duplicate && !scheduler.with_write(|scheduler| scheduler.cancel(&handle)) {
+      return Err(ClusterError::GrainIdlePassivationScheduler {
+        reason: String::from("duplicate idle passivation task cancellation failed"),
+      });
+    }
+    Ok(!duplicate)
+  }
+
+  fn cancel_idle_passivation_task(&self) -> Result<(), ClusterError> {
+    let Some(handle) = self.idle_passivation_task.with_lock(|task| task.take()) else {
+      return Ok(());
+    };
+    let cancelled = self._system.upgrade().map_or_else(
+      || handle.cancel() || handle.is_cancelled() || handle.is_completed(),
+      |system| {
+        system.state().scheduler().with_write(|scheduler| scheduler.cancel(&handle))
+          || handle.is_cancelled()
+          || handle.is_completed()
+      },
+    );
+    if cancelled {
+      return Ok(());
+    }
+    self.idle_passivation_task.with_lock(|task| *task = Some(handle));
+    Err(ClusterError::GrainIdlePassivationScheduler {
+      reason: String::from("idle passivation task cancellation failed"),
+    })
+  }
+
+  fn publish_pre_start_failure(&self, mode: StartupMode, error: &ClusterError) {
+    let reason = match error {
+      | ClusterError::Configuration(error) => error.to_string(),
+      | ClusterError::GrainIdlePassivationScheduler { reason } => reason.clone(),
+      | _ => format!("{error:?}"),
+    };
+    let address = self.core.with_lock(|core| core.startup_address());
+    let event = ClusterEvent::StartupFailed { address, mode, reason };
+    let payload = AnyMessage::new(event);
+    let extension_event = EventStreamEvent::Extension { name: String::from(CLUSTER_EVENT_STREAM_NAME), payload };
+    self.event_stream.publish(&extension_event);
   }
 
   /// Subscribes to the event stream for topology updates.
@@ -619,11 +765,18 @@ impl ClusterExtension {
       was_terminated
     });
     self.start_in_progress.with_lock(|start_in_progress| *start_in_progress = true);
-    let result = self.core.with_lock(|core| core.start_member());
+    let (result, passivation_task_created) = match self.prepare_idle_passivation_task() {
+      | Ok(created) => (self.core.with_lock(|core| core.start_member()), created),
+      | Err(error) => {
+        self.publish_pre_start_failure(StartupMode::Member, &error);
+        (Err(error), false)
+      },
+    };
     self.start_in_progress.with_lock(|start_in_progress| *start_in_progress = false);
     if result.is_ok() {
       self.subscribe_topology_events();
     } else {
+      let cancel_result = if passivation_task_created { self.cancel_idle_passivation_task() } else { Ok(()) };
       let failed_identity = self.self_member_identity.with_lock(|self_member_identity| self_member_identity.clone());
       if let Some(failed_identity) = failed_identity
         && previous_identity.as_ref().is_none_or(|previous| !identity_matches(previous, &failed_identity))
@@ -639,6 +792,7 @@ impl ClusterExtension {
         self.terminated.with_lock(|terminated| *terminated = true);
       }
       self.starting_identity.with_lock(|starting_identity| *starting_identity = None);
+      cancel_result?;
     }
     result
   }
@@ -663,11 +817,18 @@ impl ClusterExtension {
       was_terminated
     });
     self.start_in_progress.with_lock(|start_in_progress| *start_in_progress = true);
-    let result = self.core.with_lock(|core| core.start_client());
+    let (result, passivation_task_created) = match self.prepare_idle_passivation_task() {
+      | Ok(created) => (self.core.with_lock(|core| core.start_client()), created),
+      | Err(error) => {
+        self.publish_pre_start_failure(StartupMode::Client, &error);
+        (Err(error), false)
+      },
+    };
     self.start_in_progress.with_lock(|start_in_progress| *start_in_progress = false);
     if result.is_ok() {
       self.subscribe_topology_events();
     } else {
+      let cancel_result = if passivation_task_created { self.cancel_idle_passivation_task() } else { Ok(()) };
       let failed_identity = self.self_member_identity.with_lock(|self_member_identity| self_member_identity.clone());
       if let Some(failed_identity) = failed_identity
         && previous_identity.as_ref().is_none_or(|previous| !identity_matches(previous, &failed_identity))
@@ -683,6 +844,7 @@ impl ClusterExtension {
         self.terminated.with_lock(|terminated| *terminated = true);
       }
       self.starting_identity.with_lock(|starting_identity| *starting_identity = None);
+      cancel_result?;
     }
     result
   }
@@ -697,6 +859,7 @@ impl ClusterExtension {
     self.subscription.with_lock(|subscription| *subscription = None);
     let result = self.core.with_lock(|core| core.shutdown(graceful));
     if result.is_ok() {
+      self.cancel_idle_passivation_task()?;
       self.terminated.with_lock(|terminated| *terminated = true);
       self.self_member_status.with_lock(|self_member_status| *self_member_status = None);
     }
@@ -937,6 +1100,36 @@ impl ClusterExtension {
     self.event_stream.unsubscribe(subscription.id());
     subscription
   }
+}
+
+pub(super) fn publish_activation_events(
+  event_stream: &EventStreamShared,
+  metrics: &Option<GrainMetricsShared>,
+  events: Vec<PlacementEvent>,
+) {
+  for event in events {
+    match event {
+      | PlacementEvent::Activated { key, pid, .. } => {
+        publish_grain_event(event_stream, GrainEvent::ActivationCreated { key, pid });
+        if let Some(metrics) = metrics {
+          metrics.with_write(|inner| inner.record_activation_created());
+        }
+      },
+      | PlacementEvent::Passivated { key, .. } => {
+        publish_grain_event(event_stream, GrainEvent::ActivationPassivated { key });
+        if let Some(metrics) = metrics {
+          metrics.with_write(|inner| inner.record_activation_passivated());
+        }
+      },
+      | _ => {},
+    }
+  }
+}
+
+fn publish_grain_event(event_stream: &EventStreamShared, event: GrainEvent) {
+  let payload = AnyMessage::new(event);
+  let extension_event = EventStreamEvent::Extension { name: String::from(GRAIN_EVENT_STREAM_NAME), payload };
+  event_stream.publish(&extension_event);
 }
 
 impl fraktor_actor_core_kernel_rs::actor::extension::Extension for ClusterExtension {}

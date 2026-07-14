@@ -9,7 +9,7 @@ mod tests;
 use alloc::string::String;
 
 use crate::{
-  ClusterProviderError, activation::IdentitySetupError, downing_provider::DowningDecision,
+  ClusterExtensionConfigError, ClusterProviderError, activation::IdentitySetupError, downing_provider::DowningDecision,
   failure_detector::FailureDetectorConfigError, pub_sub::PubSubError,
 };
 
@@ -19,7 +19,7 @@ pub enum ClusterError {
   /// Provider-related failure.
   Provider(ClusterProviderError),
   /// Cluster configuration validation failure.
-  Configuration(FailureDetectorConfigError),
+  Configuration(ClusterExtensionConfigError),
   /// Downing strategy did not allow an explicit down command.
   DowningRejected {
     /// Authority that was requested to be downed.
@@ -31,6 +31,11 @@ pub enum ClusterError {
   Identity(IdentitySetupError),
   /// Gossip start/stop failure.
   Gossip(&'static str),
+  /// Grain idle passivation scheduling failure.
+  GrainIdlePassivationScheduler {
+    /// Scheduler failure details.
+    reason: String,
+  },
   /// PubSub start/stop failure.
   PubSub(PubSubError),
 }
@@ -43,6 +48,12 @@ impl From<ClusterProviderError> for ClusterError {
 
 impl From<FailureDetectorConfigError> for ClusterError {
   fn from(value: FailureDetectorConfigError) -> Self {
+    Self::Configuration(value.into())
+  }
+}
+
+impl From<ClusterExtensionConfigError> for ClusterError {
+  fn from(value: ClusterExtensionConfigError) -> Self {
     Self::Configuration(value)
   }
 }
