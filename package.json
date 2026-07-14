@@ -1,7 +1,7 @@
 {
   "private": true,
   "scripts": {
-    "slide:preview": "marp --preview --watch talks/fp-matsuri-2026/fp-matsuri-2026-marp.md --output talks/fp-matsuri-2026/fp-matsuri-2026-marp.html",
+    "slide:preview": "marp --server talks/fp-matsuri-2026",
     "slide:pdf": "marp --pdf --allow-local-files talks/fp-matsuri-2026/fp-matsuri-2026-marp.md --output talks/fp-matsuri-2026/fp-matsuri-2026-marp.pdf",
     "takt": "./scripts/run-takt.sh",
     "takt:personal": "./scripts/run-takt.sh personal",
