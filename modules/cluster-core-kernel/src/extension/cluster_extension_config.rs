@@ -25,6 +25,8 @@ const PUBSUB_SUBSCRIBER_TIMEOUT_KEY: &str = "fraktor.cluster.pubsub.subscriber-t
 const PUBSUB_SUSPENDED_TTL_KEY: &str = "fraktor.cluster.pubsub.suspended-ttl";
 const DOWNING_PROVIDER_KEY: &str = "fraktor.cluster.downing-provider.provider-key";
 const FAILURE_DETECTOR_KEY: &str = ClusterCompatibilityKeyCatalog::FAILURE_DETECTOR.name();
+const GRAIN_IDLE_PASSIVATION_THRESHOLD_KEY: &str =
+  ClusterCompatibilityKeyCatalog::GRAIN_IDLE_PASSIVATION_THRESHOLD.name();
 const SINGLETON_KEY: &str = ClusterCompatibilityKeyCatalog::SINGLETON.name();
 const SHARDING_STATE_STORE_MODE_KEY: &str = ClusterCompatibilityKeyCatalog::SHARDING_STATE_STORE_MODE.name();
 const SBR_STABLE_AFTER_KEY: &str = "fraktor.cluster.downing-provider.split-brain-resolver.stable-after";
@@ -38,6 +40,7 @@ const REQUIRED_JOIN_COMPATIBILITY_KEYS: &[&str] = &[
   FAILURE_DETECTOR_KEY,
   SINGLETON_KEY,
   SHARDING_STATE_STORE_MODE_KEY,
+  GRAIN_IDLE_PASSIVATION_THRESHOLD_KEY,
 ];
 const CONDITIONAL_JOIN_COMPATIBILITY_KEYS: &[&str] =
   &[SBR_STABLE_AFTER_KEY, SBR_ACTIVE_STRATEGY_KEY, SBR_DOWN_ALL_WHEN_UNSTABLE_KEY];
@@ -72,6 +75,10 @@ const JOIN_COMPATIBILITY_CHECKS: &[JoinCompatibilityCheck] = &[
   JoinCompatibilityCheck::new(
     ClusterCompatibilityKeyCatalog::SHARDING_STATE_STORE_MODE,
     sharding_state_store_mode_mismatch_detail,
+  ),
+  JoinCompatibilityCheck::new(
+    ClusterCompatibilityKeyCatalog::GRAIN_IDLE_PASSIVATION_THRESHOLD,
+    grain_idle_passivation_threshold_mismatch_detail,
   ),
 ];
 
@@ -458,6 +465,17 @@ fn sharding_state_store_mode_mismatch_detail(
     None
   } else {
     Some(String::from("state_store_mode"))
+  }
+}
+
+fn grain_idle_passivation_threshold_mismatch_detail(
+  local: &ClusterExtensionConfig,
+  joining: &ClusterExtensionConfig,
+) -> Option<String> {
+  if local.grain_idle_passivation_threshold == joining.grain_idle_passivation_threshold {
+    None
+  } else {
+    Some(String::from("grain_idle_passivation_threshold"))
   }
 }
 

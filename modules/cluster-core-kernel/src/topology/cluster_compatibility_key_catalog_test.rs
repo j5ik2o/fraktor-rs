@@ -24,6 +24,15 @@ fn sharding_state_store_mode_key_is_required() {
 }
 
 #[test]
+fn grain_idle_passivation_threshold_key_is_required() {
+  let required = ClusterCompatibilityKeyCatalog::required_keys();
+  assert!(
+    required.iter().any(|k| k.name() == "cluster.grain.idle-passivation-threshold"),
+    "cluster.grain.idle-passivation-threshold が required_keys() に含まれていない"
+  );
+}
+
+#[test]
 fn sharding_identity_lookup_keys_have_stable_names() {
   assert_eq!(
     ClusterCompatibilityKeyCatalog::SHARDING_IDENTITY_LOOKUP_CHOICE.name(),
