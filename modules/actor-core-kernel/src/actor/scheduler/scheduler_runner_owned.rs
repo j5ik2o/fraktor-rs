@@ -33,6 +33,10 @@ impl SchedulerRunnerOwned {
     self.runner.run_once(scheduler);
   }
 
+  pub(crate) fn drive_with_tick_observer(&mut self, scheduler: &mut Scheduler, observe_tick: impl FnMut(u64)) {
+    self.runner.run_once_with_tick_observer(scheduler, observe_tick);
+  }
+
   /// Returns the owned tick handle.
   #[must_use]
   pub const fn handle(&self) -> &SchedulerTickHandle<'static> {

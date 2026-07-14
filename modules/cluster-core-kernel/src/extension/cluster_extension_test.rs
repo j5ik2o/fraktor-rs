@@ -664,12 +664,10 @@ fn default_idle_passivation_starts_with_nanosecond_scheduler_resolution() {
 
   extension.start_member().expect("start member");
   let handle = extension.idle_passivation_task.with_lock(|task| task.clone()).expect("passivation handle");
-  system.state().scheduler().with_write(|scheduler| {
-    assert!(
-      scheduler.run_due(TimerInstant::from_ticks(12_000_000_000, Duration::from_nanos(1))) > 0,
-      "scheduler should run the idle passivation job"
-    );
-  });
+  assert!(
+    system.state().scheduler().run_due(TimerInstant::from_ticks(12_000_000_000, Duration::from_nanos(1))) > 0,
+    "scheduler should run the idle passivation job"
+  );
 
   assert_eq!(system.state().scheduler().with_read(|scheduler| scheduler.dump().jobs().len()), 1);
   assert!(!handle.is_cancelled());

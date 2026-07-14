@@ -101,9 +101,7 @@ fn shared_scheduler_time_rounds_partial_seconds_up_without_dump() {
     Scheduler::new(SchedulerConfig::new(Duration::from_millis(100), SchedulerCapacityProfile::standard()));
   let shared = SchedulerShared::new(SharedRwLock::new_with_driver::<SpinSyncRwLock<_>>(scheduler));
 
-  shared.with_write(|scheduler| {
-    scheduler.run_due(TimerInstant::from_ticks(15, Duration::from_millis(100)));
-  });
+  let _ = shared.run_due(TimerInstant::from_ticks(15, Duration::from_millis(100)));
 
   assert_eq!(shared.current_time_secs(), 2);
   assert_eq!(shared.current_time_nanos(), 1_500_000_000);

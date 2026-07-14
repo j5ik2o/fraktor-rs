@@ -10,7 +10,10 @@ mod tests;
 use alloc::{boxed::Box, vec::Vec};
 use core::{mem, time::Duration};
 
-use fraktor_utils_core_rs::sync::{ArcShared, DefaultMutex, SharedAccess, SharedLock, SharedRwLock};
+use fraktor_utils_core_rs::{
+  sync::{ArcShared, DefaultMutex, SharedAccess, SharedLock, SharedRwLock},
+  time::TimerInstant,
+};
 use portable_atomic::{AtomicBool, AtomicU64, Ordering};
 
 use super::Scheduler;
@@ -87,11 +90,10 @@ impl SchedulerShared {
   /// Wrap an existing shared rw lock.
   #[must_use]
   pub(crate) fn new(inner: SharedRwLock<Scheduler>) -> Self {
-    let (current_tick, resolution) =
-      inner.with_read(|scheduler| (scheduler.current_tick_snapshot(), scheduler.resolution()));
+    let (current_tick, resolution) = inner.with_read(|scheduler| (scheduler.current_tick(), scheduler.resolution()));
     Self {
       inner,
-      current_tick,
+      current_tick: ArcShared::new(AtomicU64::new(current_tick)),
       resolution,
       write_in_progress: ArcShared::new(AtomicBool::new(false)),
       after_write_actions: SharedLock::new_with_driver::<DefaultMutex<_>>(Vec::new()),
@@ -117,6 +119,17 @@ impl SchedulerShared {
   #[must_use]
   pub fn maximum_delay(&self) -> Duration {
     self.resolution.checked_mul(i32::MAX as u32).unwrap_or(Duration::MAX)
+  }
+
+  /// Runs due timers while keeping the lock-free time snapshot current for callbacks.
+  #[must_use]
+  pub fn run_due(&self, now: TimerInstant) -> usize {
+    self.record_current_tick(now.ticks());
+    self.with_write(|scheduler| scheduler.run_due(now))
+  }
+
+  pub(crate) fn record_current_tick(&self, current_tick: u64) {
+    self.current_tick.store(current_tick, Ordering::Release);
   }
 
   /// Runs an action after an in-progress scheduler write releases its lock.
@@ -150,6 +163,7 @@ impl SharedAccess<Scheduler> for SchedulerShared {
     let (result, actions) = self.inner.with_write(|scheduler| {
       let guard = SchedulerWriteGuard::new(&self.write_in_progress, &self.after_write_actions);
       let result = f(scheduler);
+      self.record_current_tick(scheduler.current_tick());
       (result, guard.finish())
     });
     for action in actions {

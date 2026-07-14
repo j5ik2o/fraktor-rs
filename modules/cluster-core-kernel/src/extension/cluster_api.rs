@@ -296,8 +296,6 @@ impl ClusterApi {
 
   fn resolve_actor_ref(&self, identity: &ClusterIdentity) -> Result<ActorRef, ClusterResolveError> {
     let key = identity.key();
-    let idle_now_nanos = self.system.state().scheduler().current_time_nanos();
-    let now_secs = pid_cache_time_secs(idle_now_nanos);
     let (pid_result, placement_events) = {
       let core = self.extension.core_shared();
       core.with_lock(|guard| {
@@ -307,6 +305,8 @@ impl ClusterApi {
         if !guard.is_kind_registered(identity.kind()) {
           return Err(ClusterResolveError::KindNotRegistered { kind: identity.kind().to_string() });
         }
+        let idle_now_nanos = self.system.state().scheduler().current_time_nanos();
+        let now_secs = pid_cache_time_secs(idle_now_nanos);
         let resolution = guard.resolve_pid_at(&key, now_secs, idle_now_nanos).map_err(|error| match error {
           | LookupError::Pending => ClusterResolveError::LookupPending,
           | _ => ClusterResolveError::LookupFailed,

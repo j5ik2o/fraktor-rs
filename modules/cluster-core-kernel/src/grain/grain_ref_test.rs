@@ -135,9 +135,7 @@ fn run_scheduler(system: &ActorSystem, duration: Duration) {
   let resolution_ns = resolution.as_nanos().max(1);
   let ticks = duration.as_nanos().div_ceil(resolution_ns).max(1);
   let now = TimerInstant::from_ticks(ticks as u64, resolution);
-  scheduler.with_write(|inner| {
-    let _ = inner.run_due(now);
-  });
+  let _ = scheduler.run_due(now);
 }
 
 fn build_system_with_extension<F>(

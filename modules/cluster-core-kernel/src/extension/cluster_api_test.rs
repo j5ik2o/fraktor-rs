@@ -865,7 +865,7 @@ fn run_scheduler(system: &ActorSystem, duration: Duration) -> usize {
   let resolution_ns = resolution.as_nanos().max(1);
   let ticks = duration.as_nanos().div_ceil(resolution_ns).max(1);
   let now = TimerInstant::from_ticks(current_tick.saturating_add(ticks as u64), resolution);
-  scheduler.with_write(|inner| inner.run_due(now))
+  scheduler.run_due(now)
 }
 
 fn build_system_with_extension<F>(identity_lookup_factory: F) -> (ActorSystem, ArcShared<ClusterExtension>)

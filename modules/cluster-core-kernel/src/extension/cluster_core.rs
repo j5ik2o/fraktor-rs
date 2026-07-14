@@ -351,10 +351,6 @@ impl ClusterCore {
     }
   }
 
-  pub(crate) fn publish_startup_failure(&mut self, mode: StartupMode, reason: String) {
-    self.publish_cluster_event(ClusterEvent::StartupFailed { address: self.startup_address(), mode, reason });
-  }
-
   /// Starts the cluster in client mode.
   ///
   /// # Errors

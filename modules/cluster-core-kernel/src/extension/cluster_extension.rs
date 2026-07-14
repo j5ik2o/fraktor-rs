@@ -617,10 +617,9 @@ impl ClusterExtension {
     let interval_nanos = u64::try_from(interval.as_nanos()).unwrap_or(u64::MAX);
     let next_sweep_at =
       SharedLock::new_with_driver::<DefaultMutex<_>>(scheduler.current_time_nanos().saturating_add(interval_nanos));
-    let actor_ref = self.idle_passivation_actor.with_lock(|actor| -> Result<ActorRef, ClusterError> {
-      if let Some(actor_ref) = actor.clone() {
-        return Ok(actor_ref);
-      }
+    let actor_ref = if let Some(actor_ref) = self.idle_passivation_actor.with_lock(|actor| actor.clone()) {
+      actor_ref
+    } else {
       let core = self.core.clone();
       let event_stream = self.event_stream.clone();
       let grain_metrics = self.grain_metrics.clone();
@@ -634,9 +633,20 @@ impl ClusterExtension {
           reason: format!("idle passivation actor spawn failed: {error}"),
         })?
         .into_actor_ref();
-      *actor = Some(actor_ref.clone());
-      Ok(actor_ref)
-    })?;
+      let (actor_ref, duplicate) = self.idle_passivation_actor.with_lock(|actor| {
+        if let Some(existing) = actor.clone() {
+          return (existing, Some(actor_ref));
+        }
+        *actor = Some(actor_ref.clone());
+        (actor_ref, None)
+      });
+      if let Some(duplicate) = duplicate {
+        system.extended().stop(&duplicate).map_err(|error| ClusterError::GrainIdlePassivationScheduler {
+          reason: format!("duplicate idle passivation actor stop failed: {error:?}"),
+        })?;
+      }
+      actor_ref
+    };
     if self.idle_passivation_task.with_lock(|task| task.is_some()) {
       return Ok(false);
     }
@@ -705,7 +715,11 @@ impl ClusterExtension {
       | ClusterError::GrainIdlePassivationScheduler { reason } => reason.clone(),
       | _ => format!("{error:?}"),
     };
-    self.core.with_lock(|core| core.publish_startup_failure(mode, reason));
+    let address = self.core.with_lock(|core| core.startup_address());
+    let event = ClusterEvent::StartupFailed { address, mode, reason };
+    let payload = AnyMessage::new(event);
+    let extension_event = EventStreamEvent::Extension { name: String::from(CLUSTER_EVENT_STREAM_NAME), payload };
+    self.event_stream.publish(&extension_event);
   }
 
   /// Subscribes to the event stream for topology updates.

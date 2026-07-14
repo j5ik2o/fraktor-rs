@@ -10,11 +10,9 @@ mod tests;
 use ahash::RandomState;
 use fraktor_utils_core_rs::{
   collections::queue::{OverflowPolicy, backend::BinaryHeapPriorityBackend},
-  sync::ArcShared,
   time::{ManualClock, TimerEntry, TimerHandleId, TimerInstant, TimerWheel, TimerWheelConfig},
 };
 use hashbrown::HashMap;
-use portable_atomic::{AtomicU64, Ordering};
 
 use super::{
   ExecutionBatch, SchedulerHandle, SchedulerMode, SchedulerWarning,
@@ -44,7 +42,7 @@ pub struct Scheduler {
   warnings:      Vec<SchedulerWarning>,
   next_handle:   u64,
   jobs:          HashMap<u64, ScheduledJob, RandomState>,
-  current_tick:  ArcShared<AtomicU64>,
+  current_tick:  u64,
   closed:        bool,
   task_runs:     TaskRunQueue,
   task_run_seq:  u64,
@@ -110,7 +108,7 @@ impl Scheduler {
       warnings: Vec::new(),
       next_handle: 1,
       jobs: HashMap::with_hasher(RandomState::new()),
-      current_tick: ArcShared::new(AtomicU64::new(0)),
+      current_tick: 0,
       closed: false,
       task_runs: TaskRunQueue::new(task_run_backend),
       task_run_seq: 0,
@@ -127,14 +125,8 @@ impl Scheduler {
 
   /// Returns the scheduler's current logical tick.
   #[must_use]
-  pub fn current_tick(&self) -> u64 {
-    self.current_tick.load(Ordering::Acquire)
-  }
-
-  /// Returns the shared atomic backing the current logical tick.
-  #[must_use]
-  pub(crate) fn current_tick_snapshot(&self) -> ArcShared<AtomicU64> {
-    self.current_tick.clone()
+  pub const fn current_tick(&self) -> u64 {
+    self.current_tick
   }
 
   /// Returns the scheduler configuration copy.
@@ -330,7 +322,7 @@ impl Scheduler {
 
   /// Runs due timers at the provided instant, returning the number of executed jobs.
   pub fn run_due(&mut self, now: TimerInstant) -> usize {
-    self.current_tick.store(now.ticks(), Ordering::Release);
+    self.current_tick = now.ticks();
     let expired = self.wheel.collect_expired(now);
     let mut executed = 0;
     for entry in expired {
@@ -546,7 +538,7 @@ impl Scheduler {
     Ok(ticks as u64)
   }
 
-  fn deadline_from_ticks(&self, delta: u64) -> TimerInstant {
+  const fn deadline_from_ticks(&self, delta: u64) -> TimerInstant {
     let ticks = self.current_tick().saturating_add(delta);
     TimerInstant::from_ticks(ticks, self.config.resolution())
   }
