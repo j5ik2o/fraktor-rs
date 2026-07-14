@@ -108,6 +108,15 @@ fn shared_scheduler_time_rounds_partial_seconds_up_without_dump() {
   assert_eq!(shared.current_time_secs(), 2);
 }
 
+#[test]
+fn shared_scheduler_maximum_delay_matches_resolution_limit() {
+  let resolution = Duration::from_millis(100);
+  let scheduler = Scheduler::new(SchedulerConfig::new(resolution, SchedulerCapacityProfile::standard()));
+  let shared = SchedulerShared::new(SharedRwLock::new_with_driver::<SpinSyncRwLock<_>>(scheduler));
+
+  assert_eq!(shared.maximum_delay(), resolution.checked_mul(i32::MAX as u32).expect("maximum delay"));
+}
+
 fn noop_waker() -> Waker {
   const VTABLE: RawWakerVTable = RawWakerVTable::new(|data| RawWaker::new(data, &VTABLE), |_| {}, |_| {}, |_| {});
 
