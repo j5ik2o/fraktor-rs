@@ -216,7 +216,7 @@ fn scheduler_callback_defers_grain_notifications_until_after_scheduler_write() {
       .expect("schedule callback");
   });
 
-  run_scheduler(&system, Duration::from_millis(10));
+  assert_eq!(run_scheduler(&system, Duration::from_millis(10)), 1);
 
   assert!(subscriber.notified());
 }
@@ -238,9 +238,9 @@ fn configured_idle_passivation_runs_from_install_and_start_to_events_and_metrics
   let recent = ClusterIdentity::new("user", "recent").expect("recent identity");
 
   let _ = api.get(&idle).expect("activate idle Grain");
-  run_scheduler(&system, Duration::from_secs(1));
+  assert_eq!(run_scheduler(&system, Duration::from_secs(1)), 0);
   let _ = api.get(&recent).expect("activate recent Grain");
-  run_scheduler(&system, Duration::from_secs(1));
+  assert_eq!(run_scheduler(&system, Duration::from_secs(1)), 1);
 
   let events = recorder.events();
   assert!(events.iter().any(|event| matches!(event, GrainEvent::ActivationPassivated { key } if *key == idle.key())));
@@ -264,9 +264,9 @@ fn subsecond_access_is_not_passivated_at_the_next_second_boundary() {
   let api = ClusterApi::try_from_system(&system).expect("cluster api");
   let identity = ClusterIdentity::new("user", "recent").expect("recent identity");
 
-  run_scheduler(&system, Duration::from_millis(990));
+  assert_eq!(run_scheduler(&system, Duration::from_millis(990)), 0);
   let _ = api.get(&identity).expect("activate recent Grain");
-  run_scheduler(&system, Duration::from_millis(10));
+  assert_eq!(run_scheduler(&system, Duration::from_millis(10)), 1);
 
   assert!(
     !recorder
@@ -315,7 +315,7 @@ fn request_future_completes_with_timeout_payload() {
 
   assert!(!future.with_read(|inner| inner.is_ready()));
 
-  run_scheduler(&system, Duration::from_millis(1));
+  assert_eq!(run_scheduler(&system, Duration::from_millis(1)), 1);
 
   let result = future.with_write(|inner| inner.try_take()).expect("timeout payload");
   assert!(result.is_err(), "expect timeout error");
@@ -853,15 +853,13 @@ fn subscribe_with_singleton_stuck_filter_receives_only_stuck_events() {
   );
 }
 
-fn run_scheduler(system: &ActorSystem, duration: Duration) {
+fn run_scheduler(system: &ActorSystem, duration: Duration) -> usize {
   let scheduler: SchedulerShared = system.state().scheduler();
   let (current_tick, resolution) = scheduler.with_read(|inner| (inner.current_tick(), inner.config().resolution()));
   let resolution_ns = resolution.as_nanos().max(1);
   let ticks = duration.as_nanos().div_ceil(resolution_ns).max(1);
   let now = TimerInstant::from_ticks(current_tick.saturating_add(ticks as u64), resolution);
-  scheduler.with_write(|inner| {
-    let _ = inner.run_due(now);
-  });
+  scheduler.with_write(|inner| inner.run_due(now))
 }
 
 fn build_system_with_extension<F>(identity_lookup_factory: F) -> (ActorSystem, ArcShared<ClusterExtension>)

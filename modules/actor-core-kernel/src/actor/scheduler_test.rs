@@ -106,6 +106,7 @@ fn shared_scheduler_time_rounds_partial_seconds_up_without_dump() {
   });
 
   assert_eq!(shared.current_time_secs(), 2);
+  assert_eq!(shared.current_time_nanos(), 1_500_000_000);
 }
 
 #[test]

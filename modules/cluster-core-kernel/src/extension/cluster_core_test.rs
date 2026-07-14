@@ -530,7 +530,7 @@ fn passivate_idle_applies_configured_grain_idle_passivation_threshold() {
   let resolution_events = core.drain_placement_events();
   assert!(!resolution_events.iter().any(|event| matches!(event, PlacementEvent::Passivated { .. })));
 
-  core.passivate_idle(1200);
+  core.passivate_idle_at(1_200_000_000_000);
 
   let events = core.drain_placement_events();
   assert!(events.iter().any(|event| matches!(event, PlacementEvent::Passivated { key, .. } if *key == idle_key)));
@@ -554,11 +554,43 @@ fn resolve_pid_refreshes_requested_grain_before_idle_passivation() {
   let _ = core.drain_placement_events();
 
   let second = core.resolve_pid(&key, 1100).expect("resolution at idle boundary");
-  core.passivate_idle(1100);
+  core.passivate_idle_at(1_100_000_000_000);
 
   assert_eq!(second.pid, first.pid);
   assert!(
     !core
+      .drain_placement_events()
+      .iter()
+      .any(|event| matches!(event, PlacementEvent::Passivated { key: passivated, .. } if *passivated == key))
+  );
+}
+
+#[test]
+fn subsecond_idle_tracking_does_not_passivate_before_threshold() {
+  let config = ClusterExtensionConfig::new()
+    .with_advertised_address("node-a:4050")
+    .with_grain_idle_passivation_threshold(Duration::from_secs(1));
+  let mut core = build_core_with_partition_lookup(&config);
+  core.start_member().expect("start member");
+  core.setup_member_kinds(vec![ActivatedKind::new("user")]).expect("setup kinds");
+  let update = build_update(1, vec![String::from("node-a:4050")], Vec::new(), Vec::new(), Vec::new());
+  core.apply_topology(&update).expect("apply topology");
+  let key = GrainKey::new(String::from("user/subsecond"));
+
+  let _ = core.resolve_pid_at(&key, 1, 100_000_000).expect("resolve Grain at 100 ms");
+  let _ = core.drain_placement_events();
+  core.passivate_idle_at(1_000_000_000);
+
+  assert!(
+    !core
+      .drain_placement_events()
+      .iter()
+      .any(|event| matches!(event, PlacementEvent::Passivated { key: passivated, .. } if *passivated == key))
+  );
+
+  core.passivate_idle_at(1_100_000_000);
+  assert!(
+    core
       .drain_placement_events()
       .iter()
       .any(|event| matches!(event, PlacementEvent::Passivated { key: passivated, .. } if *passivated == key))

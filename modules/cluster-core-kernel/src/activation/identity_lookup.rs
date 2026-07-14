@@ -50,6 +50,23 @@ pub trait IdentityLookup: Send + Sync {
     Err(LookupError::NotReady)
   }
 
+  /// Resolves placement while recording an exact monotonic time for idle-passivation tracking.
+  ///
+  /// Implementations that do not track idle time may rely on the default behavior.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error when placement resolution fails or is pending.
+  fn resolve_at(
+    &mut self,
+    key: &GrainKey,
+    now_secs: u64,
+    idle_now_nanos: u64,
+  ) -> Result<PlacementResolution, LookupError> {
+    let _ = idle_now_nanos;
+    self.resolve(key, now_secs)
+  }
+
   /// Removes a PID from the registry and cache.
   ///
   /// # Arguments
@@ -90,6 +107,14 @@ pub trait IdentityLookup: Send + Sync {
   /// * `idle_ttl` - Maximum idle time in seconds before passivation
   fn passivate_idle(&mut self, now: u64, idle_ttl: u64) {
     let _ = (now, idle_ttl);
+  }
+
+  /// Passivates idle activations using monotonic nanosecond timestamps.
+  ///
+  /// The default preserves compatibility with implementations that only support
+  /// the second-based [`Self::passivate_idle`] contract.
+  fn passivate_idle_at(&mut self, now_nanos: u64, idle_ttl_nanos: u64) {
+    self.passivate_idle(now_nanos / 1_000_000_000, idle_ttl_nanos / 1_000_000_000);
   }
 
   /// Drains pending placement events.

@@ -124,6 +124,19 @@ impl IdentityLookup for PartitionIdentityLookup {
     Err(LookupError::Pending)
   }
 
+  fn resolve_at(
+    &mut self,
+    key: &GrainKey,
+    now_secs: u64,
+    idle_now_nanos: u64,
+  ) -> Result<PlacementResolution, LookupError> {
+    let outcome = self.coordinator.resolve_at(key, now_secs, idle_now_nanos)?;
+    if let Some(resolution) = outcome.resolution {
+      return Ok(resolution);
+    }
+    Err(LookupError::Pending)
+  }
+
   fn remove_pid(&mut self, key: &GrainKey) {
     self.coordinator.remove_pid(key);
   }
@@ -138,6 +151,10 @@ impl IdentityLookup for PartitionIdentityLookup {
 
   fn passivate_idle(&mut self, now: u64, idle_ttl: u64) {
     self.coordinator.passivate_idle(now, idle_ttl);
+  }
+
+  fn passivate_idle_at(&mut self, now_nanos: u64, idle_ttl_nanos: u64) {
+    self.coordinator.passivate_idle_at(now_nanos, idle_ttl_nanos);
   }
 
   fn drain_events(&mut self) -> Vec<PlacementEvent> {

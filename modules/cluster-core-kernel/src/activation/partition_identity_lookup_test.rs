@@ -185,7 +185,7 @@ fn test_resolve_returns_error_without_authorities() {
   let key = GrainKey::new("user/123".to_string());
   let now = 1000;
 
-  let result = lookup.resolve(&key, now);
+  let result = lookup.resolve_at(&key, now, 1_000_000_000_000);
 
   assert!(matches!(result, Err(LookupError::NoAuthority)));
 }

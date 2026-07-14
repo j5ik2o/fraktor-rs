@@ -4,6 +4,7 @@ use core::time::Duration;
 use fraktor_actor_adaptor_std_rs::system::{create_noop_actor_system, create_noop_actor_system_with};
 use fraktor_actor_core_kernel_rs::{
   actor::{
+    error::SendError,
     messaging::AnyMessage,
     scheduler::{SchedulerCommand, SchedulerConfig},
   },
@@ -70,6 +71,11 @@ fn publish_member_status(
   let payload = AnyMessage::new(cluster_event);
   let event = EventStreamEvent::Extension { name: String::from("cluster"), payload };
   event_stream.publish(&event);
+}
+
+#[test]
+fn idle_passivation_delivery_failure_is_reported() {
+  super::report_idle_passivation_delivery_failure(&SendError::closed(AnyMessage::new(0_u64)));
 }
 
 struct StubProvider;
@@ -650,7 +656,10 @@ fn default_idle_passivation_starts_with_nanosecond_scheduler_resolution() {
   extension.start_member().expect("start member");
   let handle = extension.idle_passivation_task.with_lock(|task| task.clone()).expect("passivation handle");
   system.state().scheduler().with_write(|scheduler| {
-    scheduler.run_due(TimerInstant::from_ticks(12_000_000_000, Duration::from_nanos(1)));
+    assert!(
+      scheduler.run_due(TimerInstant::from_ticks(12_000_000_000, Duration::from_nanos(1))) > 0,
+      "scheduler should run the idle passivation job"
+    );
   });
 
   assert_eq!(system.state().scheduler().with_read(|scheduler| scheduler.dump().jobs().len()), 1);

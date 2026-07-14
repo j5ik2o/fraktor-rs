@@ -13,6 +13,7 @@ use alloc::{
 use fraktor_actor_core_kernel_rs::{
   actor::{
     actor_ref::ActorRef,
+    error::SendError,
     messaging::AnyMessage,
     props::Props,
     scheduler::{ExecutionBatch, SchedulerCommand, SchedulerHandle, SchedulerRunnable},
@@ -36,6 +37,10 @@ use crate::{
 };
 
 const CLUSTER_EVENT_STREAM_NAME: &str = "cluster";
+
+fn report_idle_passivation_delivery_failure(error: &SendError) {
+  tracing::warn!(?error, "failed to enqueue Grain idle passivation sweep");
+}
 
 /// Internal subscriber that applies topology updates to ClusterCore.
 struct ClusterTopologySubscriber {
@@ -609,35 +614,35 @@ impl ClusterExtension {
     })?;
     let scheduler = system.state().scheduler();
     let sweep_interval = interval.min(scheduler.maximum_delay());
-    let actor_ref = match self.idle_passivation_actor.with_lock(|actor| actor.clone()) {
-      | Some(actor_ref) => actor_ref,
-      | None => {
-        let core = self.core.clone();
-        let event_stream = self.event_stream.clone();
-        let grain_metrics = self.grain_metrics.clone();
-        let props = Props::from_fn(move || {
-          GrainIdlePassivationActor::new(core.clone(), event_stream.clone(), grain_metrics.clone())
-        });
-        let actor_ref = system
-          .extended()
-          .spawn_system_actor(&props)
-          .map_err(|error| ClusterError::GrainIdlePassivationScheduler {
-            reason: format!("idle passivation actor spawn failed: {error}"),
-          })?
-          .into_actor_ref();
-        self.idle_passivation_actor.with_lock(|actor| *actor = Some(actor_ref.clone()));
-        actor_ref
-      },
-    };
+    let actor_ref = self.idle_passivation_actor.with_lock(|actor| -> Result<ActorRef, ClusterError> {
+      if let Some(actor_ref) = actor.clone() {
+        return Ok(actor_ref);
+      }
+      let core = self.core.clone();
+      let event_stream = self.event_stream.clone();
+      let grain_metrics = self.grain_metrics.clone();
+      let props = Props::from_fn(move || {
+        GrainIdlePassivationActor::new(core.clone(), event_stream.clone(), grain_metrics.clone())
+      });
+      let actor_ref = system
+        .extended()
+        .spawn_system_actor(&props)
+        .map_err(|error| ClusterError::GrainIdlePassivationScheduler {
+          reason: format!("idle passivation actor spawn failed: {error}"),
+        })?
+        .into_actor_ref();
+      *actor = Some(actor_ref.clone());
+      Ok(actor_ref)
+    })?;
     if self.idle_passivation_task.with_lock(|task| task.is_some()) {
       return Ok(false);
     }
     let resolution = scheduler.with_read(|scheduler| scheduler.resolution());
     let runnable: ArcShared<dyn SchedulerRunnable> = ArcShared::new(move |batch: &ExecutionBatch| {
       let nanos = resolution.as_nanos().saturating_mul(u128::from(batch.execution_tick()));
-      let now = u64::try_from(nanos.div_ceil(1_000_000_000)).unwrap_or(u64::MAX);
+      let now = u64::try_from(nanos).unwrap_or(u64::MAX);
       let mut receiver = actor_ref.clone();
-      if let Err(_error) = receiver.try_tell(AnyMessage::new(now)) {}
+      receiver.try_tell(AnyMessage::new(now)).unwrap_or_else(|error| report_idle_passivation_delivery_failure(&error));
     });
     let command = SchedulerCommand::RunRunnable { runnable };
     let handle = scheduler

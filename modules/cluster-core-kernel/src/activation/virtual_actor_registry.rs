@@ -15,9 +15,9 @@ use crate::grain::GrainKey;
 mod tests;
 
 struct ActivationEntry {
-  record:    ActivationRecord,
-  authority: String,
-  last_seen: u64,
+  record:          ActivationRecord,
+  authority:       String,
+  last_seen_nanos: u64,
 }
 
 /// Registry that keeps track of active grains.
@@ -49,6 +49,18 @@ impl VirtualActorRegistry {
     snapshot_required: bool,
     snapshot: Option<Vec<u8>>,
   ) -> Result<String, ActivationError> {
+    self.ensure_activation_at(key, authorities, now, now.saturating_mul(1_000_000_000), snapshot_required, snapshot)
+  }
+
+  pub(crate) fn ensure_activation_at(
+    &mut self,
+    key: &GrainKey,
+    authorities: &[String],
+    now_secs: u64,
+    idle_now_nanos: u64,
+    snapshot_required: bool,
+    snapshot: Option<Vec<u8>>,
+  ) -> Result<String, ActivationError> {
     let Some(owner) = RendezvousHasher::select(authorities, key) else {
       return Err(ActivationError::NoAuthority);
     };
@@ -61,17 +73,17 @@ impl VirtualActorRegistry {
     if let Some(entry) = self.activations.get_mut(key)
       && entry.authority == *owner
     {
-      entry.last_seen = now;
+      entry.last_seen_nanos = idle_now_nanos;
       self.events.push(VirtualActorEvent::Hit { key: key.clone(), pid: entry.record.pid.clone() });
-      self.pid_cache.put(key.clone(), entry.record.pid.clone(), owner.clone(), now, self.pid_ttl_secs);
+      self.pid_cache.put(key.clone(), entry.record.pid.clone(), owner.clone(), now_secs, self.pid_ttl_secs);
       return Ok(entry.record.pid.clone());
     }
 
     let pid = format!("{}::{}", owner, key.value());
     let record = ActivationRecord::new(pid.clone(), snapshot, 0);
-    let entry = ActivationEntry { record, authority: owner.clone(), last_seen: now };
+    let entry = ActivationEntry { record, authority: owner.clone(), last_seen_nanos: idle_now_nanos };
     let replaced = self.activations.insert(key.clone(), entry);
-    self.pid_cache.put(key.clone(), pid.clone(), owner.clone(), now, self.pid_ttl_secs);
+    self.pid_cache.put(key.clone(), pid.clone(), owner.clone(), now_secs, self.pid_ttl_secs);
 
     if replaced.is_some() {
       self.events.push(VirtualActorEvent::Reactivated {
@@ -94,7 +106,7 @@ impl VirtualActorRegistry {
   pub fn cached_pid(&mut self, key: &GrainKey, now: u64) -> Option<String> {
     let pid = self.pid_cache.get(key, now);
     if pid.is_some() {
-      self.touch_activation(key, now);
+      self.touch_activation(key, now.saturating_mul(1_000_000_000));
     }
     pid
   }
@@ -132,10 +144,14 @@ impl VirtualActorRegistry {
 
   /// Passivates idle activations.
   pub fn passivate_idle(&mut self, now: u64, idle_ttl: u64) {
+    self.passivate_idle_at(now.saturating_mul(1_000_000_000), idle_ttl.saturating_mul(1_000_000_000));
+  }
+
+  pub(crate) fn passivate_idle_at(&mut self, now_nanos: u64, idle_ttl_nanos: u64) {
     let to_passivate: Vec<_> = self
       .activations
       .iter()
-      .filter(|(_, entry)| now.saturating_sub(entry.last_seen) >= idle_ttl)
+      .filter(|(_, entry)| now_nanos.saturating_sub(entry.last_seen_nanos) >= idle_ttl_nanos)
       .map(|(key, _)| key.clone())
       .collect();
 
@@ -174,10 +190,25 @@ impl VirtualActorRegistry {
 
   /// Records an activation entry with explicit authority.
   pub fn record_activation(&mut self, key: &GrainKey, authority: &str, record: &ActivationRecord, now: u64) {
+    self.record_activation_at(key, authority, record, now, now.saturating_mul(1_000_000_000));
+  }
+
+  pub(crate) fn record_activation_at(
+    &mut self,
+    key: &GrainKey,
+    authority: &str,
+    record: &ActivationRecord,
+    now_secs: u64,
+    idle_now_nanos: u64,
+  ) {
     let pid = record.pid.clone();
-    let entry = ActivationEntry { record: record.clone(), authority: authority.to_string(), last_seen: now };
+    let entry = ActivationEntry {
+      record:          record.clone(),
+      authority:       authority.to_string(),
+      last_seen_nanos: idle_now_nanos,
+    };
     let replaced = self.activations.insert(key.clone(), entry);
-    self.pid_cache.put(key.clone(), pid.clone(), authority.to_string(), now, self.pid_ttl_secs);
+    self.pid_cache.put(key.clone(), pid.clone(), authority.to_string(), now_secs, self.pid_ttl_secs);
 
     let event = if replaced.is_some() {
       VirtualActorEvent::Reactivated { key: key.clone(), pid, authority: authority.to_string() }
@@ -187,9 +218,9 @@ impl VirtualActorRegistry {
     self.events.push(event);
   }
 
-  pub(crate) fn touch_activation(&mut self, key: &GrainKey, now: u64) {
+  pub(crate) fn touch_activation(&mut self, key: &GrainKey, idle_now_nanos: u64) {
     if let Some(entry) = self.activations.get_mut(key) {
-      entry.last_seen = now;
+      entry.last_seen_nanos = idle_now_nanos;
     }
   }
 }

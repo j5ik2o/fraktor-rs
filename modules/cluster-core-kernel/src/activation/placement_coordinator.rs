@@ -16,12 +16,13 @@ mod tests;
 
 #[derive(Debug, Clone)]
 struct PendingRequest {
-  key:        GrainKey,
-  authority:  String,
-  decided_at: u64,
-  lease:      Option<PlacementLease>,
-  activation: Option<ActivationRecord>,
-  locality:   PlacementLocality,
+  key:                   GrainKey,
+  authority:             String,
+  decided_at:            u64,
+  idle_decided_at_nanos: u64,
+  lease:                 Option<PlacementLease>,
+  activation:            Option<ActivationRecord>,
+  locality:              PlacementLocality,
 }
 
 /// Core placement coordinator (no_std).
@@ -130,8 +131,14 @@ impl PlacementCoordinatorCore {
 
   /// Passivates idle activations.
   pub fn passivate_idle(&mut self, now: u64, idle_ttl_secs: u64) {
-    self.registry.passivate_idle(now, idle_ttl_secs);
-    let events = self.collect_registry_events(now);
+    self.passivate_idle_at(now.saturating_mul(1_000_000_000), idle_ttl_secs.saturating_mul(1_000_000_000));
+  }
+
+  /// Passivates idle activations using monotonic nanosecond timestamps.
+  pub fn passivate_idle_at(&mut self, now_nanos: u64, idle_ttl_nanos: u64) {
+    self.registry.passivate_idle_at(now_nanos, idle_ttl_nanos);
+    let observed_at = now_nanos.div_ceil(1_000_000_000);
+    let events = self.collect_registry_events(observed_at);
     self.events.extend(events);
   }
 
@@ -161,6 +168,20 @@ impl PlacementCoordinatorCore {
   ///
   /// Returns an error when resolution fails or is not ready.
   pub fn resolve(&mut self, key: &GrainKey, now: u64) -> Result<PlacementCoordinatorOutcome, LookupError> {
+    self.resolve_at(key, now, now.saturating_mul(1_000_000_000))
+  }
+
+  /// Resolves placement and records an exact monotonic time for idle tracking.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error when resolution fails or is not ready.
+  pub fn resolve_at(
+    &mut self,
+    key: &GrainKey,
+    now_secs: u64,
+    idle_now_nanos: u64,
+  ) -> Result<PlacementCoordinatorOutcome, LookupError> {
     if matches!(self.state, PlacementCoordinatorState::Stopped | PlacementCoordinatorState::NotReady) {
       return Err(LookupError::NotReady);
     }
@@ -169,17 +190,21 @@ impl PlacementCoordinatorCore {
       return Err(LookupError::NoAuthority);
     };
 
-    if let Some((pid, cached_authority)) = self.registry.cached_pid_with_authority(key, now)
+    if let Some((pid, cached_authority)) = self.registry.cached_pid_with_authority(key, now_secs)
       && self.authorities.contains(&cached_authority)
       && !self.is_remote(&cached_authority)
     {
-      self.registry.touch_activation(key, now);
+      self.registry.touch_activation(key, idle_now_nanos);
       let decision =
-        PlacementDecision { key: key.clone(), authority: cached_authority.clone(), observed_at: now };
+        PlacementDecision { key: key.clone(), authority: cached_authority.clone(), observed_at: now_secs };
       let resolution = PlacementResolution { decision, locality: PlacementLocality::Local, pid };
       let events = vec![
-        PlacementEvent::Resolved { key: key.clone(), authority: cached_authority, observed_at: now },
-        PlacementEvent::Activated { key: key.clone(), pid: resolution.pid.clone(), observed_at: now },
+        PlacementEvent::Resolved { key: key.clone(), authority: cached_authority, observed_at: now_secs },
+        PlacementEvent::Activated {
+          key:         key.clone(),
+          pid:         resolution.pid.clone(),
+          observed_at: now_secs,
+        },
       ];
       self.events.extend(events);
       return Ok(PlacementCoordinatorOutcome {
@@ -189,9 +214,9 @@ impl PlacementCoordinatorCore {
       });
     }
 
-    let decision = PlacementDecision { key: key.clone(), authority: owner.clone(), observed_at: now };
+    let decision = PlacementDecision { key: key.clone(), authority: owner.clone(), observed_at: now_secs };
     let events =
-      vec![PlacementEvent::Resolved { key: key.clone(), authority: owner.clone(), observed_at: now }];
+      vec![PlacementEvent::Resolved { key: key.clone(), authority: owner.clone(), observed_at: now_secs }];
 
     if self.is_remote(&owner) {
       let pid = format!("{}::{}", owner, key.value());
@@ -205,8 +230,8 @@ impl PlacementCoordinatorCore {
     }
 
     if !self.distributed_activation {
-      let mut outcome = self.resolve_with_registry(key, now, decision, events)?;
-      outcome.events.extend(self.collect_registry_events(now));
+      let mut outcome = self.resolve_with_registry(key, now_secs, idle_now_nanos, decision, events)?;
+      outcome.events.extend(self.collect_registry_events(now_secs));
       self.events.extend(outcome.events);
       outcome.events = Vec::new();
       return Ok(outcome);
@@ -214,16 +239,17 @@ impl PlacementCoordinatorCore {
 
     let request_id = self.next_request_id();
     let pending = PendingRequest {
-      key:        key.clone(),
-      authority:  owner.clone(),
-      decided_at: now,
-      lease:      None,
-      activation: None,
-      locality:   PlacementLocality::Local,
+      key:                   key.clone(),
+      authority:             owner.clone(),
+      decided_at:            now_secs,
+      idle_decided_at_nanos: idle_now_nanos,
+      lease:                 None,
+      activation:            None,
+      locality:              PlacementLocality::Local,
     };
     self.pending.insert(request_id, pending);
 
-    let command = PlacementCommand::TryAcquire { request_id, key: key.clone(), owner, now };
+    let command = PlacementCommand::TryAcquire { request_id, key: key.clone(), owner, now: now_secs };
     self.events.extend(events);
     Ok(PlacementCoordinatorOutcome { resolution: None, commands: vec![command], events: Vec::new() })
   }
@@ -332,11 +358,12 @@ impl PlacementCoordinatorCore {
   fn resolve_with_registry(
     &mut self,
     key: &GrainKey,
-    now: u64,
+    now_secs: u64,
+    idle_now_nanos: u64,
     decision: PlacementDecision,
     events: Vec<PlacementEvent>,
   ) -> Result<PlacementCoordinatorOutcome, LookupError> {
-    match self.registry.ensure_activation(key, &self.authorities, now, false, None) {
+    match self.registry.ensure_activation_at(key, &self.authorities, now_secs, idle_now_nanos, false, None) {
       | Ok(pid) => {
         let resolution = PlacementResolution { decision, locality: PlacementLocality::Local, pid };
         Ok(PlacementCoordinatorOutcome { resolution: Some(resolution), commands: Vec::new(), events })
@@ -360,7 +387,13 @@ impl PlacementCoordinatorCore {
 
   fn finalize_resolution(&mut self, pending: &PendingRequest, record: &ActivationRecord) -> PlacementResolution {
     let pid = record.pid.clone();
-    self.registry.record_activation(&pending.key, &pending.authority, record, pending.decided_at);
+    self.registry.record_activation_at(
+      &pending.key,
+      &pending.authority,
+      record,
+      pending.decided_at,
+      pending.idle_decided_at_nanos,
+    );
     PlacementResolution {
       decision: PlacementDecision {
         key:         pending.key.clone(),

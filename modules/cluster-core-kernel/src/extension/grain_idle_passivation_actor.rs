@@ -36,7 +36,7 @@ impl Actor for GrainIdlePassivationActor {
       if core.mode().is_none() {
         return Vec::new();
       }
-      core.passivate_idle(now);
+      core.passivate_idle_at(now);
       core.drain_placement_events()
     });
     publish_activation_events(&self.event_stream, &self.grain_metrics, events);

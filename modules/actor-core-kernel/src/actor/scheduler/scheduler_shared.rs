@@ -106,6 +106,13 @@ impl SchedulerShared {
     u64::try_from(nanos.div_ceil(1_000_000_000)).unwrap_or(u64::MAX)
   }
 
+  /// Returns the scheduler's current logical time in nanoseconds.
+  #[must_use]
+  pub fn current_time_nanos(&self) -> u64 {
+    let nanos = self.resolution.as_nanos().saturating_mul(u128::from(self.current_tick.load(Ordering::Acquire)));
+    u64::try_from(nanos).unwrap_or(u64::MAX)
+  }
+
   /// Returns the longest delay accepted by this scheduler resolution.
   #[must_use]
   pub fn maximum_delay(&self) -> Duration {

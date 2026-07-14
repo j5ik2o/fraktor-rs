@@ -186,10 +186,24 @@ impl ClusterCore {
     self.identity_lookup.with_write(|lookup| lookup.resolve(key, now))
   }
 
+  /// Resolves a PID while preserving exact monotonic time for idle tracking.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error when placement resolution fails or is pending.
+  pub(crate) fn resolve_pid_at(
+    &mut self,
+    key: &GrainKey,
+    now_secs: u64,
+    idle_now_nanos: u64,
+  ) -> Result<PlacementResolution, LookupError> {
+    self.identity_lookup.with_write(|lookup| lookup.resolve_at(key, now_secs, idle_now_nanos))
+  }
+
   /// Passivates activations that exceeded the configured idle threshold.
-  pub(crate) fn passivate_idle(&mut self, now: u64) {
-    let idle_ttl = self.grain_idle_passivation_threshold.as_secs();
-    self.identity_lookup.with_write(|lookup| lookup.passivate_idle(now, idle_ttl));
+  pub(crate) fn passivate_idle_at(&mut self, now_nanos: u64) {
+    let idle_ttl_nanos = u64::try_from(self.grain_idle_passivation_threshold.as_nanos()).unwrap_or(u64::MAX);
+    self.identity_lookup.with_write(|lookup| lookup.passivate_idle_at(now_nanos, idle_ttl_nanos));
   }
 
   /// Drains placement events emitted by identity lookup.

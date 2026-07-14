@@ -296,7 +296,8 @@ impl ClusterApi {
 
   fn resolve_actor_ref(&self, identity: &ClusterIdentity) -> Result<ActorRef, ClusterResolveError> {
     let key = identity.key();
-    let now = self.current_time_secs();
+    let idle_now_nanos = self.system.state().scheduler().current_time_nanos();
+    let now_secs = idle_now_nanos.div_ceil(1_000_000_000);
     let (pid_result, placement_events) = {
       let core = self.extension.core_shared();
       core.with_lock(|guard| {
@@ -306,7 +307,7 @@ impl ClusterApi {
         if !guard.is_kind_registered(identity.kind()) {
           return Err(ClusterResolveError::KindNotRegistered { kind: identity.kind().to_string() });
         }
-        let resolution = guard.resolve_pid(&key, now).map_err(|error| match error {
+        let resolution = guard.resolve_pid_at(&key, now_secs, idle_now_nanos).map_err(|error| match error {
           | LookupError::Pending => ClusterResolveError::LookupPending,
           | _ => ClusterResolveError::LookupFailed,
         });
@@ -329,10 +330,6 @@ impl ClusterApi {
       .map_err(|error| ClusterResolveError::InvalidPidFormat { pid: pid.clone(), reason: error.to_string() })?;
 
     self.system.resolve_actor_ref(actor_path).map_err(ClusterResolveError::ActorRefResolve)
-  }
-
-  fn current_time_secs(&self) -> u64 {
-    self.system.state().scheduler().current_time_secs()
   }
 
   fn schedule_timeout(
