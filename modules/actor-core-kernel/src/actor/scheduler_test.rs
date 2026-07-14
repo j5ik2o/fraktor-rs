@@ -96,7 +96,7 @@ fn shared_scheduler_state() -> (SharedScheduler, SchedulerBackedDelayProvider) {
 }
 
 #[test]
-fn shared_scheduler_time_tracks_current_tick_without_dump() {
+fn shared_scheduler_time_rounds_partial_seconds_up_without_dump() {
   let scheduler =
     Scheduler::new(SchedulerConfig::new(Duration::from_millis(100), SchedulerCapacityProfile::standard()));
   let shared = SchedulerShared::new(SharedRwLock::new_with_driver::<SpinSyncRwLock<_>>(scheduler));
@@ -105,7 +105,7 @@ fn shared_scheduler_time_tracks_current_tick_without_dump() {
     scheduler.run_due(TimerInstant::from_ticks(15, Duration::from_millis(100)));
   });
 
-  assert_eq!(shared.current_time_secs(), 1);
+  assert_eq!(shared.current_time_secs(), 2);
 }
 
 fn noop_waker() -> Waker {

@@ -526,6 +526,24 @@ impl IdentityLookup for StubIdentity {
   }
 }
 
+struct CountingPassivationIdentity {
+  passivations: ArcShared<SpinSyncMutex<usize>>,
+}
+
+impl IdentityLookup for CountingPassivationIdentity {
+  fn setup_member(&mut self, _kinds: &[ActivatedKind]) -> Result<(), IdentitySetupError> {
+    Ok(())
+  }
+
+  fn setup_client(&mut self, _kinds: &[ActivatedKind]) -> Result<(), IdentitySetupError> {
+    Ok(())
+  }
+
+  fn passivate_idle(&mut self, _now: u64, _idle_ttl: u64) {
+    *self.passivations.lock() += 1;
+  }
+}
+
 struct StubBlockList;
 impl crate::BlockListProvider for StubBlockList {
   fn blocked_members(&self) -> Vec<String> {
@@ -595,6 +613,43 @@ fn shutdown_removes_idle_passivation_job_from_scheduler_queue() {
   extension.shutdown(true).expect("shutdown");
 
   assert!(scheduler.with_read(|scheduler| scheduler.dump().jobs().is_empty()));
+}
+
+#[test]
+fn queued_idle_passivation_is_ignored_after_shutdown() {
+  let system = create_noop_actor_system();
+  let passivations = ArcShared::new(SpinSyncMutex::new(0));
+  let ext_id = ClusterExtensionId::new(
+    ClusterExtensionConfig::new().with_advertised_address("fraktor://demo"),
+    Box::new(StubProvider),
+    ArcShared::new(StubBlockList),
+    Box::new(NoopDowningProvider::new()),
+    Box::new(StubGossiper),
+    Box::new(StubPubSub),
+    Box::new(CountingPassivationIdentity { passivations: passivations.clone() }),
+  );
+  let extension = system.extended().register_extension(&ext_id);
+
+  extension.start_member().expect("start member");
+  let mut actor_ref =
+    extension.idle_passivation_actor.with_lock(|actor| actor.clone()).expect("idle passivation actor");
+  extension.shutdown(true).expect("shutdown");
+
+  actor_ref.tell(AnyMessage::new(()));
+
+  assert_eq!(*passivations.lock(), 0);
+}
+
+#[test]
+fn default_idle_passivation_starts_with_nanosecond_scheduler_resolution() {
+  let scheduler_config = SchedulerConfig::new(Duration::from_nanos(1), SchedulerCapacityProfile::standard());
+  let system = create_noop_actor_system_with(|config| config.with_scheduler_config(scheduler_config));
+  let ext_id = stub_extension_id(ClusterExtensionConfig::new().with_advertised_address("fraktor://demo"));
+  let extension = system.extended().register_extension(&ext_id);
+
+  extension.start_member().expect("start member");
+
+  assert_eq!(system.state().scheduler().with_read(|scheduler| scheduler.dump().jobs().len()), 1);
 }
 
 /// Helper to build `ClusterExtensionId` with a real partition identity lookup.

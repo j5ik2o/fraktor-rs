@@ -1,5 +1,7 @@
 //! Actor that runs Grain idle-passivation maintenance outside the scheduler lock.
 
+use alloc::vec::Vec;
+
 use fraktor_actor_core_kernel_rs::{
   actor::{Actor, ActorContext, error::ActorError, messaging::AnyMessageView, scheduler::SchedulerShared},
   event::stream::EventStreamShared,
@@ -34,6 +36,9 @@ impl Actor for GrainIdlePassivationActor {
     }
     let now = scheduler_time_secs(&self.scheduler);
     let events = self.core.with_lock(|core| {
+      if core.mode().is_none() {
+        return Vec::new();
+      }
       core.passivate_idle(now);
       core.drain_placement_events()
     });

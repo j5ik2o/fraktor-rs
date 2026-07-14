@@ -225,6 +225,32 @@ fn configured_idle_passivation_runs_from_install_and_start_to_events_and_metrics
 }
 
 #[test]
+fn subsecond_access_is_not_passivated_at_the_next_second_boundary() {
+  let cluster_config = ClusterExtensionConfig::new()
+    .with_advertised_address("node1:8080")
+    .with_grain_idle_passivation_threshold(Duration::from_secs(1));
+  let (system, ext) =
+    build_system_with_cluster_config(|| Box::new(PartitionIdentityLookup::with_defaults()), cluster_config);
+  ext.start_member().expect("start member");
+  ext.setup_member_kinds(vec![ActivatedKind::new("user")]).expect("setup kinds");
+  ext.on_topology(&build_topology_update(1, Vec::new(), Vec::new()));
+  let (recorder, _subscription) = subscribe_grain_events(&system.event_stream());
+  let api = ClusterApi::try_from_system(&system).expect("cluster api");
+  let identity = ClusterIdentity::new("user", "recent").expect("recent identity");
+
+  advance_scheduler(&system, Duration::from_millis(990));
+  let _ = api.get(&identity).expect("activate recent Grain");
+  advance_scheduler(&system, Duration::from_millis(10));
+
+  assert!(
+    !recorder
+      .events()
+      .iter()
+      .any(|event| matches!(event, GrainEvent::ActivationPassivated { key } if *key == identity.key()))
+  );
+}
+
+#[test]
 fn request_returns_error_when_lookup_fails() {
   let (system, ext) = build_system_with_extension(|| Box::new(NoopIdentityLookup::new()));
   ext.start_member().expect("start member");

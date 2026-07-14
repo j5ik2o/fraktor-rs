@@ -608,6 +608,7 @@ impl ClusterExtension {
       reason: String::from("actor system is unavailable"),
     })?;
     let scheduler = system.state().scheduler();
+    let sweep_interval = interval.min(scheduler.maximum_delay());
     let actor_ref = match self.idle_passivation_actor.with_lock(|actor| actor.clone()) {
       | Some(actor_ref) => actor_ref,
       | None => {
@@ -641,7 +642,7 @@ impl ClusterExtension {
       let command =
         SchedulerCommand::SendMessage { receiver: actor_ref, message: AnyMessage::new(()), sender: None };
       let handle = scheduler
-        .with_write(|scheduler| scheduler.schedule_at_fixed_rate(interval, interval, command))
+        .with_write(|scheduler| scheduler.schedule_at_fixed_rate(sweep_interval, sweep_interval, command))
         .map_err(|error| ClusterError::GrainIdlePassivationScheduler { reason: format!("{error}") })?;
       *task = Some(handle);
       Ok(())
