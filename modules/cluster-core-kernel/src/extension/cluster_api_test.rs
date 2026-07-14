@@ -12,7 +12,7 @@ use fraktor_actor_core_kernel_rs::{
     extension::ExtensionInstallers,
     messaging::{AnyMessage, AnyMessageView},
     props::Props,
-    scheduler::{SchedulerConfig, SchedulerShared},
+    scheduler::{ExecutionBatch, SchedulerCommand, SchedulerConfig, SchedulerRunnable, SchedulerShared},
     setup::ActorSystemConfig,
   },
   event::stream::{
@@ -193,6 +193,32 @@ fn get_publishes_activation_events_and_updates_metrics() {
   let metrics = ext.grain_metrics().expect("metrics");
   assert_eq!(metrics.activations_created(), 1);
   assert_eq!(metrics.activations_passivated(), 1);
+}
+
+#[test]
+fn scheduler_callback_defers_grain_notifications_until_after_scheduler_write() {
+  let (system, ext) = build_system_with_extension(|| Box::new(EventfulIdentityLookup::new("node1:8080")));
+  ext.start_member().expect("start member");
+  ext.setup_member_kinds(vec![ActivatedKind::new("user")]).expect("setup kinds");
+
+  let scheduler = system.state().scheduler();
+  let subscriber = SchedulingGrainSubscriber::new(scheduler.clone());
+  let subscriber_handle = test_subscriber_handle(subscriber.clone());
+  let _subscription = system.event_stream().subscribe(&subscriber_handle);
+  let api = ClusterApi::try_from_system(&system).expect("cluster api");
+  let identity = ClusterIdentity::new("user", "scheduled").expect("identity");
+  let runnable: ArcShared<dyn SchedulerRunnable> = ArcShared::new(move |_batch: &ExecutionBatch| {
+    let _actor_ref = api.get(&identity).expect("resolve from scheduler callback");
+  });
+  scheduler.with_write(|inner| {
+    inner
+      .schedule_once(Duration::from_millis(10), SchedulerCommand::RunRunnable { runnable })
+      .expect("schedule callback");
+  });
+
+  run_scheduler(&system, Duration::from_millis(10));
+
+  assert!(subscriber.notified());
 }
 
 #[test]
@@ -912,6 +938,36 @@ fn subscribe_grain_events(event_stream: &EventStreamShared) -> (RecordingGrainEv
   let subscriber = test_subscriber_handle(recorder.clone());
   let subscription = event_stream.subscribe(&subscriber);
   (recorder, subscription)
+}
+
+#[derive(Clone)]
+struct SchedulingGrainSubscriber {
+  scheduler: SchedulerShared,
+  notified:  ArcShared<SpinSyncMutex<bool>>,
+}
+
+impl SchedulingGrainSubscriber {
+  fn new(scheduler: SchedulerShared) -> Self {
+    Self { scheduler, notified: ArcShared::new(SpinSyncMutex::new(false)) }
+  }
+
+  fn notified(&self) -> bool {
+    *self.notified.lock()
+  }
+}
+
+impl EventStreamSubscriber for SchedulingGrainSubscriber {
+  fn on_event(&mut self, event: &EventStreamEvent) {
+    if let EventStreamEvent::Extension { name, payload } = event
+      && name == GRAIN_EVENT_STREAM_NAME
+      && matches!(payload.payload().downcast_ref::<GrainEvent>(), Some(GrainEvent::ActivationCreated { .. }))
+    {
+      self.scheduler.with_write(|inner| {
+        inner.schedule_once(Duration::from_millis(10), SchedulerCommand::Noop).expect("schedule from Grain subscriber");
+      });
+      *self.notified.lock() = true;
+    }
+  }
 }
 
 #[derive(Clone)]

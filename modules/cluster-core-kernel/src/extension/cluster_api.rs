@@ -314,7 +314,12 @@ impl ClusterApi {
         Ok((resolution.map(|value| value.pid), events))
       })?
     };
-    self.extension.publish_activation_events(placement_events);
+    if !placement_events.is_empty() {
+      let extension = self.extension.clone();
+      self.system.state().scheduler().run_after_write(move || {
+        extension.publish_activation_events(placement_events);
+      });
+    }
     let pid = pid_result?;
 
     let (authority, path) = split_pid(&pid)?;
