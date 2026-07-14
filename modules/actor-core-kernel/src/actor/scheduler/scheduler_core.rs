@@ -10,9 +10,11 @@ mod tests;
 use ahash::RandomState;
 use fraktor_utils_core_rs::{
   collections::queue::{OverflowPolicy, backend::BinaryHeapPriorityBackend},
+  sync::ArcShared,
   time::{ManualClock, TimerEntry, TimerHandleId, TimerInstant, TimerWheel, TimerWheelConfig},
 };
 use hashbrown::HashMap;
+use portable_atomic::{AtomicU64, Ordering};
 
 use super::{
   ExecutionBatch, SchedulerHandle, SchedulerMode, SchedulerWarning,
@@ -42,7 +44,7 @@ pub struct Scheduler {
   warnings:      Vec<SchedulerWarning>,
   next_handle:   u64,
   jobs:          HashMap<u64, ScheduledJob, RandomState>,
-  current_tick:  u64,
+  current_tick:  ArcShared<AtomicU64>,
   closed:        bool,
   task_runs:     TaskRunQueue,
   task_run_seq:  u64,
@@ -108,7 +110,7 @@ impl Scheduler {
       warnings: Vec::new(),
       next_handle: 1,
       jobs: HashMap::with_hasher(RandomState::new()),
-      current_tick: 0,
+      current_tick: ArcShared::new(AtomicU64::new(0)),
       closed: false,
       task_runs: TaskRunQueue::new(task_run_backend),
       task_run_seq: 0,
@@ -125,8 +127,14 @@ impl Scheduler {
 
   /// Returns the scheduler's current logical tick.
   #[must_use]
-  pub const fn current_tick(&self) -> u64 {
-    self.current_tick
+  pub fn current_tick(&self) -> u64 {
+    self.current_tick.load(Ordering::Acquire)
+  }
+
+  /// Returns the shared atomic backing the current logical tick.
+  #[must_use]
+  pub(crate) fn current_tick_snapshot(&self) -> ArcShared<AtomicU64> {
+    self.current_tick.clone()
   }
 
   /// Returns the scheduler configuration copy.
@@ -178,7 +186,7 @@ impl Scheduler {
       let next_tick = job.periodic.as_ref().map(PeriodicContext::next_deadline_ticks);
       jobs.push(SchedulerDumpJob::new(job.handle.raw(), job.mode, job.deadline_tick, next_tick));
     }
-    SchedulerDump::new(self.config.resolution(), self.current_tick, self.metrics, jobs, self.warnings.clone())
+    SchedulerDump::new(self.config.resolution(), self.current_tick(), self.metrics, jobs, self.warnings.clone())
   }
 
   /// Registers a one-shot job backed by the provided [`SchedulerCommand`].
@@ -322,7 +330,7 @@ impl Scheduler {
 
   /// Runs due timers at the provided instant, returning the number of executed jobs.
   pub fn run_due(&mut self, now: TimerInstant) -> usize {
-    self.current_tick = now.ticks();
+    self.current_tick.store(now.ticks(), Ordering::Release);
     let expired = self.wheel.collect_expired(now);
     let mut executed = 0;
     for entry in expired {
@@ -478,12 +486,12 @@ impl Scheduler {
 
   fn prepare_batch(&mut self, job: &mut ScheduledJob, handle_id: u64) -> BatchPreparation {
     match job.periodic.as_mut() {
-      | Some(context) => match context.build_batch(self.current_tick, handle_id) {
+      | Some(context) => match context.build_batch(self.current_tick(), handle_id) {
         | PeriodicBatchDecision::Execute { batch, warning } => {
           if let Some(warning) = warning {
             self.record_warning(warning);
           }
-          BatchPreparation::Ready(batch.with_execution_tick(self.current_tick))
+          BatchPreparation::Ready(batch.with_execution_tick(self.current_tick()))
         },
         | PeriodicBatchDecision::Cancel { warning } => {
           self.record_warning(warning);
@@ -491,7 +499,7 @@ impl Scheduler {
           BatchPreparation::Cancelled
         },
       },
-      | None => BatchPreparation::Ready(ExecutionBatch::oneshot().with_execution_tick(self.current_tick)),
+      | None => BatchPreparation::Ready(ExecutionBatch::oneshot().with_execution_tick(self.current_tick())),
     }
   }
 
@@ -538,8 +546,8 @@ impl Scheduler {
     Ok(ticks as u64)
   }
 
-  const fn deadline_from_ticks(&self, delta: u64) -> TimerInstant {
-    let ticks = self.current_tick.saturating_add(delta);
+  fn deadline_from_ticks(&self, delta: u64) -> TimerInstant {
+    let ticks = self.current_tick().saturating_add(delta);
     TimerInstant::from_ticks(ticks, self.config.resolution())
   }
 
@@ -586,7 +594,7 @@ impl Scheduler {
   fn record_scheduled_event(&mut self, handle_id: u64, deadline: TimerInstant, mode: SchedulerMode) {
     self.diagnostics.record(DeterministicEvent::Scheduled {
       handle_id,
-      scheduled_tick: self.current_tick,
+      scheduled_tick: self.current_tick(),
       deadline_tick: deadline.ticks(),
     });
     self.publish_stream_with_drop(SchedulerDiagnosticsEvent::Scheduled {
@@ -597,14 +605,20 @@ impl Scheduler {
   }
 
   fn record_fire_event(&mut self, handle_id: u64, batch: ExecutionBatch) {
-    self.diagnostics.record(DeterministicEvent::Fired { handle_id, fired_tick: self.current_tick, batch });
-    self.publish_stream_with_drop(SchedulerDiagnosticsEvent::Fired { handle_id, fired_tick: self.current_tick, batch });
+    self.diagnostics.record(DeterministicEvent::Fired { handle_id, fired_tick: self.current_tick(), batch });
+    self.publish_stream_with_drop(SchedulerDiagnosticsEvent::Fired {
+      handle_id,
+      fired_tick: self.current_tick(),
+      batch,
+    });
   }
 
   fn record_cancel_event(&mut self, handle_id: u64) {
-    self.diagnostics.record(DeterministicEvent::Cancelled { handle_id, cancelled_tick: self.current_tick });
-    self
-      .publish_stream_with_drop(SchedulerDiagnosticsEvent::Cancelled { handle_id, cancelled_tick: self.current_tick });
+    self.diagnostics.record(DeterministicEvent::Cancelled { handle_id, cancelled_tick: self.current_tick() });
+    self.publish_stream_with_drop(SchedulerDiagnosticsEvent::Cancelled {
+      handle_id,
+      cancelled_tick: self.current_tick(),
+    });
   }
 
   fn publish_stream_with_drop(&mut self, event: SchedulerDiagnosticsEvent) {
