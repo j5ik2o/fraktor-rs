@@ -19,7 +19,7 @@ use fraktor_utils_core_rs::{
 
 use crate::{
   BlockListProvider, ClusterError, ClusterEvent, ClusterExtension, ClusterExtensionConfig, ClusterExtensionId,
-  ClusterProviderError, ClusterTopology, TopologyUpdate,
+  ClusterProviderError, ClusterTopology, StartupMode, TopologyUpdate,
   activation::{
     ActivatedKind, IdentityLookup, IdentitySetupError, LookupError, PartitionIdentityLookup, PlacementResolution,
   },
@@ -568,12 +568,33 @@ fn idle_passivation_scheduler_failure_preserves_reason() {
     .expect("fill scheduler capacity");
   let ext_id = stub_extension_id(ClusterExtensionConfig::new().with_advertised_address("fraktor://demo"));
   let extension = system.extended().register_extension(&ext_id);
+  let (recorder, _subscription) = subscribe_recorder(&system.event_stream());
 
-  let error = extension.prepare_idle_passivation_task().expect_err("passivation scheduling should fail");
+  let error = extension.start_member().expect_err("passivation scheduling should fail");
 
   assert_eq!(error, ClusterError::GrainIdlePassivationScheduler {
     reason: String::from("scheduler capacity exceeded"),
   });
+  assert!(recorder.events().iter().any(|event| matches!(
+    event,
+    ClusterEvent::StartupFailed { mode: StartupMode::Member, reason, .. }
+      if reason.contains("scheduler capacity exceeded")
+  )));
+}
+
+#[test]
+fn shutdown_removes_idle_passivation_job_from_scheduler_queue() {
+  let system = create_noop_actor_system();
+  let ext_id = stub_extension_id(ClusterExtensionConfig::new().with_advertised_address("fraktor://demo"));
+  let extension = system.extended().register_extension(&ext_id);
+  let scheduler = system.state().scheduler();
+
+  extension.start_member().expect("start member");
+  assert_eq!(scheduler.with_read(|scheduler| scheduler.dump().jobs().len()), 1);
+
+  extension.shutdown(true).expect("shutdown");
+
+  assert!(scheduler.with_read(|scheduler| scheduler.dump().jobs().is_empty()));
 }
 
 /// Helper to build `ClusterExtensionId` with a real partition identity lookup.

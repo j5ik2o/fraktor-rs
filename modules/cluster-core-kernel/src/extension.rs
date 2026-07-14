@@ -20,6 +20,7 @@ mod cluster_router_pool;
 mod cluster_router_pool_config;
 mod cluster_sharding_state_store_mode;
 mod cluster_subscription_initial_state_mode;
+mod grain_idle_passivation_actor;
 mod metrics_error;
 mod scheduler_time;
 mod startup_mode;

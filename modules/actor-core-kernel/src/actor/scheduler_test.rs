@@ -15,7 +15,7 @@ use core::{
 use ahash::RandomState;
 use fraktor_utils_core_rs::{
   sync::{ArcShared, SharedAccess, SharedRwLock, SpinSyncMutex, SpinSyncRwLock},
-  time::{SchedulerCapacityProfile, SchedulerTickHandle},
+  time::{SchedulerCapacityProfile, SchedulerTickHandle, TimerInstant},
   timing::delay::{DelayFuture, DelayProvider},
 };
 use hashbrown::HashMap;
@@ -93,6 +93,19 @@ fn shared_scheduler_state() -> (SharedScheduler, SchedulerBackedDelayProvider) {
   let shared = SchedulerShared::new(SharedRwLock::new_with_driver::<SpinSyncRwLock<_>>(scheduler));
   let provider = SchedulerBackedDelayProvider::new(shared.clone());
   (shared, provider)
+}
+
+#[test]
+fn shared_scheduler_time_tracks_current_tick_without_dump() {
+  let scheduler =
+    Scheduler::new(SchedulerConfig::new(Duration::from_millis(100), SchedulerCapacityProfile::standard()));
+  let shared = SchedulerShared::new(SharedRwLock::new_with_driver::<SpinSyncRwLock<_>>(scheduler));
+
+  shared.with_write(|scheduler| {
+    scheduler.run_due(TimerInstant::from_ticks(15, Duration::from_millis(100)));
+  });
+
+  assert_eq!(shared.current_time_secs(), 1);
 }
 
 fn noop_waker() -> Waker {
