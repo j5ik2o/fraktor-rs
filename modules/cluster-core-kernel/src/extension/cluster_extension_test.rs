@@ -1,17 +1,20 @@
 use alloc::{boxed::Box, string::String, vec, vec::Vec};
 use core::time::Duration;
 
-use fraktor_actor_adaptor_std_rs::system::create_noop_actor_system;
+use fraktor_actor_adaptor_std_rs::system::{create_noop_actor_system, create_noop_actor_system_with};
 use fraktor_actor_core_kernel_rs::{
-  actor::messaging::AnyMessage,
+  actor::{
+    messaging::AnyMessage,
+    scheduler::{SchedulerCommand, SchedulerConfig},
+  },
   event::stream::{
     EventStreamEvent, EventStreamShared, EventStreamSubscriber, EventStreamSubscriberShared, EventStreamSubscription,
     subscriber_handle,
   },
 };
 use fraktor_utils_core_rs::{
-  sync::{ArcShared, SpinSyncMutex},
-  time::TimerInstant,
+  sync::{ArcShared, SharedAccess, SpinSyncMutex},
+  time::{SchedulerCapacityProfile, TimerInstant},
 };
 
 use crate::{
@@ -552,6 +555,25 @@ fn registers_extension_and_starts_member() {
   let ext_shared = system.extended().register_extension(&ext_id);
   let result = ext_shared.start_member();
   assert!(result.is_ok());
+}
+
+#[test]
+fn idle_passivation_scheduler_failure_preserves_reason() {
+  let profile = SchedulerCapacityProfile::new("one-slot", 1, 1, 1);
+  let scheduler_config = SchedulerConfig::new(Duration::from_millis(1), profile).with_max_pending_jobs(2);
+  let system = create_noop_actor_system_with(|config| config.with_scheduler_config(scheduler_config));
+  let scheduler = system.state().scheduler();
+  scheduler
+    .with_write(|scheduler| scheduler.schedule_once(Duration::from_secs(1), SchedulerCommand::Noop))
+    .expect("fill scheduler capacity");
+  let ext_id = stub_extension_id(ClusterExtensionConfig::new().with_advertised_address("fraktor://demo"));
+  let extension = system.extended().register_extension(&ext_id);
+
+  let error = extension.prepare_idle_passivation_task().expect_err("passivation scheduling should fail");
+
+  assert_eq!(error, ClusterError::GrainIdlePassivationScheduler {
+    reason: String::from("scheduler capacity exceeded"),
+  });
 }
 
 /// Helper to build `ClusterExtensionId` with a real partition identity lookup.

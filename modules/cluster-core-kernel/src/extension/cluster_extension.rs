@@ -614,6 +614,7 @@ impl ClusterExtension {
 
   fn prepare_idle_passivation_task(&self) -> Result<(), ClusterError> {
     self.core.with_lock(|core| core.validate_configuration()).map_err(ClusterError::from)?;
+    let interval = self.core.with_lock(|core| core.grain_idle_passivation_threshold());
     self.idle_passivation_task.with_lock(|task| {
       if task.is_some() {
         return Ok(());
@@ -624,7 +625,6 @@ impl ClusterExtension {
       })?;
       let scheduler = system.state().scheduler();
       let started_at = scheduler_time_secs(&scheduler);
-      let interval = self.core.with_lock(|core| core.grain_idle_passivation_threshold());
       let runnable: ArcShared<dyn SchedulerRunnable> = ArcShared::new(GrainIdlePassivationRunnable {
         core:          self.core.clone(),
         event_stream:  self.event_stream.clone(),
@@ -635,19 +635,24 @@ impl ClusterExtension {
       let command = SchedulerCommand::RunRunnable { runnable };
       let handle = scheduler
         .with_write(|scheduler| scheduler.schedule_at_fixed_rate(interval, interval, command))
-        .map_err(|error| ClusterError::GrainIdlePassivationScheduler { reason: format!("{error:?}") })?;
+        .map_err(|error| ClusterError::GrainIdlePassivationScheduler { reason: format!("{error}") })?;
       *task = Some(handle);
       Ok(())
     })
   }
 
-  fn cancel_idle_passivation_task(&self) {
+  fn cancel_idle_passivation_task(&self) -> Result<(), ClusterError> {
     self.idle_passivation_task.with_lock(|task| {
       if let Some(handle) = task.take() {
         let cancelled = handle.cancel() || handle.is_cancelled() || handle.is_completed();
-        debug_assert!(cancelled, "idle passivation task should be cancellable");
+        if !cancelled {
+          return Err(ClusterError::GrainIdlePassivationScheduler {
+            reason: String::from("idle passivation task cancellation failed"),
+          });
+        }
       }
-    });
+      Ok(())
+    })
   }
 
   /// Subscribes to the event stream for topology updates.
@@ -701,7 +706,7 @@ impl ClusterExtension {
     if result.is_ok() {
       self.subscribe_topology_events();
     } else {
-      self.cancel_idle_passivation_task();
+      let cancel_result = self.cancel_idle_passivation_task();
       let failed_identity = self.self_member_identity.with_lock(|self_member_identity| self_member_identity.clone());
       if let Some(failed_identity) = failed_identity
         && previous_identity.as_ref().is_none_or(|previous| !identity_matches(previous, &failed_identity))
@@ -717,6 +722,7 @@ impl ClusterExtension {
         self.terminated.with_lock(|terminated| *terminated = true);
       }
       self.starting_identity.with_lock(|starting_identity| *starting_identity = None);
+      cancel_result?;
     }
     result
   }
@@ -749,7 +755,7 @@ impl ClusterExtension {
     if result.is_ok() {
       self.subscribe_topology_events();
     } else {
-      self.cancel_idle_passivation_task();
+      let cancel_result = self.cancel_idle_passivation_task();
       let failed_identity = self.self_member_identity.with_lock(|self_member_identity| self_member_identity.clone());
       if let Some(failed_identity) = failed_identity
         && previous_identity.as_ref().is_none_or(|previous| !identity_matches(previous, &failed_identity))
@@ -765,6 +771,7 @@ impl ClusterExtension {
         self.terminated.with_lock(|terminated| *terminated = true);
       }
       self.starting_identity.with_lock(|starting_identity| *starting_identity = None);
+      cancel_result?;
     }
     result
   }
@@ -779,7 +786,7 @@ impl ClusterExtension {
     self.subscription.with_lock(|subscription| *subscription = None);
     let result = self.core.with_lock(|core| core.shutdown(graceful));
     if result.is_ok() {
-      self.cancel_idle_passivation_task();
+      self.cancel_idle_passivation_task()?;
       self.terminated.with_lock(|terminated| *terminated = true);
       self.self_member_status.with_lock(|self_member_status| *self_member_status = None);
     }

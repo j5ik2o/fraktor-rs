@@ -1,5 +1,3 @@
-use alloc::string::String;
-
 use super::{ClusterError, ClusterExtensionConfigError};
 use crate::failure_detector::FailureDetectorConfigError;
 
@@ -27,11 +25,4 @@ fn converts_failure_detector_config_error_to_cluster_error() {
     )),
     error
   );
-}
-
-#[test]
-fn grain_idle_passivation_scheduler_failure_preserves_reason() {
-  let error = ClusterError::GrainIdlePassivationScheduler { reason: String::from("capacity exceeded") };
-
-  assert_eq!(error, ClusterError::GrainIdlePassivationScheduler { reason: String::from("capacity exceeded") });
 }
