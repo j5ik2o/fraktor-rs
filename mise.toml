@@ -1,4 +1,4 @@
 [tools]
 node = "20"
 python = "3"
-"npm:@fission-ai/openspec" = "1.10.0"
+"npm:@fission-ai/openspec" = "1.11.0"
