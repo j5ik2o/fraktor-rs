@@ -65,7 +65,7 @@ jobs:
       run_node_tests: ${{ steps.filter.outputs.run_node_tests }}
     steps:
       - name: Checkout source
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
       - name: Detect changed paths
@@ -168,7 +168,7 @@ jobs:
     if: ${{ needs.changes.outputs.run_code_checks == 'true' }}
     steps:
       - name: Checkout source
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
       - name: Setup isolated CARGO_HOME / RUSTUP_HOME / TMPDIR
         if: ${{ runner.environment == 'self-hosted' }}
         uses: ./.github/actions/setup-isolated-rust
@@ -199,7 +199,7 @@ jobs:
             script: dylint
     steps:
       - name: Checkout source
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
       - name: Setup isolated CARGO_HOME / RUSTUP_HOME / TMPDIR
         if: ${{ runner.environment == 'self-hosted' }}
         uses: ./.github/actions/setup-isolated-rust
@@ -223,7 +223,7 @@ jobs:
     if: ${{ needs.changes.outputs.run_code_checks == 'true' || needs.changes.outputs.run_node_tests == 'true' }}
     steps:
       - name: Checkout source
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
       - name: Run TAKT review wrapper helper tests
         run: node --test --test-reporter=spec .github/scripts/*.test.mjs scripts/*.test.mjs
 
@@ -254,7 +254,7 @@ jobs:
             script: unit-test
     steps:
       - name: Checkout source
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
       - name: Setup isolated CARGO_HOME / RUSTUP_HOME / TMPDIR
         if: ${{ runner.environment == 'self-hosted' }}
         uses: ./.github/actions/setup-isolated-rust
@@ -287,7 +287,7 @@ jobs:
       CI_CHECK_GUARD_TIMEOUT_INTEGRATION_SEC: "5400"
     steps:
       - name: Checkout source
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
       - name: Setup isolated CARGO_HOME / RUSTUP_HOME / TMPDIR
         if: ${{ runner.environment == 'self-hosted' }}
         uses: ./.github/actions/setup-isolated-rust
@@ -323,7 +323,7 @@ jobs:
       CI_CHECK_GUARD_TIMEOUT_INTEGRATION_SEC: "5400"
     steps:
       - name: Checkout source
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
       - name: Setup isolated CARGO_HOME / RUSTUP_HOME / TMPDIR
         if: ${{ runner.environment == 'self-hosted' }}
         uses: ./.github/actions/setup-isolated-rust
@@ -466,7 +466,7 @@ jobs:
     if: ${{ needs.changes.outputs.run_code_checks == 'true' }}
     steps:
       - name: Checkout source
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
       - name: Setup isolated CARGO_HOME / RUSTUP_HOME / TMPDIR
         if: ${{ runner.environment == 'self-hosted' }}
         uses: ./.github/actions/setup-isolated-rust
@@ -491,7 +491,7 @@ jobs:
     if: ${{ needs.changes.outputs.run_code_checks == 'true' }}
     steps:
       - name: Checkout source
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
       - name: Setup isolated CARGO_HOME / RUSTUP_HOME / TMPDIR
         if: ${{ runner.environment == 'self-hosted' }}
         uses: ./.github/actions/setup-isolated-rust
