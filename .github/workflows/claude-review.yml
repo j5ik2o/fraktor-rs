@@ -58,7 +58,7 @@ jobs:
 
       - name: Checkout repository
         if: steps.pr.outputs.same_repo == 'true'
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           ref: ${{ steps.pr.outputs.ref }}
           fetch-depth: 1
