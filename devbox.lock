@@ -5,42 +5,42 @@
       "last_modified": "2026-01-02T14:39:32Z",
       "resolved": "github:NixOS/nixpkgs/16c7794d0a28b5a37904d55bcca36003b9109aaa?lastModified=1767364772&narHash=sha256-fFUnEYMla8b7UKjijLnMe%2BoVFOz6HjijGGNS1l7dYaQ%3D"
     },
-    "rustup@1.29.1": {
-      "last_modified": "2026-10-20T14:23:57Z",
+    "rustup@1.29.2": {
+      "last_modified": "2026-10-24T03:22:33Z",
       "plugin_version": "0.0.1",
-      "resolved": "github:NixOS/nixpkgs/5adc50831c259f87faeb09ddf930d43597197473#rustup",
+      "resolved": "github:NixOS/nixpkgs/674a2028661e550a97400c1cc992b9cca9a668a1#rustup",
       "source": "devbox-search",
-      "version": "1.29.1",
+      "version": "1.29.2",
       "systems": {
         "aarch64-darwin": {
           "outputs": [
             {
               "name": "out",
-              "path": "/nix/store/mysqxkbpck8hcz33zf1sbryqxq1vmah4-rustup-1.29.1",
+              "path": "/nix/store/kfyhaqzqav5igarl3ka8sydcwqf2d6l0-rustup-1.29.2",
               "default": true
             }
           ],
-          "store_path": "/nix/store/mysqxkbpck8hcz33zf1sbryqxq1vmah4-rustup-1.29.1"
+          "store_path": "/nix/store/kfyhaqzqav5igarl3ka8sydcwqf2d6l0-rustup-1.29.2"
         },
         "aarch64-linux": {
           "outputs": [
             {
               "name": "out",
-              "path": "/nix/store/z5fwb1020i3rf4qk88w3jkf1cm6yg175-rustup-1.29.1",
+              "path": "/nix/store/wz7m1xikn0lz9jh288kn5l3yil93y31d-rustup-1.29.2",
               "default": true
             }
           ],
-          "store_path": "/nix/store/z5fwb1020i3rf4qk88w3jkf1cm6yg175-rustup-1.29.1"
+          "store_path": "/nix/store/wz7m1xikn0lz9jh288kn5l3yil93y31d-rustup-1.29.2"
         },
         "x86_64-linux": {
           "outputs": [
             {
               "name": "out",
-              "path": "/nix/store/nsnd1r5zs3x5hlpp1ilzdjmq0c57cay8-rustup-1.29.1",
+              "path": "/nix/store/qlbksf73w77ifwrr466r2f10g60kaz1d-rustup-1.29.2",
               "default": true
             }
           ],
-          "store_path": "/nix/store/nsnd1r5zs3x5hlpp1ilzdjmq0c57cay8-rustup-1.29.1"
+          "store_path": "/nix/store/qlbksf73w77ifwrr466r2f10g60kaz1d-rustup-1.29.2"
         }
       }
     }
