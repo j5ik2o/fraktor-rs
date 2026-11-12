@@ -31,5 +31,6 @@
   "prConcurrentLimit": 5,
   "ignorePaths": [
     "docs/sources/**"
-  ]
+  ],
+  "enabled": false
 }
