@@ -89,7 +89,7 @@ jobs:
 
           base="${BEFORE_SHA}"
           if [[ "${EVENT_NAME}" == "pull_request" ]]; then
-            # The jobs test GitHub's merge commit, so compare it to its base.
+            # CI がテストするマージコミットをベースと比較する。
             base="${BASE_SHA:?Pull request base SHA is required}"
           fi
 
@@ -99,7 +99,7 @@ jobs:
 
           changed_paths="$(mktemp)"
           trap 'rm -f "${changed_paths}"' EXIT
-          # NUL preserves literal paths. Treat a rename as a deletion and an addition.
+          # NUL 区切りでパスを保持し、リネームは削除と追加の両方として扱う。
           git diff --name-only --no-renames -z "${base}" "${HEAD_SHA}" -- > "${changed_paths}"
           if [[ ! -s "${changed_paths}" ]]; then
             emit_all
@@ -311,6 +311,8 @@ jobs:
       - changes
       - integration-e2e
     if: ${{ needs.changes.outputs.run_code_checks == 'true' }}
+    outputs:
+      codecov_upload_started_at: ${{ steps.codecov-upload-start.outputs.timestamp }}
     permissions:
       contents: read
       id-token: write
@@ -341,6 +343,10 @@ jobs:
           path: target/coverage/html
           if-no-files-found: warn
           retention-days: 14
+      - name: Record Codecov upload start time
+        if: ${{ github.event_name == 'pull_request' }}
+        id: codecov-upload-start
+        run: echo "timestamp=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "${GITHUB_OUTPUT}"
       - name: Upload coverage reports to Codecov
         # third-party action の mutable tag リスクを避けるため、
         # v7.0.0 tag (e534...) が指す commit SHA に固定する。
@@ -371,6 +377,7 @@ jobs:
         env:
           COVERAGE_RESULT: ${{ needs.coverage.result }}
           CODECOV_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          CODECOV_UPLOAD_STARTED_AT: ${{ needs.coverage.outputs.codecov_upload_started_at }}
           IS_PULL_REQUEST: ${{ github.event_name == 'pull_request' }}
         with:
           script: |
@@ -383,9 +390,13 @@ jobs:
             const repo = context.repo.repo;
             const ref = process.env.CODECOV_SHA;
             const isPullRequest = process.env.IS_PULL_REQUEST === "true";
+            const uploadStartedAt = Date.parse(process.env.CODECOV_UPLOAD_STARTED_AT);
             const requiredChecks = ["codecov/project"];
 
             if (isPullRequest) {
+              if (!Number.isFinite(uploadStartedAt)) {
+                throw new Error("Coverage job did not report a valid Codecov upload start time");
+              }
               requiredChecks.push("codecov/patch");
             } else {
               core.info("Skipping codecov/patch outside pull_request events");
@@ -393,6 +404,10 @@ jobs:
 
             for (const checkName of requiredChecks) {
               await waitForCheck(checkName);
+            }
+
+            function isFromCurrentUpload(timestamp) {
+              return !isPullRequest || Date.parse(timestamp) >= uploadStartedAt;
             }
 
             async function waitForCheck(checkName) {
@@ -443,7 +458,8 @@ jobs:
                 per_page: 100,
               });
               return response.data.check_runs
-                .filter((checkRun) => checkRun.name === checkName)
+                .filter((checkRun) => checkRun.name === checkName &&
+                  isFromCurrentUpload(checkRun.started_at || checkRun.created_at))
                 .sort((left, right) => {
                   const rightTime = Date.parse(right.started_at || right.created_at);
                   const leftTime = Date.parse(left.started_at || left.created_at);
@@ -453,7 +469,8 @@ jobs:
 
             async function latestCommitStatus(checkName) {
               const response = await github.rest.repos.getCombinedStatusForRef({ owner, repo, ref });
-              return response.data.statuses.find((status) => status.context === checkName);
+              return response.data.statuses.find((status) => status.context === checkName &&
+                isFromCurrentUpload(status.created_at));
             }
 
   # Documentation build
