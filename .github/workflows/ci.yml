@@ -6,6 +6,7 @@ on:
   pull_request:
     branches:
       - main
+    types: [opened, synchronize, reopened, edited]
   merge_group:
     types:
       - checks_requested
@@ -381,9 +382,10 @@ jobs:
             const owner = context.repo.owner;
             const repo = context.repo.repo;
             const ref = process.env.CODECOV_SHA;
+            const isPullRequest = process.env.IS_PULL_REQUEST === "true";
             const requiredChecks = ["codecov/project"];
 
-            if (process.env.IS_PULL_REQUEST === "true") {
+            if (isPullRequest) {
               requiredChecks.push("codecov/patch");
             } else {
               core.info("Skipping codecov/patch outside pull_request events");
@@ -426,6 +428,9 @@ jobs:
                 await new Promise((resolve) => setTimeout(resolve, 10000));
               }
 
+              if (isPullRequest) {
+                throw new Error(`${checkName} did not report within timeout`);
+              }
               core.warning(`${checkName} did not report within timeout; coverage upload already succeeded`);
             }
 
