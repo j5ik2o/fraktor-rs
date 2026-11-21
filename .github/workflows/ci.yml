@@ -368,6 +368,7 @@ jobs:
     outputs:
       codecov_upload_started_at: ${{ steps.codecov-upload-start.outputs.timestamp }}
       codecov_build: ${{ steps.codecov-upload-start.outputs.build }}
+      codecov_build_url: ${{ steps.codecov-upload-start.outputs.url }}
     permissions:
       contents: read
       id-token: write
@@ -407,8 +408,11 @@ jobs:
           CHECKOUT_SHA: ${{ needs.changes.outputs.checkout_sha }}
         run: |
           digest="$(sha256sum target/coverage/lcov.info)"
-          echo "build=${CHECKOUT_SHA}-${digest%% *}" >> "${GITHUB_OUTPUT}"
-          echo "timestamp=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "${GITHUB_OUTPUT}"
+          {
+            echo "build=${CHECKOUT_SHA}-${digest%% *}"
+            echo "url=${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}/attempts/${GITHUB_RUN_ATTEMPT}"
+            echo "timestamp=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          } >> "${GITHUB_OUTPUT}"
       - name: Upload coverage reports to Codecov
         # third-party action の mutable tag リスクを避けるため、
         # v7.0.0 tag (e534...) が指す commit SHA に固定する。
@@ -420,6 +424,7 @@ jobs:
           flags: fraktor
           name: fraktor-coverage
           override_build: ${{ steps.codecov-upload-start.outputs.build }}
+          override_build_url: ${{ steps.codecov-upload-start.outputs.url }}
           fail_ci_if_error: true
 
   # Codecov の外部 status が完了し、失敗していないことを CI Success に伝播する。
@@ -442,7 +447,7 @@ jobs:
           CODECOV_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
           CODECOV_UPLOAD_STARTED_AT: ${{ needs.coverage.outputs.codecov_upload_started_at }}
           CODECOV_BUILD: ${{ needs.coverage.outputs.codecov_build }}
-          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          CODECOV_BUILD_URL: ${{ needs.coverage.outputs.codecov_build_url }}
           IS_PULL_REQUEST: ${{ github.event_name == 'pull_request' }}
         with:
           script: |
@@ -457,11 +462,11 @@ jobs:
             const isPullRequest = process.env.IS_PULL_REQUEST === "true";
             const uploadStartedAt = Date.parse(process.env.CODECOV_UPLOAD_STARTED_AT);
             const build = process.env.CODECOV_BUILD;
-            const runUrl = process.env.RUN_URL;
+            const buildUrl = process.env.CODECOV_BUILD_URL;
             const requiredChecks = ["codecov/project"];
 
             if (isPullRequest) {
-              if (!Number.isFinite(uploadStartedAt) || !/^[a-f0-9]{40}-[a-f0-9]{64}$/.test(build)) {
+              if (!Number.isFinite(uploadStartedAt) || !/^[a-f0-9]{40}-[a-f0-9]{64}$/.test(build) || !buildUrl) {
                 throw new Error("Coverage job did not report valid Codecov upload metadata");
               }
               requiredChecks.push("codecov/patch");
@@ -473,10 +478,6 @@ jobs:
               await waitForCheck(checkName);
             }
 
-            function isFromCurrentUpload(timestamp) {
-              return !isPullRequest || Date.parse(timestamp) >= uploadStartedAt;
-            }
-
             async function waitForCheck(checkName) {
               for (let attempt = 1; attempt <= 60; attempt += 1) {
                 const run = await latestCheckRun(checkName);
@@ -484,7 +485,8 @@ jobs:
                 if (run) {
                   core.info(`${checkName}: status=${run.status} conclusion=${run.conclusion || ""} url=${run.html_url}`);
 
-                  if (run.status === "completed") {
+                  if (run.status === "completed" &&
+                      await matchesProcessedUpload(run.completed_at || run.started_at || run.created_at)) {
                     if (run.conclusion === "success") {
                       return;
                     }
@@ -496,12 +498,11 @@ jobs:
                   if (status) {
                     core.info(`${checkName}: state=${status.state} url=${status.target_url || ""}`);
 
-                    if (status.state === "success" &&
-                        (isFromCurrentUpload(status.created_at) || await canReuseStatus(status.created_at))) {
-                      return;
-                    }
-                    if (isFromCurrentUpload(status.created_at) &&
-                        (status.state === "failure" || status.state === "error")) {
+                    if (["success", "failure", "error"].includes(status.state) &&
+                        await matchesProcessedUpload(status.created_at)) {
+                      if (status.state === "success") {
+                        return;
+                      }
                       throw new Error(`${checkName} failed with state=${status.state}`);
                     }
                   } else {
@@ -527,8 +528,7 @@ jobs:
                 per_page: 100,
               });
               return response.data.check_runs
-                .filter((checkRun) => checkRun.name === checkName &&
-                  isFromCurrentUpload(checkRun.started_at || checkRun.created_at))
+                .filter((checkRun) => checkRun.name === checkName)
                 .sort((left, right) => {
                   const rightTime = Date.parse(right.started_at || right.created_at);
                   const leftTime = Date.parse(left.started_at || left.created_at);
@@ -541,9 +541,11 @@ jobs:
               return response.data.statuses.find((status) => status.context === checkName);
             }
 
-            async function canReuseStatus(timestamp) {
-              // 同じ判定の再投稿は省略される。検査したコミットと LCOV が同一で、
-              // 今回のアップロードが処理済みの場合に限って以前の成功を使う。
+            async function matchesProcessedUpload(timestamp) {
+              if (!isPullRequest) return true;
+
+              // GitHub の通知に upload ID がないため、同じ head の全 upload が
+              // 同じマージコミットと LCOV を指す場合にだけ通知を判定に使う。
               const statusAt = Date.parse(timestamp);
               if (!Number.isFinite(statusAt)) return false;
               const uploadsUrl = `https://api.codecov.io/api/v2/github/${owner}/repos/${repo}/commits/${ref}/uploads/?page_size=150`;
@@ -552,17 +554,12 @@ jobs:
                 if (!response.ok) return false;
                 const { results, next } = await response.json();
                 if (next || !Array.isArray(results)) return false;
-                const merged = results.filter((upload) => upload.state === "merged");
-                const current = merged.find((upload) => upload.build_code === build &&
-                  upload.build_url === runUrl && Date.parse(upload.created_at) >= uploadStartedAt);
-                if (!current) return false;
+                if (results.some((upload) => upload.build_code !== build)) return false;
 
-                const beforeStatus = merged
-                  .filter((upload) => Date.parse(upload.updated_at) <= statusAt)
-                  .sort((left, right) => Date.parse(right.updated_at) - Date.parse(left.updated_at));
-                return beforeStatus[0]?.build_code === build &&
-                  merged.every((upload) => Date.parse(upload.updated_at) <= statusAt ||
-                    upload.build_code === build);
+                const merged = results.filter((upload) => upload.state === "merged");
+                return merged.some((upload) => upload.build_url === buildUrl &&
+                  Date.parse(upload.created_at) >= uploadStartedAt) &&
+                  merged.some((upload) => Date.parse(upload.updated_at) <= statusAt);
               } catch (error) {
                 core.info(`Could not verify Codecov upload: ${error.message}`);
                 return false;
