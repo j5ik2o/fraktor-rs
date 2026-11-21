@@ -2,7 +2,7 @@ use std::{fs, path::PathBuf, process::Command};
 
 #[test]
 fn ui() {
-  let mut test = dylint_testing::ui::Test::src_base(env!("CARGO_PKG_NAME"), "tests/ui");
+  let mut test = dylint_testing::ui::Test::src_base(&env!("CARGO_PKG_NAME").replace('-', "_"), "tests/ui");
   test.dylint_toml(dylint_toml_content());
   test.run();
 }
