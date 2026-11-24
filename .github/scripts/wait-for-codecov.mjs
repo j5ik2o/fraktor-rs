@@ -29,14 +29,18 @@ export async function waitForCodecov({ github, context, core, env, fetchUploads 
   }
 
   async function waitForCheck(checkName) {
-    for (let attempt = 1; attempt <= 60; attempt += 1) {
+    // 再実行時、project の結果が届いてから patch の再通知まで10分を超えることがある。
+    const maxAttempts = checkName === "codecov/patch" ? 90 : 60;
+    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
       const run = await latestCheckRun(checkName);
 
       if (run) {
         core.info(`${checkName}: status=${run.status} conclusion=${run.conclusion || ""} url=${run.html_url}`);
 
+        const allowUnchangedSuccess = run.conclusion === "success" &&
+          Date.parse(run.completed_at) < uploadStartedAt;
         if (run.status === "completed" &&
-            await matchesProcessedUpload(run.started_at || run.created_at)) {
+            await matchesProcessedUpload(run.started_at || run.created_at, allowUnchangedSuccess)) {
           if (run.conclusion === "success") {
             return;
           }
@@ -56,7 +60,7 @@ export async function waitForCodecov({ github, context, core, env, fetchUploads 
             throw new Error(`${checkName} failed with state=${status.state}`);
           }
         } else {
-          core.info(`${checkName}: waiting for Codecov status (${attempt}/60)`);
+          core.info(`${checkName}: waiting for Codecov status (${attempt}/${maxAttempts})`);
         }
       }
 
@@ -132,8 +136,8 @@ export async function waitForCodecov({ github, context, core, env, fetchUploads 
       if (!allowUnchangedSuccess || !currentProcessed ||
           merged.some((upload) => !Number.isFinite(upload.processedAt))) return false;
 
-      // 同じ成功のコミットステータスは再投稿されないことがある。通知時点の
-      // 最新レポートと、それ以降に処理されたレポートがすべて同じ入力であることを確認する。
+      // 同じ成功結果は再通知されないことがある。通知時点の最新レポートと、
+      // それ以降に処理されたレポートがすべて同じ入力であることを確認する。
       const lastPublishedUpload = merged
         .sort((left, right) => right.processedAt - left.processedAt)
         .find((upload) => upload.processedAt <= statusAt);

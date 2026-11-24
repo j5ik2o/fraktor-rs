@@ -168,6 +168,42 @@ const olderSuccesses = ["codecov/project", "codecov/patch"].map((context) => ({
   context, state: "success", created_at: "2026-11-21T14:00:45Z",
 }));
 
+test("accepts a fresh project check and an unchanged patch check on an identical rerun", async () => {
+  const { run, checks } = fixture({
+    check: (name) => checkRun(name, "success", name === "codecov/project"
+      ? publishedAt : olderSuccesses[1].created_at),
+    uploads: [identicalPreviousUpload, upload],
+  });
+  await run();
+  assert.deepEqual(checks, ["codecov/project", "codecov/patch"]);
+});
+
+test("waits past ten minutes for a fresh patch check when the rerun report differs", async () => {
+  let patchPolls = 0;
+  const { run } = fixture({
+    check: (name) => checkRun(name, "success", name === "codecov/patch" && patchPolls++ < 68
+      ? olderSuccesses[1].created_at : publishedAt),
+    uploads: [{ ...identicalPreviousUpload, name: "different-report" }, upload],
+  });
+  await run();
+  assert.equal(patchPolls, 69);
+});
+
+test("does not reuse a previous patch check that finished after the rerun started", async () => {
+  let patchPolls = 0;
+  const { run } = fixture({
+    check: (name) => {
+      if (name === "codecov/patch" && patchPolls++ === 0) {
+        return { ...checkRun(name, "success", olderSuccesses[1].created_at), completed_at: publishedAt };
+      }
+      return checkRun(name);
+    },
+    uploads: [identicalPreviousUpload, upload],
+  });
+  await run();
+  assert.equal(patchPolls, 2);
+});
+
 test("reuses an unchanged commit status after an identical rerun is processed", async () => {
   await fixture({
     check: () => undefined,
