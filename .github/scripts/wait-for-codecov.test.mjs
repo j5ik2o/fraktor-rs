@@ -7,11 +7,13 @@ const env = {
   CODECOV_SHA: "a".repeat(40),
   CODECOV_UPLOAD_STARTED_AT: "2026-11-21T15:10:23Z",
   CODECOV_BUILD_URL: "https://github.com/example/project/actions/runs/42/attempts/2",
+  CODECOV_UPLOAD_NAME: `fraktor-coverage-${"b".repeat(64)}`,
   IS_PULL_REQUEST: "true",
 };
 const upload = {
   build_code: null,
   build_url: env.CODECOV_BUILD_URL,
+  name: env.CODECOV_UPLOAD_NAME,
   state: "merged",
   created_at: "2026-11-21 15:10:26.589488+00:00",
   updated_at: "2026-11-21 15:10:34.871876+00:00",
@@ -121,6 +123,50 @@ test("supports commit statuses when Codecov has no check runs", async () => {
     context, state: "success", created_at: publishedAt,
   }));
   await fixture({ check: () => undefined, statuses }).run();
+});
+
+const identicalPreviousUpload = {
+  ...upload,
+  build_url: env.CODECOV_BUILD_URL.replace(/2$/, "1"),
+  created_at: "2026-11-21T14:00:00Z",
+  updated_at: "2026-11-21T14:00:30Z",
+};
+const olderSuccesses = ["codecov/project", "codecov/patch"].map((context) => ({
+  context, state: "success", created_at: "2026-11-21T14:00:45Z",
+}));
+
+test("reuses an unchanged commit status after an identical rerun is processed", async () => {
+  await fixture({
+    check: () => undefined,
+    statuses: olderSuccesses,
+    uploads: [identicalPreviousUpload, upload],
+  }).run();
+});
+
+test("refuses to reuse commit statuses if a different report was merged after publication", async () => {
+  const { run } = fixture({
+    check: () => undefined,
+    statuses: olderSuccesses,
+    uploads: [identicalPreviousUpload, upload, {
+      ...identicalPreviousUpload,
+      name: "different-merge-or-coverage",
+      updated_at: "2026-11-21T15:00:30Z",
+    }],
+  });
+  await assert.rejects(run(), /codecov\/project did not report within timeout/);
+});
+
+test("refuses to reuse a status following a different most recent report", async () => {
+  const { run } = fixture({
+    check: () => undefined,
+    statuses: olderSuccesses,
+    uploads: [identicalPreviousUpload, upload, {
+      ...identicalPreviousUpload,
+      name: "different-merge-or-coverage",
+      updated_at: "2026-11-21T14:00:40Z",
+    }],
+  });
+  await assert.rejects(run(), /codecov\/project did not report within timeout/);
 });
 
 test("fails before polling if coverage or PR upload metadata is missing", async () => {

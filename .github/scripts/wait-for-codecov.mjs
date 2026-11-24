@@ -12,10 +12,11 @@ export async function waitForCodecov({ github, context, core, env, fetchUploads 
   const isPullRequest = env.IS_PULL_REQUEST === "true";
   const uploadStartedAt = Date.parse(env.CODECOV_UPLOAD_STARTED_AT);
   const buildUrl = env.CODECOV_BUILD_URL;
+  const uploadName = env.CODECOV_UPLOAD_NAME;
   const requiredChecks = ["codecov/project"];
 
   if (isPullRequest) {
-    if (!Number.isFinite(uploadStartedAt) || !buildUrl) {
+    if (!Number.isFinite(uploadStartedAt) || !buildUrl || !uploadName) {
       throw new Error("Coverage job did not report valid Codecov upload metadata");
     }
     requiredChecks.push("codecov/patch");
@@ -48,7 +49,7 @@ export async function waitForCodecov({ github, context, core, env, fetchUploads 
           core.info(`${checkName}: state=${status.state} url=${status.target_url || ""}`);
 
           if (["success", "failure", "error"].includes(status.state) &&
-              await matchesProcessedUpload(status.created_at)) {
+              await matchesProcessedUpload(status.created_at, status.state === "success")) {
             if (status.state === "success") {
               return;
             }
@@ -90,7 +91,7 @@ export async function waitForCodecov({ github, context, core, env, fetchUploads 
     return response.data.statuses.find((status) => status.context === checkName);
   }
 
-  async function matchesProcessedUpload(timestamp) {
+  async function matchesProcessedUpload(timestamp, allowUnchangedSuccess = false) {
     if (!isPullRequest) return true;
 
     // build_code は null の場合がある。実行試行の URL で今回の upload を
@@ -103,10 +104,21 @@ export async function waitForCodecov({ github, context, core, env, fetchUploads 
       if (!response.ok) return false;
       const { results, next } = await response.json();
       if (next || !Array.isArray(results)) return false;
-      return results.some((upload) => upload.build_url === buildUrl &&
-        upload.state === "merged" &&
-        Date.parse(upload.created_at) >= uploadStartedAt &&
-        Date.parse(upload.updated_at) <= statusAt);
+      const merged = results
+        .filter((upload) => upload.state === "merged")
+        .map((upload) => ({ ...upload, processedAt: Date.parse(upload.updated_at) }))
+        .sort((left, right) => right.processedAt - left.processedAt);
+      const current = merged.find((upload) => upload.build_url === buildUrl &&
+        upload.name === uploadName && Date.parse(upload.created_at) >= uploadStartedAt);
+      if (!current || !Number.isFinite(current.processedAt)) return false;
+      if (current.processedAt <= statusAt) return true;
+      if (!allowUnchangedSuccess || merged.some((upload) => !Number.isFinite(upload.processedAt))) return false;
+
+      // 同じ成功のコミットステータスは再投稿されないことがある。通知時点の
+      // 最新レポートと、それ以降に処理されたレポートがすべて同じ入力であることを確認する。
+      const lastPublishedUpload = merged.find((upload) => upload.processedAt <= statusAt);
+      return lastPublishedUpload?.name === uploadName &&
+        merged.every((upload) => upload.processedAt < lastPublishedUpload.processedAt || upload.name === uploadName);
     } catch (error) {
       core.info(`Could not verify Codecov upload: ${error.message}`);
       return false;

@@ -326,6 +326,7 @@ jobs:
     outputs:
       codecov_upload_started_at: ${{ steps.codecov-upload-start.outputs.timestamp }}
       codecov_build_url: ${{ steps.codecov-upload-start.outputs.url }}
+      codecov_upload_name: ${{ steps.codecov-upload-start.outputs.name }}
     permissions:
       contents: read
       id-token: write
@@ -361,8 +362,13 @@ jobs:
       - name: Record Codecov upload start time
         if: ${{ github.event_name == 'pull_request' }}
         id: codecov-upload-start
+        shell: bash
+        env:
+          CHECKOUT_SHA: ${{ needs.changes.outputs.checkout_sha }}
         run: |
+          digest="$({ printf '%s\n' "${CHECKOUT_SHA}"; cat target/coverage/lcov.info; } | sha256sum)"
           {
+            echo "name=fraktor-coverage-${digest%% *}"
             echo "url=${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}/attempts/${GITHUB_RUN_ATTEMPT}"
             echo "timestamp=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           } >> "${GITHUB_OUTPUT}"
@@ -375,7 +381,7 @@ jobs:
           files: target/coverage/lcov.info
           disable_search: true
           flags: fraktor
-          name: fraktor-coverage
+          name: ${{ steps.codecov-upload-start.outputs.name || 'fraktor-coverage' }}
           override_build_url: ${{ steps.codecov-upload-start.outputs.url }}
           fail_ci_if_error: true
 
@@ -404,6 +410,7 @@ jobs:
           CODECOV_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
           CODECOV_UPLOAD_STARTED_AT: ${{ needs.coverage.outputs.codecov_upload_started_at }}
           CODECOV_BUILD_URL: ${{ needs.coverage.outputs.codecov_build_url }}
+          CODECOV_UPLOAD_NAME: ${{ needs.coverage.outputs.codecov_upload_name }}
           IS_PULL_REQUEST: ${{ github.event_name == 'pull_request' }}
         with:
           script: |

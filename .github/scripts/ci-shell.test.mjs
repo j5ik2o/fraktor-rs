@@ -15,7 +15,7 @@ function workspace(t) {
 function runScript(name, cwd, env = {}) {
   const script = fileURLToPath(new URL(name, import.meta.url));
   const childEnv = { ...process.env, ...env };
-  // The nested Node test runner must report to stdout as an independent process.
+  // 子の Node テストランナーを独立した実行として標準出力に出す。
   delete childEnv.NODE_TEST_CONTEXT;
   const result = spawnSync("bash", [script], {
     cwd, env: childEnv, encoding: "utf8", timeout: 5000,
