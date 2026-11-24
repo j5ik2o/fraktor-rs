@@ -6,6 +6,7 @@ on:
   pull_request:
     branches:
       - main
+    types: [opened, synchronize, reopened, edited]
   merge_group:
     types:
       - checks_requested
@@ -61,6 +62,7 @@ jobs:
     name: Detect source changes
     runs-on: ${{ github.event_name == 'workflow_dispatch' && inputs.runner == 'self-hosted' && 'self-hosted' || 'ubuntu-latest' }}
     outputs:
+      checkout_sha: ${{ steps.source.outputs.checkout_sha }}
       run_code_checks: ${{ steps.filter.outputs.run_code_checks }}
       run_node_tests: ${{ steps.filter.outputs.run_node_tests }}
     steps:
@@ -68,13 +70,21 @@ jobs:
         uses: actions/checkout@v6
         with:
           fetch-depth: 0
+      - name: Verify source revision
+        id: source
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: bash .github/scripts/verify-source-revision.sh
       - name: Detect changed paths
         id: filter
         env:
           EVENT_NAME: ${{ github.event_name }}
           BEFORE_SHA: ${{ github.event.before }}
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          HEAD_SHA: ${{ steps.source.outputs.checkout_sha }}
         run: |
           emit_all() {
             echo "run_code_checks=true" >> "${GITHUB_OUTPUT}"
@@ -86,24 +96,21 @@ jobs:
             emit_all
           fi
 
+          base="${BEFORE_SHA}"
           if [[ "${EVENT_NAME}" == "pull_request" ]]; then
-            base="${BASE_SHA}"
-            head="${HEAD_SHA}"
-          else
-            base="${BEFORE_SHA}"
-            head="${HEAD_SHA}"
+            # CI がテストするマージコミットをベースと比較する。
+            base="${BASE_SHA:?Pull request base SHA is required}"
           fi
 
-          if [[ -z "${base}" ]]; then
+          if [[ -z "${base}" || "${base}" =~ ^0{40}$ ]]; then
             emit_all
           fi
 
-          if [[ "${base}" =~ ^0{40}$ ]]; then
-            emit_all
-          fi
-
-          changed_entries="$(git diff --name-status -M "${base}" "${head}")"
-          if [[ -z "${changed_entries}" ]]; then
+          changed_paths="$(mktemp)"
+          trap 'rm -f "${changed_paths}"' EXIT
+          # NUL 区切りでパスを保持し、リネームは削除と追加の両方として扱う。
+          git diff --name-only --no-renames -z "${base}" "${HEAD_SHA}" -- > "${changed_paths}"
+          if [[ ! -s "${changed_paths}" ]]; then
             emit_all
           fi
 
@@ -111,7 +118,7 @@ jobs:
             local path="$1"
             [[ "${path}" == *.rs ]] && return 0
             case "${path}" in
-              Cargo.lock | */Cargo.lock | Cargo.toml | */Cargo.toml | clippy.toml | */clippy.toml | rustfmt.toml | */rustfmt.toml | rust-toolchain.toml | */rust-toolchain.toml | .cargo/config.toml | .github/workflows/ci.yml)
+              Cargo.lock | */Cargo.lock | Cargo.toml | */Cargo.toml | clippy.toml | */clippy.toml | rustfmt.toml | */rustfmt.toml | rust-toolchain.toml | */rust-toolchain.toml | .cargo/config.toml | .github/workflows/ci.yml | scripts/ci-check.sh | scripts/coverage.sh | codecov.yml | lints/*/tests/ui/* | lints/*/ui/*)
                 return 0
                 ;;
               *)
@@ -123,7 +130,7 @@ jobs:
           is_node_test_path() {
             local path="$1"
             case "${path}" in
-              scripts/*.mjs | .github/scripts/*.mjs | .github/workflows/ci.yml)
+              scripts/*.mjs | .github/scripts/*.mjs | .github/scripts/run-node-tests.sh | .github/scripts/verify-source-revision.sh | .github/workflows/ci.yml)
                 return 0
                 ;;
               *)
@@ -134,27 +141,18 @@ jobs:
 
           run_code_checks=false
           run_node_tests=false
-          while IFS=$'\t' read -r status path_a path_b; do
-            paths=("${path_a}")
-            case "${status}" in
-              R* | C*)
-                paths=("${path_a}" "${path_b}")
-                ;;
-            esac
-
-            for path in "${paths[@]}"; do
-              if is_rust_check_path "${path}"; then
-                run_code_checks=true
-              fi
-              if is_node_test_path "${path}"; then
-                run_node_tests=true
-              fi
-            done
+          while IFS= read -r -d '' path; do
+            if is_rust_check_path "${path}"; then
+              run_code_checks=true
+            fi
+            if is_node_test_path "${path}"; then
+              run_node_tests=true
+            fi
 
             if [[ "${run_code_checks}" == "true" && "${run_node_tests}" == "true" ]]; then
               break
             fi
-          done <<< "${changed_entries}"
+          done < "${changed_paths}"
 
           echo "run_code_checks=${run_code_checks}" >> "${GITHUB_OUTPUT}"
           echo "run_node_tests=${run_node_tests}" >> "${GITHUB_OUTPUT}"
@@ -169,6 +167,8 @@ jobs:
     steps:
       - name: Checkout source
         uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.changes.outputs.checkout_sha }}
       - name: Setup isolated CARGO_HOME / RUSTUP_HOME / TMPDIR
         if: ${{ runner.environment == 'self-hosted' }}
         uses: ./.github/actions/setup-isolated-rust
@@ -200,6 +200,8 @@ jobs:
     steps:
       - name: Checkout source
         uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.changes.outputs.checkout_sha }}
       - name: Setup isolated CARGO_HOME / RUSTUP_HOME / TMPDIR
         if: ${{ runner.environment == 'self-hosted' }}
         uses: ./.github/actions/setup-isolated-rust
@@ -224,8 +226,10 @@ jobs:
     steps:
       - name: Checkout source
         uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.changes.outputs.checkout_sha }}
       - name: Run TAKT review wrapper helper tests
-        run: node --test --test-reporter=spec .github/scripts/*.test.mjs scripts/*.test.mjs
+        run: bash .github/scripts/run-node-tests.sh
 
   # ビルドと単体テスト
   #
@@ -255,6 +259,8 @@ jobs:
     steps:
       - name: Checkout source
         uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.changes.outputs.checkout_sha }}
       - name: Setup isolated CARGO_HOME / RUSTUP_HOME / TMPDIR
         if: ${{ runner.environment == 'self-hosted' }}
         uses: ./.github/actions/setup-isolated-rust
@@ -288,6 +294,8 @@ jobs:
     steps:
       - name: Checkout source
         uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.changes.outputs.checkout_sha }}
       - name: Setup isolated CARGO_HOME / RUSTUP_HOME / TMPDIR
         if: ${{ runner.environment == 'self-hosted' }}
         uses: ./.github/actions/setup-isolated-rust
@@ -315,6 +323,10 @@ jobs:
       - changes
       - integration-e2e
     if: ${{ needs.changes.outputs.run_code_checks == 'true' }}
+    outputs:
+      codecov_upload_started_at: ${{ steps.codecov-upload-start.outputs.timestamp }}
+      codecov_build_url: ${{ steps.codecov-upload-start.outputs.url }}
+      codecov_upload_name: ${{ steps.codecov-upload-start.outputs.name }}
     permissions:
       contents: read
       id-token: write
@@ -324,6 +336,8 @@ jobs:
     steps:
       - name: Checkout source
         uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.changes.outputs.checkout_sha }}
       - name: Setup isolated CARGO_HOME / RUSTUP_HOME / TMPDIR
         if: ${{ runner.environment == 'self-hosted' }}
         uses: ./.github/actions/setup-isolated-rust
@@ -345,6 +359,19 @@ jobs:
           path: target/coverage/html
           if-no-files-found: warn
           retention-days: 14
+      - name: Record Codecov upload start time
+        if: ${{ github.event_name == 'pull_request' }}
+        id: codecov-upload-start
+        shell: bash
+        env:
+          CHECKOUT_SHA: ${{ needs.changes.outputs.checkout_sha }}
+        run: |
+          digest="$({ printf '%s\n' "${CHECKOUT_SHA}"; cat target/coverage/lcov.info; } | sha256sum)"
+          {
+            echo "name=fraktor-coverage-${digest%% *}"
+            echo "url=${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}/attempts/${GITHUB_RUN_ATTEMPT}"
+            echo "timestamp=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          } >> "${GITHUB_OUTPUT}"
       - name: Upload coverage reports to Codecov
         # third-party action の mutable tag リスクを避けるため、
         # v7.0.0 tag (e534...) が指す commit SHA に固定する。
@@ -354,7 +381,8 @@ jobs:
           files: target/coverage/lcov.info
           disable_search: true
           flags: fraktor
-          name: fraktor-coverage
+          name: ${{ steps.codecov-upload-start.outputs.name || 'fraktor-coverage' }}
+          override_build_url: ${{ steps.codecov-upload-start.outputs.url }}
           fail_ci_if_error: true
 
   # Codecov の外部 status が完了し、失敗していないことを CI Success に伝播する。
@@ -370,91 +398,27 @@ jobs:
       checks: read
       statuses: read
     steps:
+      - name: Checkout source
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.changes.outputs.checkout_sha }}
+          persist-credentials: false
       - name: Wait for Codecov status checks
         uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd
         env:
           COVERAGE_RESULT: ${{ needs.coverage.result }}
           CODECOV_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          CODECOV_UPLOAD_STARTED_AT: ${{ needs.coverage.outputs.codecov_upload_started_at }}
+          CODECOV_BUILD_URL: ${{ needs.coverage.outputs.codecov_build_url }}
+          CODECOV_UPLOAD_NAME: ${{ needs.coverage.outputs.codecov_upload_name }}
           IS_PULL_REQUEST: ${{ github.event_name == 'pull_request' }}
         with:
           script: |
-            const coverageResult = process.env.COVERAGE_RESULT;
-            if (coverageResult !== "success") {
-              throw new Error(`coverage failed or was skipped: ${coverageResult}`);
-            }
-
-            const owner = context.repo.owner;
-            const repo = context.repo.repo;
-            const ref = process.env.CODECOV_SHA;
-            const requiredChecks = ["codecov/project"];
-
-            if (process.env.IS_PULL_REQUEST === "true") {
-              requiredChecks.push("codecov/patch");
-            } else {
-              core.info("Skipping codecov/patch outside pull_request events");
-            }
-
-            for (const checkName of requiredChecks) {
-              await waitForCheck(checkName);
-            }
-
-            async function waitForCheck(checkName) {
-              for (let attempt = 1; attempt <= 60; attempt += 1) {
-                const run = await latestCheckRun(checkName);
-
-                if (run) {
-                  core.info(`${checkName}: status=${run.status} conclusion=${run.conclusion || ""} url=${run.html_url}`);
-
-                  if (run.status === "completed") {
-                    if (run.conclusion === "success") {
-                      return;
-                    }
-
-                    throw new Error(`${checkName} failed with conclusion=${run.conclusion}`);
-                  }
-                } else {
-                  const status = await latestCommitStatus(checkName);
-                  if (status) {
-                    core.info(`${checkName}: state=${status.state} url=${status.target_url || ""}`);
-
-                    if (status.state === "success") {
-                      return;
-                    }
-                    if (status.state === "failure" || status.state === "error") {
-                      throw new Error(`${checkName} failed with state=${status.state}`);
-                    }
-                  } else {
-                    core.info(`${checkName}: waiting for Codecov status (${attempt}/60)`);
-                  }
-                }
-
-                await new Promise((resolve) => setTimeout(resolve, 10000));
-              }
-
-              core.warning(`${checkName} did not report within timeout; coverage upload already succeeded`);
-            }
-
-            async function latestCheckRun(checkName) {
-              const response = await github.rest.checks.listForRef({
-                owner,
-                repo,
-                ref,
-                check_name: checkName,
-                per_page: 100,
-              });
-              return response.data.check_runs
-                .filter((checkRun) => checkRun.name === checkName)
-                .sort((left, right) => {
-                  const rightTime = Date.parse(right.started_at || right.created_at);
-                  const leftTime = Date.parse(left.started_at || left.created_at);
-                  return rightTime - leftTime;
-                })[0];
-            }
-
-            async function latestCommitStatus(checkName) {
-              const response = await github.rest.repos.getCombinedStatusForRef({ owner, repo, ref });
-              return response.data.statuses.find((status) => status.context === checkName);
-            }
+            const { pathToFileURL } = require("node:url");
+            const { waitForCodecov } = await import(
+              pathToFileURL(process.env.GITHUB_WORKSPACE + "/.github/scripts/wait-for-codecov.mjs").href
+            );
+            await waitForCodecov({ github, context, core, env: process.env });
 
   # Documentation build
   docs:
@@ -467,6 +431,8 @@ jobs:
     steps:
       - name: Checkout source
         uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.changes.outputs.checkout_sha }}
       - name: Setup isolated CARGO_HOME / RUSTUP_HOME / TMPDIR
         if: ${{ runner.environment == 'self-hosted' }}
         uses: ./.github/actions/setup-isolated-rust
@@ -492,6 +458,8 @@ jobs:
     steps:
       - name: Checkout source
         uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.changes.outputs.checkout_sha }}
       - name: Setup isolated CARGO_HOME / RUSTUP_HOME / TMPDIR
         if: ${{ runner.environment == 'self-hosted' }}
         uses: ./.github/actions/setup-isolated-rust
@@ -551,6 +519,7 @@ jobs:
     steps:
       - name: All checks passed
         env:
+          CHECKOUT_SHA: ${{ needs.changes.outputs.checkout_sha }}
           RUN_CODE_CHECKS: ${{ needs.changes.outputs.run_code_checks }}
           RUN_NODE_TESTS: ${{ needs.changes.outputs.run_node_tests }}
           EVENT_NAME: ${{ github.event_name }}
@@ -559,6 +528,10 @@ jobs:
           run_node_tests="${RUN_NODE_TESTS}"
           if [[ "${{ needs.changes.result }}" != "success" ]]; then
             echo "changes failed"
+            exit 1
+          fi
+          if [[ ! "${CHECKOUT_SHA}" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "changes did not report a valid checkout_sha"
             exit 1
           fi
           case "${run_code_checks}" in
@@ -570,6 +543,15 @@ jobs:
               ;;
             *)
               echo "changes did not report valid run_code_checks: ${run_code_checks}"
+              exit 1
+              ;;
+          esac
+
+          case "${run_node_tests}" in
+            true | false)
+              ;;
+            *)
+              echo "changes did not report valid run_node_tests: ${run_node_tests}"
               exit 1
               ;;
           esac

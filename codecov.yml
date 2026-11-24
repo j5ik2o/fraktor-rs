@@ -1,3 +1,9 @@
+codecov:
+  # CI Success が Codecov を待つため、Codecov の判定は CI 全体の完了を待たない。
+  require_ci_to_pass: false
+  notify:
+    wait_for_ci: false
+
 # PR の追加変更行は未カバーを許可せず、
 # project 全体の微小低下では PR を落とさない。
 coverage:
