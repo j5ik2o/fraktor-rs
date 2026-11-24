@@ -204,38 +204,59 @@ test("does not reuse a previous patch check that finished after the rerun starte
   assert.equal(patchPolls, 2);
 });
 
-test("reuses an unchanged commit status after an identical rerun is processed", async () => {
+test("reuses an unchanged patch commit status after an identical rerun is processed", async () => {
   await fixture({
+    check: () => undefined,
+    statuses: [{ ...olderSuccesses[0], created_at: publishedAt }, olderSuccesses[1]],
+    uploads: [identicalPreviousUpload, upload],
+  }).run();
+});
+
+test("waits for the current project verdict even when an identical report previously passed", async () => {
+  let projectPolls = 0;
+  const { run, checks } = fixture({
+    check: (name) => name === "codecov/project" && projectPolls++ === 0
+      ? checkRun(name, "success", olderSuccesses[0].created_at)
+      : checkRun(name, "failure"),
+    uploads: [identicalPreviousUpload, upload],
+  });
+  await assert.rejects(run(), /codecov\/project failed with conclusion=failure/);
+  assert.deepEqual(checks, ["codecov/project", "codecov/project"]);
+});
+
+test("fails closed when only an unchanged project commit status is available", async () => {
+  const { run } = fixture({
     check: () => undefined,
     statuses: olderSuccesses,
     uploads: [identicalPreviousUpload, upload],
-  }).run();
+  });
+  await assert.rejects(run(), /codecov\/project did not report within timeout/);
 });
 
 test("refuses to reuse commit statuses if a different report was merged after publication", async () => {
   const { run } = fixture({
     check: () => undefined,
-    statuses: olderSuccesses,
+    statuses: [{ ...olderSuccesses[0], created_at: publishedAt }, olderSuccesses[1]],
     uploads: [identicalPreviousUpload, upload, {
       ...identicalPreviousUpload,
       name: "different-merge-or-coverage",
       updated_at: "2026-11-21T15:00:30Z",
     }],
   });
-  await assert.rejects(run(), /codecov\/project did not report within timeout/);
+  await assert.rejects(run(), /codecov\/patch did not report within timeout/);
 });
 
 test("refuses to reuse a status following a different most recent report", async () => {
   const { run } = fixture({
     check: () => undefined,
-    statuses: olderSuccesses,
+    statuses: [{ ...olderSuccesses[0], created_at: publishedAt }, olderSuccesses[1]],
     uploads: [identicalPreviousUpload, upload, {
       ...identicalPreviousUpload,
       name: "different-merge-or-coverage",
       updated_at: "2026-11-21T14:00:40Z",
     }],
   });
-  await assert.rejects(run(), /codecov\/project did not report within timeout/);
+  await assert.rejects(run(), /codecov\/patch did not report within timeout/);
 });
 
 test("fails before polling if coverage or PR upload metadata is missing", async () => {

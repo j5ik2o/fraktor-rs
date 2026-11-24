@@ -29,15 +29,17 @@ export async function waitForCodecov({ github, context, core, env, fetchUploads 
   }
 
   async function waitForCheck(checkName) {
+    const isPatchCheck = checkName === "codecov/patch";
     // 再実行時、project の結果が届いてから patch の再通知まで10分を超えることがある。
-    const maxAttempts = checkName === "codecov/patch" ? 90 : 60;
+    const maxAttempts = isPatchCheck ? 90 : 60;
     for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
       const run = await latestCheckRun(checkName);
 
       if (run) {
         core.info(`${checkName}: status=${run.status} conclusion=${run.conclusion || ""} url=${run.html_url}`);
 
-        const allowUnchangedSuccess = run.conclusion === "success" &&
+        // project の比較基準は同じベース SHA でも更新され得る。
+        const allowUnchangedSuccess = isPatchCheck && run.conclusion === "success" &&
           Date.parse(run.completed_at) < uploadStartedAt;
         if (run.status === "completed" &&
             await matchesProcessedUpload(run.started_at || run.created_at, allowUnchangedSuccess)) {
@@ -53,7 +55,7 @@ export async function waitForCodecov({ github, context, core, env, fetchUploads 
           core.info(`${checkName}: state=${status.state} url=${status.target_url || ""}`);
 
           if (["success", "failure", "error"].includes(status.state) &&
-              await matchesProcessedUpload(status.created_at, status.state === "success")) {
+              await matchesProcessedUpload(status.created_at, isPatchCheck && status.state === "success")) {
             if (status.state === "success") {
               return;
             }
@@ -136,7 +138,7 @@ export async function waitForCodecov({ github, context, core, env, fetchUploads 
       if (!allowUnchangedSuccess || !currentProcessed ||
           merged.some((upload) => !Number.isFinite(upload.processedAt))) return false;
 
-      // 同じ成功結果は再通知されないことがある。通知時点の最新レポートと、
+      // 同じ patch の成功結果は再通知されないことがある。通知時点の最新レポートと、
       // それ以降に処理されたレポートがすべて同じ入力であることを確認する。
       const lastPublishedUpload = merged
         .sort((left, right) => right.processedAt - left.processedAt)
