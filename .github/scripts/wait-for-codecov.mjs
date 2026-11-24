@@ -36,7 +36,7 @@ export async function waitForCodecov({ github, context, core, env, fetchUploads 
         core.info(`${checkName}: status=${run.status} conclusion=${run.conclusion || ""} url=${run.html_url}`);
 
         if (run.status === "completed" &&
-            await matchesProcessedUpload(run.completed_at || run.started_at || run.created_at)) {
+            await matchesProcessedUpload(run.started_at || run.created_at)) {
           if (run.conclusion === "success") {
             return;
           }
@@ -94,29 +94,49 @@ export async function waitForCodecov({ github, context, core, env, fetchUploads 
   async function matchesProcessedUpload(timestamp, allowUnchangedSuccess = false) {
     if (!isPullRequest) return true;
 
-    // build_code は null の場合がある。実行試行の URL で今回の upload を
-    // 特定し、その処理が終わった後の GitHub 通知を待つ。
+    // GitHub の通知に upload ID はない。実行試行の URL とレポート名で今回の
+    // upload を特定し、処理が終わった秒以降に作成された通知を待つ。
     const statusAt = Date.parse(timestamp);
     if (!Number.isFinite(statusAt)) return false;
-    const uploadsUrl = `https://api.codecov.io/api/v2/github/${owner}/repos/${repo}/commits/${ref}/uploads/?page_size=150`;
+    const uploadsUrl = new URL(
+      `https://api.codecov.io/api/v2/github/${owner}/repos/${repo}/commits/${ref}/uploads/?page_size=150`,
+    );
     try {
-      const response = await fetchUploads(uploadsUrl, { signal: AbortSignal.timeout(10000) });
-      if (!response.ok) return false;
-      const { results, next } = await response.json();
-      if (next || !Array.isArray(results)) return false;
-      const merged = results
-        .filter((upload) => upload.state === "merged")
-        .map((upload) => ({ ...upload, processedAt: Date.parse(upload.updated_at) }))
-        .sort((left, right) => right.processedAt - left.processedAt);
-      const current = merged.find((upload) => upload.build_url === buildUrl &&
-        upload.name === uploadName && Date.parse(upload.created_at) >= uploadStartedAt);
-      if (!current || !Number.isFinite(current.processedAt)) return false;
-      if (current.processedAt <= statusAt) return true;
-      if (!allowUnchangedSuccess || merged.some((upload) => !Number.isFinite(upload.processedAt))) return false;
+      const signal = AbortSignal.timeout(10000);
+      const visited = new Set();
+      const merged = [];
+      let currentProcessed = false;
+      let page = uploadsUrl;
+      while (page) {
+        if (page.origin !== uploadsUrl.origin || page.pathname !== uploadsUrl.pathname || visited.has(page.href)) {
+          return false;
+        }
+        visited.add(page.href);
+        const response = await fetchUploads(page.href, { signal });
+        if (!response.ok) return false;
+        const { results, next } = await response.json();
+        if (!Array.isArray(results)) return false;
+
+        for (const upload of results) {
+          if (upload.state !== "merged") continue;
+          const processedAt = Math.floor(Date.parse(upload.updated_at) / 1000) * 1000;
+          if (upload.build_url === buildUrl && upload.name === uploadName &&
+              Date.parse(upload.created_at) >= uploadStartedAt && Number.isFinite(processedAt)) {
+            if (processedAt <= statusAt) return true;
+            currentProcessed = true;
+          }
+          merged.push({ name: upload.name, processedAt });
+        }
+        page = next ? new URL(next, page) : null;
+      }
+      if (!allowUnchangedSuccess || !currentProcessed ||
+          merged.some((upload) => !Number.isFinite(upload.processedAt))) return false;
 
       // 同じ成功のコミットステータスは再投稿されないことがある。通知時点の
       // 最新レポートと、それ以降に処理されたレポートがすべて同じ入力であることを確認する。
-      const lastPublishedUpload = merged.find((upload) => upload.processedAt <= statusAt);
+      const lastPublishedUpload = merged
+        .sort((left, right) => right.processedAt - left.processedAt)
+        .find((upload) => upload.processedAt <= statusAt);
       return lastPublishedUpload?.name === uploadName &&
         merged.every((upload) => upload.processedAt < lastPublishedUpload.processedAt || upload.name === uploadName);
     } catch (error) {

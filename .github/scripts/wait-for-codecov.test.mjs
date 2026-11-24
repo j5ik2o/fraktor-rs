@@ -21,7 +21,7 @@ const upload = {
 const publishedAt = "2026-11-21T15:10:51Z";
 
 function checkRun(name, conclusion = "success", timestamp = publishedAt) {
-  return { name, status: "completed", conclusion, completed_at: timestamp };
+  return { name, status: "completed", conclusion, started_at: timestamp, completed_at: timestamp };
 }
 
 function fixture({
@@ -92,6 +92,39 @@ test("rejects stale success and waits for a fresh check", async () => {
   } });
   await run();
   assert.deepEqual(checks, ["codecov/project", "codecov/project", "codecov/patch"]);
+});
+
+test("rejects a check started before the upload was processed even if it finished later", async () => {
+  let attempts = 0;
+  const { run, checks } = fixture({ check: (name) => {
+    const result = checkRun(name);
+    return attempts++ === 0 ? { ...result, started_at: "2026-11-21T15:10:30Z" } : result;
+  } });
+  await run();
+  assert.deepEqual(checks, ["codecov/project", "codecov/project", "codecov/patch"]);
+});
+
+test("accepts publication in the same second as upload processing", async () => {
+  await fixture({ check: (name) => checkRun(name, "success", "2026-11-21T15:10:34Z") }).run();
+});
+
+test("accepts a matching upload on the first page even when there is a next page", async () => {
+  await fixture({ fetchUploads: async (url) => {
+    assert.equal(new URL(url).searchParams.get("page"), null);
+    return { ok: true, json: async () => ({ next: `${url}&page=2`, results: [upload] }) };
+  } }).run();
+});
+
+test("follows the next page when the first page has no matching upload", async () => {
+  const pages = [];
+  await fixture({ fetchUploads: async (url) => {
+    const page = new URL(url).searchParams.get("page");
+    pages.push(page);
+    return { ok: true, json: async () => page === null
+      ? { next: `${url}&page=2`, results: [] }
+      : { next: null, results: [upload] } };
+  } }).run();
+  assert.deepEqual(pages, [null, "2", null, "2"]);
 });
 
 test("times out when only another attempt's upload was processed", async () => {
